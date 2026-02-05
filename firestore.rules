@@ -1,0 +1,14 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /subscribers/{document} {
+      // Allow anyone to create a new subscription
+      allow create: if request.resource.data.email is string
+                    && request.resource.data.keys().hasAll(['email', 'subscribedAt']);
+      
+      // No one can read, update, or delete subscriptions (except via Admin SDK/Console)
+      allow read, update, delete: if false;
+    }
+  }
+}

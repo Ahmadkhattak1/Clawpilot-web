@@ -6,22 +6,14 @@ export function Footer() {
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-3.5 h-3.5 text-background"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
+          <div className="w-8 h-8 rounded-md flex items-center justify-center">
+            <img
+              src="/logo.svg"
+              alt="ClawPilot Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
-          <span className="font-display text-[14px] font-semibold">ClawPilot</span>
+          <span className="font-display text-[14px] font-semibold ml-1">ClawPilot</span>
         </Link>
 
         {/* Links */}

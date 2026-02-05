@@ -1,10 +1,11 @@
 import React from "react"
+import { Analytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 
 import './globals.css'
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 })
@@ -30,7 +31,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        {children}
+        <Analytics />
+      </body>
     </html>
   )
 }

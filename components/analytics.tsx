@@ -2,11 +2,11 @@
 
 import Script from "next/script"
 import { usePathname, useSearchParams } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, Suspense } from "react"
 
 const measurementId = process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 
-export function Analytics() {
+function AnalyticsInner() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -34,5 +34,13 @@ gtag('js', new Date());
 gtag('config', '${measurementId}', { send_page_view: false });`}
       </Script>
     </>
+  )
+}
+
+export function Analytics() {
+  return (
+    <Suspense fallback={null}>
+      <AnalyticsInner />
+    </Suspense>
   )
 }

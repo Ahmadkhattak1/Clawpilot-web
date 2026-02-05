@@ -28,7 +28,7 @@ export function Agents() {
 
   return (
     <section
-      id="agents"
+      id="openclaw"
       ref={sectionRef}
       className="relative py-32 px-6"
     >
@@ -36,10 +36,10 @@ export function Agents() {
         {/* Section header */}
         <div className={`text-center mb-10 transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Powered by top AI models
+            What OpenClaw can do
           </h2>
           <p className="text-muted-foreground text-[15px] max-w-lg mx-auto">
-            Works with Claude, GPT, and local models via Ollama.
+            OpenClaw is an open source personal AI that works inside your chat apps and takes action on your behalf.
           </p>
         </div>
 
@@ -57,18 +57,21 @@ export function Agents() {
 
           {/* Description */}
           <p className="text-foreground/80 text-[15px] leading-relaxed mb-6">
-            Your personal AI assistant that handles conversations, answers questions, and automates tasks. Runs 24/7 as a background daemon on your machine.
+            OpenClaw handles conversations, answers questions, and automates tasks while replying from WhatsApp, Telegram, Slack, Discord, Signal, and iMessage.
+          </p>
+          <p className="text-muted-foreground text-[13px] leading-relaxed mb-6">
+            Previously known as Clawdbot and Moltbot, now OpenClaw.
           </p>
 
           {/* Features */}
           <div className="space-y-2.5 mb-6">
             <div className="flex items-center gap-2.5 text-[13px]">
               <MousePointer className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground/60">Onboarding wizard walks you through setup</span>
+              <span className="text-foreground/60">OpenClaw gateway connects your chat apps in minutes</span>
             </div>
             <div className="flex items-center gap-2.5 text-[13px]">
               <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground/60">Voice wake, live canvas, browser control</span>
+              <span className="text-foreground/60">Works with Claude, GPT, and local models</span>
             </div>
           </div>
 
@@ -82,7 +85,7 @@ export function Agents() {
 
         {/* Bottom note */}
         <p className={`mt-6 text-center text-[13px] text-muted-foreground transition-all duration-700 delay-500 ${visible ? "opacity-100" : "opacity-0"}`}>
-          166k+ stars on GitHub. Built by Peter Steinberger and the community.
+          Open source on GitHub and built by the community.
         </p>
       </div>
     </section>

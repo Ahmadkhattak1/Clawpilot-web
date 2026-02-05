@@ -6,18 +6,21 @@ import { HardDrives, ChatsCircle, ShieldCheck } from "@phosphor-icons/react"
 const features = [
   {
     icon: HardDrives,
-    title: "Self-hosted",
-    description: "Run on your own devices. Your data never leaves your machine. Complete privacy and control.",
+    title: "Local or cloud",
+    description:
+      "OpenClaw runs on your machine, and ClawPilot adds a guided option to host in your own cloud.",
   },
   {
     icon: ChatsCircle,
-    title: "Multi-channel",
-    description: "WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, and more. One assistant, everywhere.",
+    title: "Chat app gateway",
+    description:
+      "Connect WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, and more through one OpenClaw gateway.",
   },
   {
     icon: ShieldCheck,
-    title: "Secure by default",
-    description: "DM pairing, allowlists, and sandboxed execution. Built for security from day one.",
+    title: "Privacy and safety",
+    description:
+      "Pairing and allowlists keep access controlled, with clear options for secure tool use.",
   },
 ]
 
@@ -54,10 +57,10 @@ export function Features() {
         {/* Section header */}
         <div className="text-center mb-16">
           <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Why OpenClaw?
+            Why OpenClaw with ClawPilot
           </h2>
           <p className="text-muted-foreground text-[15px] max-w-md mx-auto">
-            A personal AI assistant that actually respects your privacy.
+            OpenClaw is the engine. ClawPilot makes it simple to install, connect, and manage.
           </p>
         </div>
 

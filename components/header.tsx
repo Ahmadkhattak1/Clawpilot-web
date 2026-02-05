@@ -35,6 +35,18 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-6">
           <Link
+            href="#openclaw"
+            className="text-[13px] text-muted-foreground font-medium"
+          >
+            OpenClaw
+          </Link>
+          <Link
+            href="#social-proof"
+            className="text-[13px] text-muted-foreground font-medium"
+          >
+            Social
+          </Link>
+          <Link
             href="#features"
             className="text-[13px] text-muted-foreground font-medium"
           >
@@ -45,6 +57,12 @@ export function Header() {
             className="text-[13px] text-muted-foreground font-medium"
           >
             How it works
+          </Link>
+          <Link
+            href="#faq"
+            className="text-[13px] text-muted-foreground font-medium"
+          >
+            FAQ
           </Link>
           <Link
             href="https://openclaw.io"

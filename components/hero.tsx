@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import { GradientAnimation } from "./gradient-animation"
 import { AppleLogo, WindowsLogo, LinuxLogo, AppStoreLogo, GooglePlayLogo, ArrowRight, CircleNotch, ShieldCheck } from "@phosphor-icons/react"
 import { subscribeEmail, updateSubscriber } from "@/lib/firebase"
+import { trackEvent } from "@/lib/analytics"
 
 export function Hero() {
   const [mounted, setMounted] = useState(false)
@@ -55,7 +56,7 @@ export function Hero() {
           className={`text-[17px] md:text-lg text-muted-foreground max-w-md mx-auto mb-10 leading-relaxed transition-all duration-700 delay-200 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
             }`}
         >
-          Self-hosted AI that answers on WhatsApp, Telegram, Slack, Discord, iMessage and more. Own your data.
+          Your AI assistant on WhatsApp, Telegram, Slack, Discord, and more.
         </p>
 
         <div
@@ -121,12 +122,7 @@ export function Hero() {
           </div>
         </div>
 
-        <p
-          className={`mt-10 text-[13px] text-muted-foreground transition-all duration-700 delay-400 ${mounted ? "opacity-100" : "opacity-0"
-            }`}
-        >
-          Open source on <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer" className="text-foreground/70 underline underline-offset-2">GitHub</a>
-        </p>
+
       </div>
     </section>
   )
@@ -151,6 +147,7 @@ function HeroForm() {
       const result = await subscribeEmail(email)
       setLoading(false)
       if (result.success && result.id) {
+        trackEvent("generate_lead", { method: "email", location: "hero" })
         setSubscriberId(result.id)
         setIsDuplicate(!!result.isDuplicate)
         setStep("questions")

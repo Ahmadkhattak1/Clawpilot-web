@@ -5,6 +5,7 @@ import React from "react"
 import { useEffect, useRef, useState } from "react"
 import { ArrowRight, Loader2 } from "lucide-react"
 import { subscribeEmail, updateSubscriber } from "@/lib/firebase"
+import { trackEvent } from "@/lib/analytics"
 
 export function CTA() {
   const [visible, setVisible] = useState(false)
@@ -40,18 +41,21 @@ export function CTA() {
       >
         {/* Heading */}
         <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-balance mb-4">
-          Stay in the loop
+          Get early access
         </h2>
 
         <p className="text-[15px] text-muted-foreground max-w-sm mx-auto mb-8">
-          Get updates on new features, releases, and community highlights.
+          Be first to try ClawPilot and get OpenClaw running in your chat apps.
         </p>
 
         {/* Email form */}
         <CTAForm />
+        <p className="mt-3 text-[12px] text-muted-foreground">
+          Early access includes an OpenClaw setup checklist and best practices guide.
+        </p>
 
         <p className="mt-6 text-[13px] text-muted-foreground">
-          MIT licensed. <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer" className="text-foreground/70 underline underline-offset-2">View on GitHub</a>
+          OpenClaw is MIT licensed. <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer" className="text-foreground/70 underline underline-offset-2">View on GitHub</a>
         </p>
       </div>
     </section>
@@ -75,6 +79,7 @@ function CTAForm() {
       const result = await subscribeEmail(email)
       setLoading(false)
       if (result.success && result.id) {
+        trackEvent("generate_lead", { method: "email", location: "cta" })
         setSubscriberId(result.id)
         setStep("questions")
       }

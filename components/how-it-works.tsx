@@ -8,19 +8,19 @@ const steps = [
     icon: Download,
     number: "01",
     title: "Install",
-    description: "Install our app for macOS, Windows, or Linux.",
+    description: "Install ClawPilot to set up OpenClaw on macOS, Windows, or Linux.",
   },
   {
     icon: Rocket,
     number: "02",
     title: "Onboard",
-    description: "Run the wizard to set up your AI model and API keys.",
+    description: "Run the wizard to connect your AI model and keys for OpenClaw.",
   },
   {
     icon: MessageCircle,
     number: "03",
     title: "Connect",
-    description: "Pair WhatsApp, Telegram, Slack, Discord via QR or token.",
+    description: "Pair WhatsApp, Telegram, Slack, Discord, and iMessage through the OpenClaw gateway.",
   },
 ]
 
@@ -68,7 +68,7 @@ export function HowItWorks() {
         {/* Section header */}
         <div className="text-center mb-14">
           <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Three steps. That's all.
+            Three steps. That is all.
           </h2>
           <p className="text-muted-foreground text-[15px]">
             From zero to deployed in under a minute.

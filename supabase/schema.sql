@@ -9,9 +9,15 @@ create table if not exists public.subscribers (
 
 alter table public.subscribers enable row level security;
 
+grant usage on schema public to anon, authenticated;
+grant insert on table public.subscribers to anon;
+grant insert on table public.subscribers to authenticated;
+
 drop policy if exists "Allow anonymous waitlist inserts" on public.subscribers;
 create policy "Allow anonymous waitlist inserts"
 on public.subscribers
 for insert
-to anon
-with check (true);
+to anon, authenticated
+with check (length(trim(email)) > 0);
+
+notify pgrst, 'reload schema';

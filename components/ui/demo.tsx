@@ -77,7 +77,13 @@ function WaitlistForm() {
 
     if (!result.success) {
       setLoading(false)
-      setError("Something went wrong. Please try again.")
+      setError(
+        result.code === "PGRST205"
+          ? "Waitlist is being configured. Please try again shortly."
+          : result.code === "42501"
+            ? "Waitlist permissions are not configured yet. Please contact support."
+          : "Something went wrong. Please try again.",
+      )
       return
     }
 

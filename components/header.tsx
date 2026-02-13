@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { getSupabaseAuthClient } from "@/lib/supabase-auth"
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -12,6 +14,38 @@ export function Header() {
     }
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const supabase = getSupabaseAuthClient()
+
+    async function loadSession() {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (error) throw error
+        if (!cancelled) {
+          setIsAuthenticated(Boolean(data.session))
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAuthenticated(false)
+        }
+      }
+    }
+
+    void loadSession()
+
+    const { data: authStateData } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) {
+        setIsAuthenticated(Boolean(session))
+      }
+    })
+
+    return () => {
+      cancelled = true
+      authStateData.subscription.unsubscribe()
+    }
   }, [])
 
   return (
@@ -79,10 +113,10 @@ export function Header() {
         </div>
 
         <Link
-          href="#hero-waitlist-email"
+          href={isAuthenticated ? "/dashboard" : "/signin"}
           className="type-nav rounded-lg bg-foreground px-3 py-1.5 text-background"
         >
-          Create account
+          {isAuthenticated ? "Dashboard" : "Sign in"}
         </Link>
       </nav>
     </header>

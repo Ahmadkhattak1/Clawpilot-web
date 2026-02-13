@@ -1,35 +1,29 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { MicrosoftTeamsLogo } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
 
 type Integration = {
   name: string
-  src?: string
-  renderIcon?: () => React.ReactNode
+  src: string
 }
 
 const INTEGRATIONS: Integration[] = [
   { name: "WhatsApp", src: "/integrations/whatsapp.svg" },
   { name: "Telegram", src: "/integrations/telegram.svg" },
   { name: "Discord", src: "/integrations/discord.svg" },
-  { name: "Slack", src: "/integrations/slack.svg" },
-  { name: "Google Chat", src: "/integrations/googlechat.svg" },
-  { name: "Signal", src: "/integrations/signal.svg" },
-  { name: "iMessage", src: "/integrations/apple.svg" },
-  {
-    name: "Microsoft Teams",
-    renderIcon: () => (
-      <MicrosoftTeamsLogo className="h-[68%] w-[68%] text-[#5B5FC7]" weight="fill" />
-    ),
-  },
-  { name: "LINE", src: "/integrations/line.svg" },
+  { name: "Slack", src: "/integrations/Slack.svg" },
+  { name: "Google Chat", src: "/integrations/google.svg" },
+  { name: "Signal", src: "/integrations/Signal.svg" },
+  { name: "iMessage", src: "/integrations/imessage.svg" },
+  { name: "BlueBubbles", src: "/integrations/bluebubbles.svg" },
+  { name: "Microsoft Teams", src: "/integrations/microsoft-teams.svg" },
+  { name: "LINE", src: "/integrations/line-messenger.svg" },
+  { name: "Nextcloud Talk", src: "/integrations/nextcloud.svg" },
   { name: "Matrix", src: "/integrations/matrix.svg" },
   { name: "Mattermost", src: "/integrations/mattermost.svg" },
-  { name: "Twitch", src: "/integrations/twitch.svg" },
-  { name: "Zalo", src: "/integrations/zalo.svg" },
-  { name: "WebChat", src: "/logo.png" },
+  { name: "Zalo", src: "/integrations/Zalo.svg" },
+  { name: "Tlon", src: "/integrations/Urbit.svg" },
 ]
 
 type SemiCircleOrbitProps = {
@@ -89,17 +83,13 @@ function SemiCircleOrbit({
               )}
               style={{ width: iconSize, height: iconSize, minWidth: iconSize, minHeight: iconSize }}
             >
-              {integration.src ? (
-                <img
-                  src={integration.src}
-                  alt={integration.name}
-                  width={Math.round(iconSize * 0.66)}
-                  height={Math.round(iconSize * 0.66)}
-                  className="object-contain"
-                />
-              ) : (
-                integration.renderIcon?.()
-              )}
+              <img
+                src={integration.src}
+                alt={integration.name}
+                width={Math.round(iconSize * 0.66)}
+                height={Math.round(iconSize * 0.66)}
+                className="object-contain"
+              />
             </div>
 
             <div

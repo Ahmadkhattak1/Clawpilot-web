@@ -20,6 +20,17 @@ npm install
 
 `supabase/schema.sql`
 
+### Auth setup (OTP + callbacks)
+
+To use the email OTP flow in this app:
+
+1. In Supabase Dashboard -> Authentication -> URL Configuration:
+   - Set `Site URL` to your app origin (for local: `http://localhost:3000`).
+   - Add redirect URL(s), including `/auth/callback` (for local: `http://localhost:3000/auth/callback`).
+2. In Supabase Dashboard -> Authentication -> Email Templates:
+   - For signup/login templates, include `{{ .Token }}` in the email body.
+   - If the template only uses `{{ .ConfirmationURL }}`, users will receive a magic link instead of an OTP code.
+
 4. Run the app:
 
 ```bash

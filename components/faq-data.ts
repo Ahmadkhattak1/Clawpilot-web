@@ -1,27 +1,22 @@
 export const faqItems = [
   {
-    question: "What is OpenClaw",
+    question: "Do I need to buy hardware or run a server?",
     answer:
-      "OpenClaw is an open source personal AI that runs on your machine and replies inside chat apps like WhatsApp, Telegram, Slack, Discord, Signal, and iMessage.",
+      "No. We handle the hosting and reliability.",
   },
   {
-    question: "What does ClawPilot do",
+    question: "Do I need to install anything?",
     answer:
-      "ClawPilot is a guided installer and management gateway for OpenClaw. It helps you set up hosting, connect chat apps, and keep everything updated.",
+      "No. You create an account and connect your chat.",
   },
   {
-    question: "Do I need to code to use OpenClaw",
+    question: "Is it always available?",
     answer:
-      "No. OpenClaw includes an onboarding flow for models and keys, and ClawPilot removes the terminal steps for non technical users.",
+      "Yes. We keep it running for you.",
   },
   {
-    question: "Which AI models can I use",
+    question: "Can it access everything by default?",
     answer:
-      "OpenClaw supports Claude, GPT, and local models through Ollama, so you can choose the provider that fits your needs.",
-  },
-  {
-    question: "How is my data handled",
-    answer:
-      "OpenClaw runs locally or in your cloud environment, with pairing and allowlists to control access. You decide where data lives.",
+      "No. You decide what it can access and what it is allowed to do.",
   },
 ]

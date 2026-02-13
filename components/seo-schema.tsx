@@ -10,22 +10,22 @@ export function SeoSchema() {
         "@type": "Organization",
         name: "ClawPilot",
         url: siteUrl,
-        logo: `${siteUrl}/logo.svg`,
+        logo: `${siteUrl}/logo.png`,
       },
       {
         "@type": "WebSite",
         name: "ClawPilot",
         url: siteUrl,
         description:
-          "ClawPilot is the easiest way to install and manage OpenClaw, the open source personal AI that works inside your chat apps.",
+          "ClawPilot hosts OpenClaw for you so you can use it in your chat apps without setup or uptime management overhead.",
         inLanguage: "en",
       },
       {
         "@type": "SoftwareApplication",
-        name: "OpenClaw",
-        applicationCategory: "ProductivityApplication",
-        operatingSystem: "macOS, Windows, Linux",
-        isAccessibleForFree: true,
+        name: "ClawPilot",
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web",
+        isAccessibleForFree: false,
         license: "https://github.com/openclaw/openclaw/blob/main/LICENSE",
       },
       {

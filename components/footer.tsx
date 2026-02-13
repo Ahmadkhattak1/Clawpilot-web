@@ -6,39 +6,45 @@ export function Footer() {
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-md flex items-center justify-center">
+          <div className="w-8 h-8 rounded-md overflow-hidden flex items-center justify-center">
             <img
-              src="/logo.svg"
+              src="/logo.png"
               alt="ClawPilot Logo"
               className="w-full h-full object-contain"
             />
           </div>
-          <span className="font-display text-[14px] font-semibold ml-1">ClawPilot</span>
+          <span className="type-brand ml-1">ClawPilot</span>
         </Link>
 
         {/* Links */}
-        <div className="flex items-center gap-6 text-[13px] text-muted-foreground">
+        <div className="flex items-center gap-6 text-muted-foreground">
           <Link
-            href="https://openclaw.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            href="#faq"
+            className="type-nav transition-colors hover:text-foreground"
           >
-            Documentation
+            FAQ
           </Link>
           <Link
             href="https://openclaw.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            className="type-nav transition-colors hover:text-foreground"
           >
             OpenClaw
+          </Link>
+          <Link
+            href="https://clawhub.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="type-nav transition-colors hover:text-foreground"
+          >
+            Clawhub
           </Link>
         </div>
 
         {/* Copyright */}
-        <p className="text-[13px] text-muted-foreground">
-          Built with OpenClaw
+        <p className="type-nav text-muted-foreground">
+          Hosted with ClawPilot
         </p>
       </div>
     </footer>

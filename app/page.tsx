@@ -1,5 +1,6 @@
 import { Header } from "@/components/header"
 import { Hero } from "@/components/hero"
+import { SimpleIdea } from "@/components/simple-idea"
 import { Agents } from "@/components/agents"
 import { Features } from "@/components/features"
 import { HowItWorks } from "@/components/how-it-works"
@@ -7,7 +8,7 @@ import { FAQ } from "@/components/faq"
 import { CTA } from "@/components/cta"
 import { Footer } from "@/components/footer"
 import { SeoSchema } from "@/components/seo-schema"
-import { SocialProof } from "@/components/social-proof"
+import MultiOrbitSemiCircle from "@/components/ui/multi-orbit-semi-circle"
 
 export default function Home() {
   return (
@@ -16,12 +17,13 @@ export default function Home() {
       <SeoSchema />
       <Header />
       <Hero />
+      <SimpleIdea />
       <Agents />
-      <SocialProof />
+      <MultiOrbitSemiCircle />
       <Features />
+      <CTA />
       <HowItWorks />
       <FAQ />
-      <CTA />
       <Footer />
     </main>
   )

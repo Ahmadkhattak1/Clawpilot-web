@@ -1,26 +1,26 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { HardDrives, ChatsCircle, ShieldCheck } from "@phosphor-icons/react"
+import { ClockCounterClockwise, HardDrives, Pulse } from "@phosphor-icons/react"
 
 const features = [
   {
     icon: HardDrives,
-    title: "Local or cloud",
+    title: "No infrastructure decisions",
     description:
-      "OpenClaw runs on your machine, and ClawPilot adds a guided option to host in your own cloud.",
+      "You do not need to pick instance types, manage deployments, or worry about scaling.",
   },
   {
-    icon: ChatsCircle,
-    title: "Chat app gateway",
+    icon: ClockCounterClockwise,
+    title: "No maintenance",
     description:
-      "Connect WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, and more through one OpenClaw gateway.",
+      "We handle the setup and keep things up to date.",
   },
   {
-    icon: ShieldCheck,
-    title: "Privacy and safety",
+    icon: Pulse,
+    title: "No uptime anxiety",
     description:
-      "Pairing and allowlists keep access controlled, with clear options for secure tool use.",
+      "Your assistant stays available without you keeping a machine running at home.",
   },
 ]
 
@@ -49,18 +49,18 @@ export function Features() {
 
   return (
     <section
-      id="features"
+      id="benefits"
       ref={sectionRef}
-      className="relative py-32 px-6"
+      className="relative px-6 py-20 md:py-24"
     >
       <div className="max-w-5xl mx-auto">
         {/* Section header */}
         <div className="text-center mb-16">
-          <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Why OpenClaw with ClawPilot
+          <h2 className="type-h2 mb-4">
+            What ClawPilot takes off your plate
           </h2>
-          <p className="text-muted-foreground text-[15px] max-w-md mx-auto">
-            OpenClaw is the engine. ClawPilot makes it simple to install, connect, and manage.
+          <p className="type-body mx-auto max-w-md">
+            OpenClaw is powerful. ClawPilot removes the hosting and reliability overhead.
           </p>
         </div>
 
@@ -84,8 +84,8 @@ export function Features() {
                 </div>
 
                 {/* Content */}
-                <h3 className="font-display text-[15px] font-semibold mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground text-[13px] leading-relaxed">
+                <h3 className="type-h4 mb-2">{feature.title}</h3>
+                <p className="type-body-sm">
                   {feature.description}
                 </p>
               </div>

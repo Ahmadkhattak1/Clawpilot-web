@@ -1,39 +1,37 @@
 # Clawpilot
 
-This project is a Next.js application using Firebase.
+This project is a Next.js application using Supabase for waitlist subscribers.
 
-## Getting Started
+## Getting started
 
-First, install dependencies:
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-Then, run the development server:
+2. Copy `.env.example` to `.env.local` and set:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)
+
+3. In Supabase SQL Editor, run:
+
+`supabase/schema.sql`
+
+4. Run the app:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Deployment
+## Deployment (Vercel)
 
-To deploy this project on Vercel:
+Set these environment variables in Vercel project settings:
 
-1.  Push your code to a Git repository (GitHub, GitLab, Bitbucket).
-2.  Import the project into Vercel.
-3.  Add the following **Environment Variables** in the Vercel Project Settings:
-
-    *   `NEXT_PUBLIC_FIREBASE_API_KEY`
-    *   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-    *   `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-    *   `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-    *   `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-    *   `NEXT_PUBLIC_FIREBASE_APP_ID`
-
-4.  Click **Deploy**.
-
-> [!NOTE]
-> You can find these values in your Firebase project settings.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)

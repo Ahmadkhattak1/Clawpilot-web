@@ -99,10 +99,10 @@ export function SocialProof() {
     <section id="social-proof" className="relative py-24 px-6">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
+          <h2 className="type-h2 mb-4">
             What people are saying about OpenClaw
           </h2>
-          <p className="text-muted-foreground text-[15px]">
+          <p className="type-body">
             Real posts from the community, linked to the original source.
           </p>
         </div>
@@ -117,7 +117,7 @@ export function SocialProof() {
               >
                 <div id={`tweet-${id}`} />
                 {!loadedIds[id] && (
-                  <div className="text-[13px] text-muted-foreground py-4">
+                  <div className="type-nav py-4 text-muted-foreground">
                     <a
                       href={tweet.url.replace("https://x.com/", "https://twitter.com/")}
                       target="_blank"
@@ -138,7 +138,7 @@ export function SocialProof() {
             <button
               type="button"
               onClick={() => setVisibleCount((prev) => Math.min(prev + 6, tweets.length))}
-              className="px-4 py-2 rounded-lg border border-border bg-background text-[13px] font-medium text-foreground hover:bg-muted transition-colors"
+              className="type-nav rounded-lg border border-border bg-background px-4 py-2 text-foreground transition-colors hover:bg-muted"
             >
               Load more posts
             </button>

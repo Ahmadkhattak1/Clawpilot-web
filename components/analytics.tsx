@@ -4,7 +4,9 @@ import Script from "next/script"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useEffect, Suspense } from "react"
 
-const measurementId = process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+const measurementId =
+  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
+  process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 
 function AnalyticsInner() {
   const pathname = usePathname()

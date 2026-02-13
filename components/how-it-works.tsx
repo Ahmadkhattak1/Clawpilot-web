@@ -1,26 +1,26 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Download, Rocket, MessageCircle } from "lucide-react"
+import { Link2, MessageSquareText, UserRoundPlus } from "lucide-react"
 
 const steps = [
   {
-    icon: Download,
+    icon: UserRoundPlus,
     number: "01",
-    title: "Install",
-    description: "Install ClawPilot to set up OpenClaw on macOS, Windows, or Linux.",
+    title: "Create your account",
+    description: "Create your account.",
   },
   {
-    icon: Rocket,
+    icon: Link2,
     number: "02",
-    title: "Onboard",
-    description: "Run the wizard to connect your AI model and keys for OpenClaw.",
+    title: "Connect your chat and tools",
+    description: "Connect your chat and tools.",
   },
   {
-    icon: MessageCircle,
+    icon: MessageSquareText,
     number: "03",
-    title: "Connect",
-    description: "Pair WhatsApp, Telegram, Slack, Discord, and iMessage through the OpenClaw gateway.",
+    title: "Start delegating tasks",
+    description: "Start delegating tasks.",
   },
 ]
 
@@ -59,7 +59,7 @@ export function HowItWorks() {
     <section
       id="how-it-works"
       ref={sectionRef}
-      className="relative py-32 px-6"
+      className="relative px-6 py-20 md:py-24"
     >
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-secondary/30 to-transparent pointer-events-none" />
@@ -67,11 +67,11 @@ export function HowItWorks() {
       <div className="relative max-w-3xl mx-auto">
         {/* Section header */}
         <div className="text-center mb-14">
-          <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Three steps. That is all.
+          <h2 className="type-h2 mb-4">
+            How it works
           </h2>
-          <p className="text-muted-foreground text-[15px]">
-            From zero to deployed in under a minute.
+          <p className="type-body">
+            Three steps from account creation to delegation.
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export function HowItWorks() {
                       {step.number}
                     </span>
                     <h3
-                      className={`font-display text-[15px] font-semibold transition-colors duration-300 ${
+                      className={`type-h4 transition-colors duration-300 ${
                         activeStep === index ? "text-foreground" : "text-muted-foreground"
                       }`}
                     >
@@ -125,7 +125,7 @@ export function HowItWorks() {
                     </h3>
                   </div>
                   <p
-                    className={`mt-0.5 text-[13px] leading-relaxed transition-all duration-300 ${
+                    className={`type-body-sm mt-0.5 transition-all duration-300 ${
                       activeStep === index
                         ? "text-muted-foreground opacity-100"
                         : "text-muted-foreground/50 opacity-0 h-0 md:opacity-70 md:h-auto"

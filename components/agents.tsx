@@ -1,7 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Bot, MousePointer, CheckCircle2 } from "lucide-react"
+import Link from "next/link"
+
+const useCases = [
+  "Email support and follow-ups",
+  "Calendar planning and reminders",
+  "Routine tasks and personal workflows",
+  "Do this for me requests inside your chat",
+]
 
 export function Agents() {
   const [visible, setVisible] = useState(false)
@@ -28,65 +35,45 @@ export function Agents() {
 
   return (
     <section
-      id="openclaw"
+      id="overview"
       ref={sectionRef}
-      className="relative py-32 px-6"
+      className="relative px-6 py-20 md:py-24"
     >
-      <div className="max-w-2xl mx-auto">
-        {/* Section header */}
-        <div className={`text-center mb-10 transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            What OpenClaw can do
-          </h2>
-          <p className="text-muted-foreground text-[15px] max-w-lg mx-auto">
-            OpenClaw is an open source personal AI that works inside your chat apps and takes action on your behalf.
-          </p>
-        </div>
-
-        {/* Single agent card */}
+      <div className="max-w-4xl mx-auto space-y-6">
         <div
-          className={`relative p-6 md:p-8 rounded-xl bg-secondary/50 border border-border/40 transition-all duration-700 ${
+          id="use-cases"
+          className={`rounded-2xl border border-border/50 bg-secondary/40 p-8 md:p-10 transition-all duration-700 ${
             visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
-          style={{ transitionDelay: "200ms" }}
+          style={{ transitionDelay: "120ms" }}
         >
-          {/* Icon */}
-          <div className="w-10 h-10 rounded-lg bg-foreground flex items-center justify-center mb-5">
-            <Bot className="w-[18px] h-[18px] text-background" />
-          </div>
-
-          {/* Description */}
-          <p className="text-foreground/80 text-[15px] leading-relaxed mb-6">
-            OpenClaw handles conversations, answers questions, and automates tasks while replying from WhatsApp, Telegram, Slack, Discord, Signal, and iMessage.
+          <h3 className="type-h3 mb-4">
+            What you can use it for
+          </h3>
+          <p className="type-body mb-4">
+            Use OpenClaw as a day-to-day assistant that can help with things like:
           </p>
-          <p className="text-muted-foreground text-[13px] leading-relaxed mb-6">
-            Previously known as Clawdbot and Moltbot, now OpenClaw.
+          <ul className="space-y-2 mb-6">
+            {useCases.map((item) => (
+              <li key={item} className="flex items-center gap-2 text-sm leading-relaxed text-foreground/80 md:text-base">
+                <span className="h-1.5 w-1.5 rounded-full bg-foreground/60" />
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <p className="type-body-sm text-foreground/80">
+            Run your business. Customer support. Cold emails. And many other things. Explore more skills on{" "}
+            <Link href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              Clawhub.ai
+            </Link>
           </p>
 
-          {/* Features */}
-          <div className="space-y-2.5 mb-6">
-            <div className="flex items-center gap-2.5 text-[13px]">
-              <MousePointer className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground/60">OpenClaw gateway connects your chat apps in minutes</span>
-            </div>
-            <div className="flex items-center gap-2.5 text-[13px]">
-              <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground/60">Works with Claude, GPT, and local models</span>
-            </div>
-          </div>
-
-          {/* SEO aliases */}
-          <div className="pt-5 border-t border-border/40">
-            <p className="text-[11px] text-muted-foreground">
-              Also known as: <span className="text-foreground/40">openclaw</span> <span className="text-muted-foreground/30">|</span> <span className="text-foreground/40">clawdbot</span> <span className="text-muted-foreground/30">|</span> <span className="text-foreground/40">moltbot</span>
-            </p>
-          </div>
+          <p className="mt-6 text-xs italic text-muted-foreground">
+            Capabilities depend on what you connect and what permissions you allow.
+          </p>
         </div>
 
-        {/* Bottom note */}
-        <p className={`mt-6 text-center text-[13px] text-muted-foreground transition-all duration-700 delay-500 ${visible ? "opacity-100" : "opacity-0"}`}>
-          Open source on GitHub and built by the community.
-        </p>
       </div>
     </section>
   )

@@ -8,6 +8,40 @@
   }
 }
 
+@layer components {
+  .type-h1 {
+    @apply font-sans text-4xl font-semibold leading-tight tracking-tight md:text-6xl lg:text-7xl;
+  }
+
+  .type-h2 {
+    @apply font-sans text-3xl font-bold leading-tight tracking-tight md:text-4xl;
+  }
+
+  .type-h3 {
+    @apply font-sans text-2xl font-bold leading-tight tracking-tight md:text-3xl;
+  }
+
+  .type-h4 {
+    @apply font-sans text-base font-semibold leading-tight tracking-tight md:text-lg;
+  }
+
+  .type-body {
+    @apply text-[15px] leading-relaxed text-muted-foreground md:text-base;
+  }
+
+  .type-body-sm {
+    @apply text-sm leading-relaxed text-muted-foreground;
+  }
+
+  .type-nav {
+    @apply text-[13px] font-medium tracking-tight;
+  }
+
+  .type-brand {
+    @apply font-sans text-[15px] font-semibold tracking-tight;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

@@ -1,30 +1,29 @@
 # ClawPilot - LLM Context
 
-> ClawPilot is the easiest way to install and manage OpenClaw, an open-source personal AI assistant that works inside WhatsApp, Telegram, Slack, Discord, Signal, and iMessage.
+> ClawPilot hosts OpenClaw for users who want the power of OpenClaw without setup and maintenance overhead.
 
 ## About
 
-ClawPilot helps users set up OpenClaw in under 60 seconds. OpenClaw is a self-hosted AI assistant that runs locally on your machine and responds through popular messaging apps.
+ClawPilot runs OpenClaw as a managed service. Users create an account, connect chat tools, and start delegating tasks without managing servers or uptime.
 
 ## Key Features
 
-- **Local or Cloud Hosting**: Run OpenClaw on your own machine for complete privacy, or use ClawPilot's guided cloud hosting option.
-- **Multi-Platform Support**: Works with WhatsApp, Telegram, Slack, Discord, Signal, iMessage, and Teams.
-- **Privacy-First**: Your data never leaves your machine when self-hosting. Pairing and allowlists keep access controlled.
-- **Open Source**: OpenClaw is MIT licensed and community-built.
+- **Managed Hosting**: No extra machines, no server setup, and no uptime babysitting.
+- **Multi-Platform Support**: Works with WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, and WebChat.
+- **Control and Safety**: Users decide what OpenClaw can access and can require confirmation for sensitive actions.
+- **Open Source Foundation**: Powered by OpenClaw.
 
-## Platforms
+## How It Works
 
-- macOS (Coming Soon)
-- Windows (Coming Soon)
-- Linux (Coming Soon)
-- iPhone (Coming Soon)
-- Android (Coming Soon)
+1. Create an account
+2. Connect chat and tools
+3. Start delegating tasks
 
 ## Links
 
 - Website: https://clawpilot.app
 - OpenClaw GitHub: https://github.com/openclaw/openclaw
+- Clawhub: https://clawhub.ai
 
 ## Contact
 

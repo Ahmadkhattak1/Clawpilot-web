@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import {
   buildAuthCallbackUrl,
   getRecoveredSupabaseSession,
+  getSafeNextPath,
   getSupabaseAuthClient,
 } from '@/lib/supabase-auth'
 
@@ -80,6 +81,11 @@ export function AuthCard({ mode }: AuthCardProps) {
   const [status, setStatus] = useState('')
   const [loadingMethod, setLoadingMethod] = useState<AuthMethod | null>(null)
   const [lastUsedMethod, setLastUsedMethod] = useState<AuthMethod | null>(null)
+  const nextPath = useMemo(() => {
+    if (typeof window === 'undefined') return '/dashboard'
+    const params = new URLSearchParams(window.location.search)
+    return getSafeNextPath(params.get('next'))
+  }, [])
 
   const isSignUp = mode === 'signup'
   const title = isSignUp ? 'Create your account' : 'Sign in to ClawPilot'
@@ -92,7 +98,7 @@ export function AuthCard({ mode }: AuthCardProps) {
     ? 'Already have an account? Sign in'
     : "Don't have an account? Sign up"
 
-  const oauthRedirectTo = useMemo(() => buildAuthCallbackUrl('/dashboard'), [])
+  const oauthRedirectTo = useMemo(() => buildAuthCallbackUrl(nextPath), [nextPath])
 
   useEffect(() => {
     setLastUsedMethod(getStoredMethod())
@@ -106,7 +112,7 @@ export function AuthCard({ mode }: AuthCardProps) {
       try {
         const session = await getRecoveredSupabaseSession()
         if (!cancelled && session) {
-          router.replace('/dashboard')
+          router.replace(nextPath)
         }
       } catch {
         // Keep users on auth page if session lookup fails.
@@ -117,7 +123,7 @@ export function AuthCard({ mode }: AuthCardProps) {
 
     const { data: authStateData } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!cancelled && session) {
-        router.replace('/dashboard')
+        router.replace(nextPath)
       }
     })
 
@@ -125,7 +131,7 @@ export function AuthCard({ mode }: AuthCardProps) {
       cancelled = true
       authStateData.subscription.unsubscribe()
     }
-  }, [router])
+  }, [nextPath, router])
 
   function rememberMethod(method: AuthMethod) {
     setLastUsedMethod(method)
@@ -176,7 +182,7 @@ export function AuthCard({ mode }: AuthCardProps) {
         if (signInError) throw signInError
 
         rememberMethod('email')
-        router.replace('/dashboard')
+        router.replace(nextPath)
       }
 
     } catch (submitError) {

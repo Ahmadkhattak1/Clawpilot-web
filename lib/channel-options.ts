@@ -1,6 +1,7 @@
 export interface ChannelOption {
   id: string
   label: string
+  isAvailable?: boolean
   logoSrc?: string
   logoEmoji?: string
   logoScale?: number
@@ -45,6 +46,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'whatsapp',
     label: 'WhatsApp (QR link)',
+    isAvailable: true,
     logoSrc: '/integrations/whatsapp.svg',
     connectsVia: 'WhatsApp Web (Baileys)',
     requiredFromUser: [
@@ -62,6 +64,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'telegram',
     label: 'Telegram (bot API)',
+    isAvailable: true,
     logoSrc: '/integrations/telegram.svg',
     connectsVia: 'Telegram Bot API (grammY)',
     requiredFromUser: [
@@ -79,6 +82,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'discord',
     label: 'Discord (bot API)',
+    isAvailable: false,
     logoSrc: '/integrations/discord.svg',
     connectsVia: 'Discord Bot API + Gateway',
     requiredFromUser: [
@@ -99,6 +103,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'slack',
     label: 'Slack (Socket Mode)',
+    isAvailable: false,
     logoSrc: '/integrations/Slack.svg',
     logoScale: 1.52,
     connectsVia: 'Slack app (Socket Mode / Events API)',
@@ -120,6 +125,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'google-chat',
     label: 'Google Chat (Chat API)',
+    isAvailable: false,
     logoSrc: '/integrations/google.svg',
     connectsVia: 'Google Chat API webhook',
     requiredFromUser: [
@@ -140,6 +146,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'mattermost',
     label: 'Mattermost (Plugin)',
+    isAvailable: false,
     logoSrc: '/integrations/mattermost.svg',
     logoScale: 1.14,
     connectsVia: 'Mattermost Bot API + WebSocket',
@@ -161,6 +168,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'signal',
     label: 'Signal (Signal CLI, iMessage) [IMSG]',
+    isAvailable: false,
     logoSrc: '/integrations/Signal.svg',
     connectsVia: 'signal-cli daemon (JSON-RPC + SSE)',
     requiredFromUser: [
@@ -181,6 +189,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'imessage',
     label: 'iMessage [IMSG]',
+    isAvailable: false,
     logoSrc: '/integrations/imessage.svg',
     connectsVia: 'imsg CLI (legacy)',
     requiredFromUser: [
@@ -201,6 +210,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'bluebubbles',
     label: 'BlueBubbles (MacOS app)',
+    isAvailable: false,
     logoSrc: '/integrations/bluebubbles.svg',
     logoScale: 1.08,
     connectsVia: 'BlueBubbles macOS server REST',
@@ -222,6 +232,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'microsoft-teams',
     label: 'Microsoft Teams (Bot Framework)',
+    isAvailable: false,
     logoSrc: '/integrations/microsoft-teams.svg',
     logoScale: 1.1,
     connectsVia: 'Bot Framework webhook + Teams app',
@@ -243,6 +254,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'line',
     label: 'LINE (Messaging API)',
+    isAvailable: false,
     logoSrc: '/integrations/line-messenger.svg',
     connectsVia: 'LINE Messaging API webhook',
     requiredFromUser: [
@@ -263,6 +275,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'matrix',
     label: 'Matrix (Plugin)',
+    isAvailable: false,
     logoSrc: '/integrations/matrix.svg',
     connectsVia: 'Matrix homeserver via bot SDK',
     requiredFromUser: [
@@ -283,6 +296,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'tlon',
     label: 'Tlon (Orbit)',
+    isAvailable: false,
     logoSrc: '/integrations/Urbit.svg',
     logoScale: 1.06,
     connectsVia: 'Urbit/Tlon ship API',
@@ -305,6 +319,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'zalo',
     label: 'Zalo (bot API)',
+    isAvailable: false,
     logoSrc: '/integrations/Zalo.svg',
     connectsVia: 'Zalo Bot API',
     requiredFromUser: [
@@ -322,6 +337,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   {
     id: 'zalo-personal',
     label: 'Zalo (Personal account)',
+    isAvailable: false,
     logoSrc: '/integrations/Zalo.svg',
     connectsVia: 'zca-cli personal account automation',
     requiredFromUser: [
@@ -338,3 +354,7 @@ export const CHANNEL_OPTIONS: readonly ChannelOption[] = [
     },
   },
 ] as const
+
+export const AVAILABLE_CHANNEL_OPTIONS = CHANNEL_OPTIONS.filter(
+  (channel) => channel.isAvailable !== false,
+)

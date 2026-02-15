@@ -13,6 +13,7 @@ export interface ProviderSetupConfig {
 export interface ProviderSetupRecord {
   method: ProviderSetupMethod
   hasApiKey?: boolean
+  apiKey?: string
   oauthConnected?: boolean
   updatedAt: string
 }
@@ -23,12 +24,12 @@ export const MODEL_PROVIDER_SETUP_STORAGE_KEY = 'clawpilot:provider-auth-setup'
 
 export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupConfig> = {
   anthropic: {
-    methods: ['oauth', 'api-key'],
+    methods: ['api-key'],
     apiKeyLabel: 'Anthropic API key',
     apiKeyPlaceholder: 'sk-ant-...',
   },
   openai: {
-    methods: ['oauth', 'api-key'],
+    methods: ['api-key'],
     apiKeyLabel: 'OpenAI API key',
     apiKeyPlaceholder: 'sk-...',
   },
@@ -41,7 +42,7 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     apiKeyLabel: 'Moonshot/Kimi API key',
   },
   google: {
-    methods: ['oauth', 'api-key'],
+    methods: ['api-key'],
     apiKeyLabel: 'Google Gemini API key',
     apiKeyPlaceholder: 'AIza...',
   },
@@ -101,4 +102,3 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     apiKeyPlaceholder: 'Optional',
   },
 }
-

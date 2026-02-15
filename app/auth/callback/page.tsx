@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
+import { getRecoveredSupabaseSession, getSafeNextPath, getSupabaseAuthClient } from '@/lib/supabase-auth'
 
 const SUPABASE_EMAIL_OTP_TYPES: readonly EmailOtpType[] = [
   'signup',
@@ -22,11 +22,6 @@ const SUPABASE_EMAIL_OTP_TYPES: readonly EmailOtpType[] = [
 function isEmailOtpType(value: string | null): value is EmailOtpType {
   if (!value) return false
   return SUPABASE_EMAIL_OTP_TYPES.includes(value as EmailOtpType)
-}
-
-function getSafeNextPath(value: string | null) {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/dashboard'
-  return value
 }
 
 function getDefaultNextPathForOtpType(type: string | null) {
@@ -85,9 +80,7 @@ export default function AuthCallbackPage() {
           })
           if (verifyError) throw verifyError
         } else {
-          if (!requestedNextPath) {
-            throw new Error('Missing auth callback parameters. Please try signing in again.')
-          }
+          throw new Error('Missing auth callback parameters. Please try signing in again.')
         }
 
         const session = await getRecoveredSupabaseSession()

@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { getSupabaseAuthClient } from "@/lib/supabase-auth"
+import { getRecoveredSupabaseSession, getSupabaseAuthClient } from "@/lib/supabase-auth"
+
+type AuthStatus = "loading" | "authenticated" | "anonymous"
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading")
 
   useEffect(() => {
     const handleScroll = () => {
@@ -22,14 +24,13 @@ export function Header() {
 
     async function loadSession() {
       try {
-        const { data, error } = await supabase.auth.getSession()
-        if (error) throw error
+        const session = await getRecoveredSupabaseSession()
         if (!cancelled) {
-          setIsAuthenticated(Boolean(data.session))
+          setAuthStatus(session ? "authenticated" : "anonymous")
         }
       } catch {
         if (!cancelled) {
-          setIsAuthenticated(false)
+          setAuthStatus("anonymous")
         }
       }
     }
@@ -38,7 +39,7 @@ export function Header() {
 
     const { data: authStateData } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!cancelled) {
-        setIsAuthenticated(Boolean(session))
+        setAuthStatus(session ? "authenticated" : "anonymous")
       }
     })
 
@@ -47,6 +48,14 @@ export function Header() {
       authStateData.subscription.unsubscribe()
     }
   }, [])
+
+  const ctaHref = authStatus === "authenticated" ? "/dashboard" : "/signin"
+  const ctaLabel =
+    authStatus === "authenticated"
+      ? "Dashboard"
+      : authStatus === "loading"
+        ? "Account"
+        : "Sign in"
 
   return (
     <header
@@ -113,10 +122,10 @@ export function Header() {
         </div>
 
         <Link
-          href={isAuthenticated ? "/dashboard" : "/signin"}
+          href={ctaHref}
           className="type-nav rounded-lg bg-foreground px-3 py-1.5 text-background"
         >
-          {isAuthenticated ? "Dashboard" : "Sign in"}
+          {ctaLabel}
         </Link>
       </nav>
     </header>

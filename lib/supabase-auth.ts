@@ -1,8 +1,16 @@
-import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
 let supabaseAuthClient: SupabaseClient | null = null
-const SESSION_RECOVERY_RETRIES = 3
-const SESSION_RECOVERY_RETRY_DELAY_MS = 150
+const SESSION_RECOVERY_DEFAULT_TIMEOUT_MS = 5000
+const SESSION_RECOVERY_EVENTS: readonly AuthChangeEvent[] = [
+  'SIGNED_IN',
+  'TOKEN_REFRESHED',
+  'INITIAL_SESSION',
+]
+
+type SessionRecoveryOptions = {
+  timeoutMs?: number
+}
 
 export function getSupabaseAuthClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,7 +27,8 @@ export function getSupabaseAuthClient() {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
+        flowType: 'pkce',
       },
     })
   }
@@ -27,40 +36,82 @@ export function getSupabaseAuthClient() {
   return supabaseAuthClient
 }
 
+export function getSafeNextPath(value: string | null | undefined, fallback = '/dashboard') {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback
+  return value
+}
+
+export function buildSignInPath(nextPath: string) {
+  const params = new URLSearchParams()
+  params.set('next', getSafeNextPath(nextPath))
+  return `/signin?${params.toString()}`
+}
+
 export function buildAuthCallbackUrl(nextPath?: string) {
   if (typeof window === 'undefined') return undefined
 
   const callbackUrl = new URL('/auth/callback', window.location.origin)
   if (nextPath) {
-    callbackUrl.searchParams.set('next', nextPath)
+    callbackUrl.searchParams.set('next', getSafeNextPath(nextPath))
   }
 
   return callbackUrl.toString()
 }
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-export async function getRecoveredSupabaseSession(): Promise<Session | null> {
+export async function getRecoveredSupabaseSession(
+  options: SessionRecoveryOptions = {},
+): Promise<Session | null> {
+  const { timeoutMs = SESSION_RECOVERY_DEFAULT_TIMEOUT_MS } = options
   const supabase = getSupabaseAuthClient()
-  let lastError: unknown = null
 
-  for (let attempt = 0; attempt < SESSION_RECOVERY_RETRIES; attempt += 1) {
-    const { data, error } = await supabase.auth.getSession()
-    if (error) {
-      lastError = error
-      break
-    }
-
-    if (data.session) return data.session
-    if (attempt < SESSION_RECOVERY_RETRIES - 1) {
-      await delay(SESSION_RECOVERY_RETRY_DELAY_MS)
-    }
+  const { data, error } = await supabase.auth.getSession()
+  if (error) {
+    throw error
+  }
+  if (data.session) {
+    return data.session
+  }
+  if (timeoutMs <= 0 || typeof window === 'undefined') {
+    return null
   }
 
-  if (lastError) throw lastError
-  return null
+  return new Promise<Session | null>((resolve) => {
+    let settled = false
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let unsubscribe = () => {}
+
+    const settle = (session: Session | null) => {
+      if (settled) return
+      settled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      unsubscribe()
+      resolve(session)
+    }
+
+    const { data: authStateData } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!SESSION_RECOVERY_EVENTS.includes(event)) return
+      if (session) {
+        settle(session)
+        return
+      }
+      if (event === 'INITIAL_SESSION') {
+        settle(null)
+      }
+    })
+
+    unsubscribe = () => {
+      authStateData.subscription.unsubscribe()
+    }
+    if (settled) {
+      unsubscribe()
+      return
+    }
+
+    timeoutId = window.setTimeout(() => {
+      settle(null)
+    }, timeoutMs)
+  })
 }

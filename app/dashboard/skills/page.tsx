@@ -15,14 +15,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  SKILL_OPTIONS,
   SKILLS_SKIPPED_STORAGE_KEY,
   SKILLS_STORAGE_KEY,
   SKILL_SELECTION_OPTIONS,
   filterSelectableSkillIds,
   getSkillOptionById,
 } from '@/lib/skill-options'
-import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { cn } from '@/lib/utils'
 
 export default function SkillsPage() {
@@ -31,7 +30,13 @@ export default function SkillsPage() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [infoSkillId, setInfoSkillId] = useState<string | null>(null)
 
-  const selectedCount = useMemo(() => selectedSkillIds.length, [selectedSkillIds])
+  function redirectToSignIn() {
+    const currentPath = typeof window === 'undefined'
+      ? '/dashboard/skills'
+      : `${window.location.pathname}${window.location.search}`
+    router.replace(buildSignInPath(currentPath))
+  }
+
   const infoSkill = useMemo(
     () => (infoSkillId ? getSkillOptionById(infoSkillId) : null),
     [infoSkillId],
@@ -44,7 +49,7 @@ export default function SkillsPage() {
       try {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
-          router.replace('/signin')
+          redirectToSignIn()
           return
         }
 
@@ -56,7 +61,7 @@ export default function SkillsPage() {
           setSelectedSkillIds(filterSelectableSkillIds(storedSkills))
         }
       } catch {
-        router.replace('/signin')
+        redirectToSignIn()
         return
       }
 
@@ -110,7 +115,7 @@ export default function SkillsPage() {
   }
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 md:px-10">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
@@ -120,8 +125,8 @@ export default function SkillsPage() {
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <Card className="relative z-10 mx-auto w-full max-w-6xl border-border/70 shadow-sm shadow-primary/10">
-        <CardHeader className="space-y-2">
+      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
+        <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
             <Link href="/dashboard/channels/setup">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
@@ -129,11 +134,11 @@ export default function SkillsPage() {
             </Link>
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Skills (optional)</CardDescription>
+          <CardDescription>Skills</CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             {SKILL_SELECTION_OPTIONS.map((skill) => {
               const isSelected = selectedSkillIds.includes(skill.id)
               return (
@@ -142,7 +147,7 @@ export default function SkillsPage() {
                     type="button"
                     onClick={() => toggleSkill(skill.id)}
                     className={cn(
-                      'w-full rounded-xl border bg-card p-3 text-left transition-colors',
+                      'w-full rounded-2xl border bg-card p-4 text-left transition-colors',
                       'hover:border-primary/40',
                       isSelected
                         ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
@@ -152,7 +157,7 @@ export default function SkillsPage() {
                     <div className="flex h-12 items-center justify-center rounded-md bg-muted/40 p-2">
                       <span className="text-2xl leading-none">{skill.emoji}</span>
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="mt-3 flex items-center justify-between gap-2">
                       <p className="text-xs font-medium text-foreground/95 line-clamp-2">{skill.label}</p>
                       {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
                     </div>
@@ -171,24 +176,16 @@ export default function SkillsPage() {
             })}
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">
-                {selectedCount > 0
-                  ? `Selected: ${selectedCount} skill${selectedCount > 1 ? 's' : ''}`
-                  : 'No optional skills selected.'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {`ClawHub (${SKILL_OPTIONS.find((skill) => skill.id === 'clawhub')?.emoji ?? '🧩'} clawhub) will be installed by default.`}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={onSkip}>
-                Skip
-              </Button>
-              <Button type="button" onClick={onNext}>
-                Next
-              </Button>
+          <div className="mt-auto border-t border-border/70 pt-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={onSkip}>
+                  Skip
+                </Button>
+                <Button type="button" onClick={onNext}>
+                  Next
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -216,7 +213,7 @@ export default function SkillsPage() {
               </div>
 
               <div>
-                <p className="text-sm font-medium">Configuration Collected Next</p>
+                <p className="text-sm font-medium">Next</p>
                 {infoSkill.configFields?.length ? (
                   <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
                     {infoSkill.configFields.map((field) => (
@@ -224,7 +221,7 @@ export default function SkillsPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">No additional fields required.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">No extra fields.</p>
                 )}
               </div>
 
@@ -235,7 +232,7 @@ export default function SkillsPage() {
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
                 <Info className="h-3.5 w-3.5" />
-                Open on ClawHub
+                Docs
               </a>
             </div>
           ) : null}

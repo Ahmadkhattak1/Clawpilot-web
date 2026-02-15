@@ -15,10 +15,22 @@ npm install
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)
+- `NEXT_PUBLIC_BACKEND_API_URL` (default: `http://localhost:4000`)
+- `BACKEND_API_URL` (server-side backend URL for API routes)
+- `BACKEND_INTERNAL_API_TOKEN` (must match backend `INTERNAL_API_TOKEN`)
 
 3. In Supabase SQL Editor, run:
 
 `supabase/schema.sql`
+
+4. Verify waitlist database setup:
+
+```bash
+npm run waitlist:check
+```
+
+If this command fails with `PGRST205`, your app is pointed at a Supabase project where
+`public.subscribers` does not exist yet (or schema cache has not reloaded).
 
 ### Auth setup (OTP + callbacks)
 
@@ -31,7 +43,7 @@ To use the email OTP flow in this app:
    - For signup/login templates, include `{{ .Token }}` in the email body.
    - If the template only uses `{{ .ConfirmationURL }}`, users will receive a magic link instead of an OTP code.
 
-4. Run the app:
+5. Run the app:
 
 ```bash
 npm run dev
@@ -46,3 +58,6 @@ Set these environment variables in Vercel project settings:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)
+- `NEXT_PUBLIC_BACKEND_API_URL`
+- `BACKEND_API_URL`
+- `BACKEND_INTERNAL_API_TOKEN`

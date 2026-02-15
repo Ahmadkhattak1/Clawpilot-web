@@ -17,7 +17,7 @@ import {
   type SkillConfigStorage,
   type SkillOption,
 } from '@/lib/skill-options'
-import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 
 function getStoredSkillIds() {
   if (typeof window === 'undefined') return []
@@ -57,6 +57,13 @@ export default function SkillsSetupPage() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
 
+  function redirectToSignIn() {
+    const currentPath = typeof window === 'undefined'
+      ? '/dashboard/skills/setup'
+      : `${window.location.pathname}${window.location.search}`
+    router.replace(buildSignInPath(currentPath))
+  }
+
   const selectedCount = useMemo(() => selectedSkills.length, [selectedSkills.length])
 
   useEffect(() => {
@@ -66,7 +73,7 @@ export default function SkillsSetupPage() {
       try {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
-          router.replace('/signin')
+          redirectToSignIn()
           return
         }
 
@@ -94,7 +101,7 @@ export default function SkillsSetupPage() {
           setCheckingSession(false)
         }
       } catch {
-        router.replace('/signin')
+        redirectToSignIn()
       }
     }
 
@@ -141,7 +148,7 @@ export default function SkillsSetupPage() {
 
     window.localStorage.setItem(SKILLS_CONFIG_STORAGE_KEY, JSON.stringify(nextStore))
     setError('')
-    setStatus('Configuration saved.')
+    setStatus('Saved')
     return true
   }
 
@@ -163,7 +170,7 @@ export default function SkillsSetupPage() {
   }
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 md:px-10">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
@@ -173,8 +180,8 @@ export default function SkillsSetupPage() {
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <Card className="relative z-10 mx-auto w-full max-w-6xl border-border/70 shadow-sm shadow-primary/10">
-        <CardHeader className="space-y-2">
+      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
+        <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
             <Link href="/dashboard/skills">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
@@ -182,68 +189,65 @@ export default function SkillsSetupPage() {
             </Link>
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Skill Configuration</CardDescription>
+          <CardDescription>Skill setup</CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-5">
-          <p className="text-sm text-muted-foreground">{`Configuring ${selectedCount} skill${selectedCount > 1 ? 's' : ''} (includes default clawhub).`}</p>
+        <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
+          <div className="space-y-7">
+            <p className="text-sm text-muted-foreground">{`${selectedCount} skill${selectedCount > 1 ? 's' : ''}`}</p>
 
-          {selectedSkills.map((skill) => (
-            <section key={skill.id} className="rounded-xl border border-border/70 bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold">{`${skill.emoji} ${skill.label}`}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{skill.summary}</p>
+            {selectedSkills.map((skill) => (
+              <section key={skill.id} className="rounded-xl border border-border/70 bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">{`${skill.emoji} ${skill.label}`}</h3>
+                  </div>
+                  <a
+                    href={skill.docsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-xs font-medium text-primary hover:underline"
+                  >
+                    Docs
+                  </a>
                 </div>
-                <a
-                  href={skill.docsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 text-xs font-medium text-primary hover:underline"
-                >
-                  Docs
-                </a>
+
+                {skill.configFields?.length ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {skill.configFields.map((field) => (
+                      <div key={`${skill.id}-${field.id}`} className="space-y-1.5">
+                        <Label htmlFor={`${skill.id}-${field.id}`}>
+                          {field.label}
+                          {field.required ? ' *' : ''}
+                        </Label>
+                        <Input
+                          id={`${skill.id}-${field.id}`}
+                          value={fieldValues[skill.id]?.[field.id] ?? ''}
+                          onChange={(event) => onFieldChange(skill.id, field.id, event.target.value)}
+                          placeholder={field.placeholder}
+                          type={field.inputType ?? 'text'}
+                          autoComplete="off"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted-foreground">No fields.</p>
+                )}
+              </section>
+            ))}
+          </div>
+
+          <div className="mt-auto border-t border-border/70 pt-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
               </div>
-
-              <ul className="mt-3 list-disc pl-5 text-xs text-muted-foreground">
-                {skill.requiredFromUser.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-
-              {skill.configFields?.length ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {skill.configFields.map((field) => (
-                    <div key={`${skill.id}-${field.id}`} className="space-y-1.5">
-                      <Label htmlFor={`${skill.id}-${field.id}`}>
-                        {field.label}
-                        {field.required ? ' *' : ''}
-                      </Label>
-                      <Input
-                        id={`${skill.id}-${field.id}`}
-                        value={fieldValues[skill.id]?.[field.id] ?? ''}
-                        onChange={(event) => onFieldChange(skill.id, field.id, event.target.value)}
-                        placeholder={field.placeholder}
-                        type={field.inputType ?? 'text'}
-                        autoComplete="off"
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-xs text-muted-foreground">No additional configuration required.</p>
-              )}
-            </section>
-          ))}
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
-              {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+              <Button type="button" onClick={onNext}>
+                Next
+              </Button>
             </div>
-            <Button type="button" onClick={onNext}>
-              Next
-            </Button>
           </div>
         </CardContent>
       </Card>

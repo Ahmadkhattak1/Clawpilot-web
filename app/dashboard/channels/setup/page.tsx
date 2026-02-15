@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
-  CHANNEL_OPTIONS,
+  AVAILABLE_CHANNEL_OPTIONS,
   CHANNEL_SETUP_STORAGE_KEY,
   CHANNEL_STORAGE_KEY,
   type ChannelSetupStorage,
@@ -43,7 +44,7 @@ export default function ChannelSetupPage() {
   const [error, setError] = useState('')
 
   const selectedChannel = useMemo(
-    () => CHANNEL_OPTIONS.find((channel) => channel.id === selectedChannelId) ?? null,
+    () => AVAILABLE_CHANNEL_OPTIONS.find((channel) => channel.id === selectedChannelId) ?? null,
     [selectedChannelId],
   )
 
@@ -59,7 +60,7 @@ export default function ChannelSetupPage() {
         }
 
         const storedChannelId = window.localStorage.getItem(CHANNEL_STORAGE_KEY)
-        const channelExists = CHANNEL_OPTIONS.some((channel) => channel.id === storedChannelId)
+        const channelExists = AVAILABLE_CHANNEL_OPTIONS.some((channel) => channel.id === storedChannelId)
         if (!channelExists || !storedChannelId) {
           router.replace('/dashboard/channels')
           return
@@ -119,7 +120,7 @@ export default function ChannelSetupPage() {
     persistSetup(nextSetup)
     setError('')
     if (showStatusMessage) {
-      setStatus('Setup saved.')
+      setStatus('Saved')
     }
     return true
   }
@@ -132,7 +133,7 @@ export default function ChannelSetupPage() {
   function onNext() {
     const didSave = saveCurrentSetup(false)
     if (!didSave) return
-    router.push('/dashboard/skills')
+    router.push('/dashboard/hooks')
   }
 
   function onSetupFieldChange(fieldId: string, value: string) {
@@ -156,9 +157,10 @@ export default function ChannelSetupPage() {
   }
 
   if (!selectedChannel) return null
+  const shouldDeferQrUntilDeployment = selectedChannel.id === 'whatsapp'
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 md:px-10">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
@@ -168,8 +170,8 @@ export default function ChannelSetupPage() {
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <Card className="relative z-10 mx-auto w-full max-w-6xl border-border/70 shadow-sm shadow-primary/10">
-        <CardHeader className="space-y-2">
+      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
+        <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
             <Link href="/dashboard/channels">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
@@ -178,97 +180,107 @@ export default function ChannelSetupPage() {
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
           <CardDescription>{selectedChannel.label}</CardDescription>
+          <SetupStepper currentStep="channel" />
         </CardHeader>
 
-        <CardContent className="space-y-6 max-w-2xl">
-          <div className="rounded-xl border border-border/70 bg-card p-4">
-            <p className="text-sm font-medium">Connects via: {selectedChannel.connectsVia}</p>
-            <ul className="mt-2 list-disc pl-5 text-sm text-muted-foreground">
-              {selectedChannel.requiredFromUser.map((requirement) => (
-                <li key={requirement}>{requirement}</li>
-              ))}
-            </ul>
-            <a
-              href={selectedChannel.docsUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
-            >
-              Open docs
-            </a>
-          </div>
-
-          <div className="rounded-xl border border-border/70 bg-card p-4">
-            <p className="text-sm font-medium">{selectedChannel.setup.methodLabel}</p>
-
-            {selectedChannel.setup.kind === 'qr' ? (
-              <div className="mt-3 space-y-3">
-                {selectedChannel.setup.fields?.map((field) => (
-                  <div key={field.id} className="space-y-1.5">
-                    <Label htmlFor={`${selectedChannel.id}-${field.id}`}>{field.label}</Label>
-                    <Input
-                      id={`${selectedChannel.id}-${field.id}`}
-                      value={fieldValues[field.id] ?? ''}
-                      onChange={(event) => onSetupFieldChange(field.id, event.target.value)}
-                      placeholder={field.placeholder}
-                      type={field.inputType ?? 'text'}
-                      autoComplete="off"
-                    />
-                  </div>
-                ))}
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" onClick={() => saveChannelSetup()}>
-                    {selectedChannel.setup.actionLabel ?? 'Mark linked'}
-                  </Button>
-                </div>
-
-                <div className="rounded-lg border border-border/70 bg-card p-3">
-                  <div className="mx-auto grid h-40 w-40 grid-cols-10 gap-0.5 rounded-md bg-white p-2">
-                    {Array.from({ length: 100 }).map((_, index) => {
-                      const seed = selectedChannel.id.length + selectedChannel.label.length
-                      const isDark = ((index * 11 + seed) % 7) < 3
-                      return (
-                        <span
-                          key={index}
-                          className={cn('h-full w-full rounded-[1px]', isDark ? 'bg-black' : 'bg-white')}
-                        />
-                      )
-                    })}
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {selectedChannel.setup.qrHint ?? 'Scan this QR code in your mobile app.'}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <form className="mt-3 space-y-3" onSubmit={saveChannelSetup}>
-                {selectedChannel.setup.fields?.map((field) => (
-                  <div key={field.id} className="space-y-1.5">
-                    <Label htmlFor={`${selectedChannel.id}-${field.id}`}>{field.label}</Label>
-                    <Input
-                      id={`${selectedChannel.id}-${field.id}`}
-                      value={fieldValues[field.id] ?? ''}
-                      onChange={(event) => onSetupFieldChange(field.id, event.target.value)}
-                      placeholder={field.placeholder}
-                      type={field.inputType ?? 'text'}
-                      autoComplete="off"
-                    />
-                  </div>
-                ))}
-                <Button type="submit">{selectedChannel.setup.actionLabel ?? 'Save setup'}</Button>
-              </form>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
-              {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
+          <div className="max-w-2xl space-y-8">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4">
+              <p className="text-sm text-muted-foreground">{selectedChannel.connectsVia}</p>
+              <a
+                href={selectedChannel.docsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-xs font-medium text-primary hover:underline"
+              >
+                Docs
+              </a>
             </div>
-            <Button type="button" onClick={onNext} className="sm:min-w-28">
-              Next
-            </Button>
+
+            <div className="rounded-xl border border-border/70 bg-card p-4">
+              <p className="text-sm font-medium">{selectedChannel.setup.methodLabel}</p>
+
+              {selectedChannel.setup.kind === 'qr' ? (
+                <div className="mt-3 space-y-3">
+                  {selectedChannel.setup.fields?.map((field) => (
+                    <div key={field.id} className="space-y-1.5">
+                      <Label htmlFor={`${selectedChannel.id}-${field.id}`}>{field.label}</Label>
+                      <Input
+                        id={`${selectedChannel.id}-${field.id}`}
+                        value={fieldValues[field.id] ?? ''}
+                        onChange={(event) => onSetupFieldChange(field.id, event.target.value)}
+                        placeholder={field.placeholder}
+                        type={field.inputType ?? 'text'}
+                        autoComplete="off"
+                      />
+                    </div>
+                  ))}
+
+                  {shouldDeferQrUntilDeployment ? (
+                    <div className="rounded-lg border border-border/70 bg-card p-3">
+                      <p className="text-xs text-muted-foreground">
+                        QR appears after deploy starts.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" onClick={() => saveChannelSetup()}>
+                          {selectedChannel.setup.actionLabel ?? 'Mark linked'}
+                        </Button>
+                      </div>
+
+                      <div className="rounded-lg border border-border/70 bg-card p-3">
+                        <div className="mx-auto grid h-40 w-40 grid-cols-10 gap-0.5 rounded-md bg-white p-2">
+                          {Array.from({ length: 100 }).map((_, index) => {
+                            const seed = selectedChannel.id.length + selectedChannel.label.length
+                            const isDark = ((index * 11 + seed) % 7) < 3
+                            return (
+                              <span
+                                key={index}
+                                className={cn('h-full w-full rounded-[1px]', isDark ? 'bg-black' : 'bg-white')}
+                              />
+                            )
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {selectedChannel.setup.qrHint ?? 'Scan in app.'}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <form className="mt-3 space-y-3" onSubmit={saveChannelSetup}>
+                  {selectedChannel.setup.fields?.map((field) => (
+                    <div key={field.id} className="space-y-1.5">
+                      <Label htmlFor={`${selectedChannel.id}-${field.id}`}>{field.label}</Label>
+                      <Input
+                        id={`${selectedChannel.id}-${field.id}`}
+                        value={fieldValues[field.id] ?? ''}
+                        onChange={(event) => onSetupFieldChange(field.id, event.target.value)}
+                        placeholder={field.placeholder}
+                        type={field.inputType ?? 'text'}
+                        autoComplete="off"
+                      />
+                    </div>
+                  ))}
+                  <Button type="submit">{selectedChannel.setup.actionLabel ?? 'Save'}</Button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-auto border-t border-border/70 pt-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+              </div>
+              <Button type="button" onClick={onNext} className="sm:min-w-28">
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

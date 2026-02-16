@@ -197,7 +197,7 @@ export default function OpenCloudStepPage() {
         ? saveOAuthSelection(false)
         : saveApiKeySelection(false)
     if (!didSave) return
-    router.push('/dashboard/channels')
+    router.push('/dashboard/skills')
   }
 
   if (checkingSession) {

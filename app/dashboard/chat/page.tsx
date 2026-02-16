@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Bot, Check, Circle, Loader2, MessageSquare, Send, ShieldCheck, Sparkles, User, WifiOff } from 'lucide-react'
+import { ArrowLeft, Bot, Check, Circle, Loader2, Send, ShieldCheck, User, WifiOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { cn } from '@/lib/utils'
@@ -19,12 +19,6 @@ interface ChatMessage {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 type SetupPhase = 'checking' | 'provisioning' | 'installing' | 'starting' | 'ready' | null
-
-const QUICK_PROMPTS = [
-  'Summarize the last customer issues from chat channels.',
-  'Draft a friendly response for a delayed shipment complaint.',
-  'Give me the top 3 risks from today’s support traffic.',
-] as const
 
 function deriveTenantIdFromUserId(userId: string) {
   const normalized = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -199,6 +193,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [mode, setMode] = useState<string | null>(null)
+  const [isAssistantTyping, setIsAssistantTyping] = useState(false)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -223,6 +218,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const rpcIdRef = useRef(0)
+  const pendingResponsesRef = useRef(0)
+  const backendTypingRef = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsInitialConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -235,6 +232,26 @@ export default function ChatPage() {
       }
     }, 50)
   }, [])
+
+  const syncTypingIndicator = useCallback(() => {
+    setIsAssistantTyping(backendTypingRef.current || pendingResponsesRef.current > 0)
+  }, [])
+
+  const resetTypingState = useCallback(() => {
+    pendingResponsesRef.current = 0
+    backendTypingRef.current = false
+    setIsAssistantTyping(false)
+  }, [])
+
+  const beginPendingResponse = useCallback(() => {
+    pendingResponsesRef.current += 1
+    syncTypingIndicator()
+  }, [syncTypingIndicator])
+
+  const resolvePendingResponse = useCallback(() => {
+    pendingResponsesRef.current = Math.max(0, pendingResponsesRef.current - 1)
+    syncTypingIndicator()
+  }, [syncTypingIndicator])
 
   // Stop polling
   const stopPolling = useCallback(() => {
@@ -271,6 +288,7 @@ export default function ChatPage() {
       }
 
       setConnectionStatus('connecting')
+      resetTypingState()
 
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
       const wsUrl = backendUrl.replace(/^http/, 'ws') + `/ws/chat?tenantId=${encodeURIComponent(tid)}`
@@ -287,6 +305,7 @@ export default function ChatPage() {
           const data = JSON.parse(event.data as string) as {
             type?: string
             mode?: string
+            status?: string
             message?: ChatMessage | string
             error?: string
             result?: { messages?: ChatMessage[] }
@@ -312,8 +331,16 @@ export default function ChatPage() {
             return
           }
 
+          if (data.type === 'chat.status') {
+            backendTypingRef.current = data.status === 'typing'
+            syncTypingIndicator()
+            scrollToBottom()
+            return
+          }
+
           // Assistant response
           if (data.type === 'chat.message' && data.message && typeof data.message === 'object') {
+            resolvePendingResponse()
             setMessages((prev) => [...prev, data.message as ChatMessage])
             scrollToBottom()
             return
@@ -321,6 +348,7 @@ export default function ChatPage() {
 
           // Error from server
           if (data.error) {
+            resolvePendingResponse()
             const errMsg =
               typeof data.error === 'string'
                 ? data.error
@@ -341,6 +369,7 @@ export default function ChatPage() {
       }
 
       ws.onclose = () => {
+        resetTypingState()
         // If still in setup phase, retry connection after a delay
         const currentPhase = setupPhaseRef.current
         if (currentPhase && currentPhase !== 'ready') {
@@ -354,6 +383,7 @@ export default function ChatPage() {
       }
 
       ws.onerror = () => {
+        resetTypingState()
         // Don't show error state during setup — the retry in onclose handles it
         const currentPhase = setupPhaseRef.current
         if (!currentPhase || currentPhase === 'ready') {
@@ -361,7 +391,7 @@ export default function ChatPage() {
         }
       }
     },
-    [scrollToBottom, stopPolling],
+    [resetTypingState, resolvePendingResponse, scrollToBottom, stopPolling, syncTypingIndicator],
   )
 
   // Skip setup and connect immediately.
@@ -533,6 +563,7 @@ export default function ChatPage() {
     }
 
     setMessages((prev) => [...prev, userMessage])
+    beginPendingResponse()
     scrollToBottom()
 
     rpcIdRef.current += 1
@@ -563,14 +594,6 @@ export default function ChatPage() {
     if (tenantId) {
       setMessages([])
       connectWebSocket(tenantId)
-    }
-  }
-
-  function applyPrompt(prompt: string) {
-    setInput(prompt)
-    if (inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.style.height = '44px'
     }
   }
 
@@ -641,17 +664,13 @@ export default function ChatPage() {
     <div className="relative min-h-[100dvh] overflow-hidden bg-background">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,0,0,0.045),transparent_45%)]"
       />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,0,0,0.09),transparent_44%),radial-gradient(circle_at_bottom_left,rgba(0,0,0,0.07),transparent_40%)]"
-      />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/90 via-background/75 to-background" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-background to-background/95" />
 
-      <div className="relative z-10 mx-auto flex h-[100dvh] w-full max-w-7xl flex-col px-3 py-3 sm:px-5 sm:py-4">
-        <header className="rounded-2xl border border-border/70 bg-card/80 px-4 py-3 shadow-sm shadow-primary/10 backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
+      <div className="relative z-10 flex h-[100dvh] flex-col">
+        <header className="border-b border-border/70 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                 <Link href="/dashboard">
@@ -659,12 +678,12 @@ export default function ChatPage() {
                 </Link>
               </Button>
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Workspace</p>
-                <CardTitle className="text-base">OpenClaw Chat</CardTitle>
+                <p className="text-sm font-medium text-foreground">OpenClaw Chat</p>
+                <p className="text-[11px] text-muted-foreground">Workspace assistant</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                 <span
                   className={cn(
@@ -682,6 +701,9 @@ export default function ChatPage() {
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {mode ? `${mode} mode` : 'Live mode'}
               </span>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/dashboard/channels">Channels</Link>
+              </Button>
               {connectionStatus === 'disconnected' || connectionStatus === 'error' ? (
                 <Button variant="outline" size="sm" onClick={reconnect}>
                   Reconnect
@@ -691,153 +713,129 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="mt-3 grid min-h-0 flex-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
-            <section className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm shadow-primary/10">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Assistant</p>
-              <div className="mt-3 flex items-start gap-3">
-                <div className="rounded-xl border border-border/70 bg-background p-2">
-                  <Bot className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">OpenClaw Runtime</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Connected workspace agent for support and operations workflows.
+        <main className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 sm:px-6">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="mx-auto w-full max-w-3xl space-y-6 px-1 pb-8 pt-6 sm:pt-8">
+              {messages.length === 0 && connectionStatus === 'connected' ? (
+                <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
+                  <div className="rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm">
+                    <Bot className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <h1 className="mt-5 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                    How can I help today?
+                  </h1>
+                  <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                    Ask for summaries, drafting, classification, or workflow actions in your workspace.
                   </p>
                 </div>
-              </div>
-            </section>
+              ) : null}
 
-            <section className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm shadow-primary/10">
-              <p className="inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5" />
-                Quick Prompts
-              </p>
-              <div className="mt-3 space-y-2">
-                {QUICK_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => applyPrompt(prompt)}
-                    className="w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </section>
-          </aside>
-
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-sm shadow-primary/10">
-            <div className="border-b border-border/70 px-4 py-3 sm:px-6">
-              <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <MessageSquare className="h-3.5 w-3.5" />
-                Conversation
-              </p>
-            </div>
-
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="space-y-5 px-4 py-5 sm:px-6">
-                {messages.length === 0 && connectionStatus === 'connected' ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="rounded-full border border-border/70 bg-background p-4">
-                      <Bot className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <p className="mt-4 text-sm font-medium">Start a conversation</p>
-                    <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                      Ask for summaries, drafting, classification, or workflow actions.
-                    </p>
+              {connectionStatus === 'error' ? (
+                <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
+                  <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+                    <WifiOff className="h-5 w-5 text-destructive" />
                   </div>
-                ) : null}
+                  <p className="mt-4 text-sm font-medium">Connection failed</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Could not connect to the backend. Make sure the server is running.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={reconnect}>
+                    Try again
+                  </Button>
+                </div>
+              ) : null}
 
-                {connectionStatus === 'error' ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="rounded-full border border-destructive/30 bg-destructive/5 p-4">
-                      <WifiOff className="h-8 w-8 text-destructive" />
-                    </div>
-                    <p className="mt-4 text-sm font-medium">Connection failed</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Could not connect to the backend. Make sure the server is running.
+              {messages.map((msg, index) => (
+                <div
+                  key={`${msg.timestamp}-${index}`}
+                  className={cn(
+                    'flex w-full',
+                    msg.role === 'system'
+                      ? 'justify-center'
+                      : msg.role === 'user'
+                        ? 'justify-end'
+                        : 'justify-start',
+                  )}
+                >
+                  {msg.role === 'system' ? (
+                    <p className="max-w-md rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs text-muted-foreground">
+                      {msg.content}
                     </p>
-                    <Button variant="outline" size="sm" className="mt-4" onClick={reconnect}>
-                      Try again
-                    </Button>
-                  </div>
-                ) : null}
+                  ) : (
+                    <div
+                      className={cn(
+                        'flex max-w-[92%] gap-3 sm:max-w-[84%]',
+                        msg.role === 'user' ? 'flex-row-reverse' : 'flex-row',
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border',
+                          msg.role === 'assistant'
+                            ? 'border-border/70 bg-card'
+                            : 'border-primary/30 bg-primary/10',
+                        )}
+                      >
+                        {msg.role === 'assistant'
+                          ? <Bot className="h-4 w-4 text-primary" />
+                          : <User className="h-4 w-4 text-primary" />}
+                      </div>
 
-                {messages.map((msg, index) => (
-                  <div
-                    key={`${msg.timestamp}-${index}`}
-                    className={cn(
-                      'flex gap-3',
-                      msg.role === 'user' ? 'justify-end' : 'justify-start',
-                      msg.role === 'system' ? 'justify-center' : '',
-                    )}
-                  >
-                    {msg.role === 'system' ? (
-                      <p className="max-w-md rounded-lg border border-border/60 bg-background/80 px-3 py-1.5 text-xs text-muted-foreground">
-                        {msg.content}
-                      </p>
-                    ) : (
-                      <>
-                        {msg.role === 'assistant' ? (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background shadow-sm">
-                            <Bot className="h-4 w-4 text-primary" />
-                          </div>
-                        ) : null}
-
-                        <div
+                      <div
+                        className={cn(
+                          'rounded-2xl px-4 py-3 text-sm leading-relaxed',
+                          msg.role === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'border border-border/70 bg-card text-foreground',
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <p
                           className={cn(
-                            'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                            'mt-1.5 text-[10px]',
                             msg.role === 'user'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'border border-border/70 bg-background text-foreground',
+                              ? 'text-primary-foreground/70'
+                              : 'text-muted-foreground',
                           )}
                         >
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
-                          <p
-                            className={cn(
-                              'mt-1.5 text-[10px]',
-                              msg.role === 'user'
-                                ? 'text-primary-foreground/70'
-                                : 'text-muted-foreground',
-                            )}
-                          >
-                            {new Date(msg.timestamp).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
-                        </div>
+                          {new Date(msg.timestamp).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
 
-                        {msg.role === 'user' ? (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10">
-                            <User className="h-4 w-4 text-primary" />
-                          </div>
-                        ) : null}
-                      </>
-                    )}
+              {isAssistantTyping ? (
+                <div className="flex w-full justify-start">
+                  <div className="flex max-w-[92%] gap-3 sm:max-w-[84%]">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-card">
+                      <Bot className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm shadow-sm">
+                      <div
+                        className="inline-flex items-center gap-1.5 text-muted-foreground"
+                        role="status"
+                        aria-label="Assistant is typing"
+                      >
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/80 [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/80 [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/80 [animation-delay:300ms]" />
+                      </div>
+                    </div>
                   </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
+                </div>
+              ) : null}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
 
-            <div className="border-t border-border/70 bg-background/65 p-3 sm:p-4">
-              <div className="mb-2 flex flex-wrap gap-2 lg:hidden">
-                {QUICK_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => applyPrompt(prompt)}
-                    className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                  >
-                    {prompt.length > 46 ? `${prompt.slice(0, 46)}...` : prompt}
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-border/70 bg-background p-2">
+          <div className="pb-4 pt-3 sm:pb-6">
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-primary/5">
                 <textarea
                   ref={inputRef}
                   value={input}
@@ -845,12 +843,12 @@ export default function ChatPage() {
                   onKeyDown={handleKeyDown}
                   placeholder={
                     connectionStatus === 'connected'
-                      ? 'Ask anything about your workspace...'
+                      ? 'Message OpenClaw...'
                       : 'Connecting...'
                   }
                   disabled={connectionStatus !== 'connected'}
                   rows={1}
-                  className="w-full resize-none border-0 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+                  className="w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
                   style={{ minHeight: '44px', maxHeight: '180px' }}
                   onInput={(event) => {
                     const target = event.target as HTMLTextAreaElement
@@ -864,7 +862,7 @@ export default function ChatPage() {
                   </p>
                   <Button
                     size="sm"
-                    className="h-9 rounded-xl px-4"
+                    className="h-9 rounded-2xl px-4"
                     onClick={sendMessage}
                     disabled={!input.trim() || connectionStatus !== 'connected'}
                   >
@@ -880,7 +878,7 @@ export default function ChatPage() {
                 </p>
               ) : null}
             </div>
-          </section>
+          </div>
         </div>
       </div>
     </div>

@@ -10,13 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
-  AVAILABLE_CHANNEL_OPTIONS,
-  CHANNEL_SETUP_STORAGE_KEY,
-  CHANNEL_STORAGE_KEY,
-  type ChannelSetupRecord,
-  type ChannelSetupStorage,
-} from '@/lib/channel-options'
-import {
   MODEL_PROVIDER_SETUP_STORAGE_KEY,
   type ProviderSetupRecord,
   type ProviderSetupStorage,
@@ -41,21 +34,6 @@ function getStoredProviderSetup(): ProviderSetupStorage {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return {}
     return parsed as ProviderSetupStorage
-  } catch {
-    return {}
-  }
-}
-
-function getStoredChannelSetup(): ChannelSetupStorage {
-  if (typeof window === 'undefined') return {}
-
-  const raw = window.localStorage.getItem(CHANNEL_SETUP_STORAGE_KEY)
-  if (!raw) return {}
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as ChannelSetupStorage
   } catch {
     return {}
   }
@@ -99,7 +77,7 @@ function deriveTenantIdFromUserId(userId: string) {
 const DEPLOY_STAGE_LABELS = [
   'bootstrap runtime',
   'install dependencies',
-  'apply channel bindings',
+  'configure gateway',
   'hydrate skills',
   'final health check',
 ] as const
@@ -242,9 +220,7 @@ export default function HooksPage() {
 
   const [selectedModelProviderId, setSelectedModelProviderId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
   const [providerSetup, setProviderSetup] = useState<ProviderSetupRecord | null>(null)
-  const [channelSetup, setChannelSetup] = useState<ChannelSetupRecord | null>(null)
   const [skillIds, setSkillIds] = useState<string[]>([])
   const [skillConfigs, setSkillConfigs] = useState<Record<string, Record<string, string>>>({})
   const [deployStageIndex, setDeployStageIndex] = useState(0)
@@ -267,19 +243,15 @@ export default function HooksPage() {
 
         const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
         const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
-        const channelId = window.localStorage.getItem(CHANNEL_STORAGE_KEY)
 
         const providerSetupStore = getStoredProviderSetup()
-        const channelSetupStore = getStoredChannelSetup()
         const skillConfigStore = getStoredSkillConfig()
 
         if (!cancelled) {
           setTenantId(derivedTenantId)
           setSelectedModelProviderId(providerId)
           setSelectedModelId(isModelSupportedByProvider(providerId, modelId) ? modelId : null)
-          setSelectedChannelId(channelId)
           setProviderSetup(providerId ? providerSetupStore[providerId] ?? null : null)
-          setChannelSetup(channelId ? channelSetupStore[channelId] ?? null : null)
           setSkillIds(getStoredSkillIds())
           setSkillConfigs(
             Object.fromEntries(
@@ -303,11 +275,6 @@ export default function HooksPage() {
     }
   }, [router])
 
-  const selectedChannelLabel = useMemo(() => {
-    if (!selectedChannelId) return null
-    return AVAILABLE_CHANNEL_OPTIONS.find((channel) => channel.id === selectedChannelId)?.label ?? selectedChannelId
-  }, [selectedChannelId])
-
   const selectedModelLabel = useMemo(() => {
     if (!selectedModelProviderId || !selectedModelId) return null
     return getProviderModelOption(selectedModelProviderId, selectedModelId)?.label ?? selectedModelId
@@ -327,16 +294,8 @@ export default function HooksPage() {
         label: 'Auth',
         complete: Boolean(providerSetup),
       },
-      {
-        label: 'Channel',
-        complete: Boolean(selectedChannelId),
-      },
-      {
-        label: 'Credentials',
-        complete: Boolean(channelSetup),
-      },
     ]
-  }, [channelSetup, providerSetup, selectedChannelId, selectedModelId, selectedModelProviderId])
+  }, [providerSetup, selectedModelId, selectedModelProviderId])
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
 
@@ -364,7 +323,7 @@ export default function HooksPage() {
   }, [])
 
   function validateBeforeSubmit() {
-    if (!selectedModelProviderId || !selectedModelId || !providerSetup || !selectedChannelId || !channelSetup) {
+    if (!selectedModelProviderId || !selectedModelId || !providerSetup) {
       return 'Complete setup.'
     }
 
@@ -408,8 +367,6 @@ export default function HooksPage() {
               ...providerSetup,
               apiKey: providerSetup?.apiKey,
             },
-            channelId: selectedChannelId,
-            channelSetup,
             skillIds,
             skillConfigs,
           },
@@ -506,7 +463,7 @@ export default function HooksPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/channels/setup">
+            <Link href="/dashboard/skills/setup">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>
@@ -545,7 +502,6 @@ export default function HooksPage() {
                 <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                   <p>Provider: <span className="font-medium text-foreground">{selectedModelProviderId ?? '-'}</span></p>
                   <p>Model: <span className="font-medium text-foreground">{selectedModelLabel ?? '-'}</span></p>
-                  <p>Channel: <span className="font-medium text-foreground">{selectedChannelLabel ?? '-'}</span></p>
                   <p>Skills: <span className="font-medium text-foreground">{skillIds.length || '-'}</span></p>
                 </div>
               </section>

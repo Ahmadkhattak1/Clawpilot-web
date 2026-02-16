@@ -18,14 +18,16 @@ const RequestBodySchema = z.object({
       oauthConnected: z.boolean().optional(),
       updatedAt: z.string(),
     }),
-    channelId: z.string().min(1),
-    channelSetup: z.object({
-      channelId: z.string(),
-      kind: z.string(),
-      values: z.record(z.string()),
-      linked: z.boolean().optional(),
-      updatedAt: z.string(),
-    }),
+    channelId: z.string().min(1).optional(),
+    channelSetup: z
+      .object({
+        channelId: z.string(),
+        kind: z.string(),
+        values: z.record(z.string()),
+        linked: z.boolean().optional(),
+        updatedAt: z.string(),
+      })
+      .optional(),
     skillIds: z.array(z.string()).default([]),
     skillConfigs: z.record(z.string(), z.record(z.string())).default({}),
   }),
@@ -150,8 +152,8 @@ export async function POST(request: Request) {
       modelApiKey: body.onboarding.modelSetup.apiKey,
       modelOauthConnected: Boolean(body.onboarding.modelSetup.oauthConnected),
       channelId: body.onboarding.channelId,
-      channelKind: body.onboarding.channelSetup.kind,
-      channelCredentials: body.onboarding.channelSetup.values,
+      channelKind: body.onboarding.channelSetup?.kind,
+      channelCredentials: body.onboarding.channelSetup?.values ?? {},
       skillIds: body.onboarding.skillIds,
       skillConfigs: body.onboarding.skillConfigs,
     }
@@ -214,7 +216,7 @@ export async function POST(request: Request) {
       setupCollected: {
         modelProviderId: openClawProviderId,
         modelId: body.onboarding.modelId,
-        channelId: body.onboarding.channelId,
+        channelId: body.onboarding.channelId ?? null,
         skillsCount: body.onboarding.skillIds.length,
       },
       tenant: tenantResponse.data,

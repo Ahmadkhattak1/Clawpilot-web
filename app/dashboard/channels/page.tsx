@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
   AVAILABLE_CHANNEL_OPTIONS,
   CHANNEL_STORAGE_KEY,
@@ -139,14 +138,13 @@ export default function ChannelsPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/open-cloud">
+            <Link href="/dashboard/chat">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>
           </Button>
-          <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Channel</CardDescription>
-          <SetupStepper currentStep="channel" className="pt-1" />
+          <CardTitle className="type-h4">Channels</CardTitle>
+          <CardDescription>Connect channels after deployment</CardDescription>
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">

@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
   AVAILABLE_CHANNEL_OPTIONS,
   CHANNEL_SETUP_STORAGE_KEY,
@@ -133,7 +132,7 @@ export default function ChannelSetupPage() {
   function onNext() {
     const didSave = saveCurrentSetup(false)
     if (!didSave) return
-    router.push('/dashboard/hooks')
+    router.push('/dashboard/chat')
   }
 
   function onSetupFieldChange(fieldId: string, value: string) {
@@ -178,9 +177,8 @@ export default function ChannelSetupPage() {
               Back
             </Link>
           </Button>
-          <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
+          <CardTitle className="type-h4">Channels</CardTitle>
           <CardDescription>{selectedChannel.label}</CardDescription>
-          <SetupStepper currentStep="channel" />
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
@@ -219,7 +217,7 @@ export default function ChannelSetupPage() {
                   {shouldDeferQrUntilDeployment ? (
                     <div className="rounded-lg border border-border/70 bg-card p-3">
                       <p className="text-xs text-muted-foreground">
-                        QR appears after deploy starts.
+                        QR appears after runtime channel login is triggered.
                       </p>
                     </div>
                   ) : (

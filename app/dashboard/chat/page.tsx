@@ -450,14 +450,7 @@ export default function ChatPage() {
     routerRef.current.replace(buildSignInPath(currentPath))
   }, [])
 
-  // Track whether we've already initialised to prevent duplicate setup
-  const initialisedRef = useRef(false)
-
   useEffect(() => {
-    // Only run once — subsequent renders should not re-init
-    if (initialisedRef.current) return
-    initialisedRef.current = true
-
     let cancelled = false
 
     async function loadSession() {

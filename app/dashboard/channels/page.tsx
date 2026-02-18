@@ -1,116 +1,306 @@
 'use client'
 
-import Link from 'next/link'
-import { ArrowLeft, Check, Loader2 } from 'lucide-react'
 import Image from 'next/image'
+import Link from 'next/link'
+import { ArrowLeft, Loader2, QrCode, Unplug, RefreshCw, Send, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
-  AVAILABLE_CHANNEL_OPTIONS,
-  CHANNEL_STORAGE_KEY,
-  type ChannelOption,
-} from '@/lib/channel-options'
-import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+  connectRuntimeWhatsApp,
+  connectRuntimeTelegram,
+  listRuntimeChannelsStatus,
+  logoutRuntimeChannel,
+  startRuntimeWhatsAppLogin,
+  waitRuntimeWhatsAppLogin,
+  type RuntimeChannelsStatusData,
+} from '@/lib/runtime-controls'
+import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
-function getChannelInitials(label: string) {
-  return label
-    .split(/[\s().-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((segment) => segment[0]?.toUpperCase() ?? '')
-    .join('')
+type ChannelId = 'whatsapp' | 'telegram'
+type ChannelStatusRecord = Record<string, unknown>
+type ChannelAccountRecord = Record<string, unknown>
+
+function readBool(record: ChannelStatusRecord | undefined, key: string): boolean | null {
+  const raw = record?.[key]
+  return typeof raw === 'boolean' ? raw : null
 }
 
-function ChannelLogo({
-  channel,
-  onError,
-  hasImageError,
-}: {
-  channel: ChannelOption
-  onError: (channelId: string) => void
-  hasImageError: boolean
-}) {
-  if ((!channel.logoSrc || hasImageError) && channel.logoEmoji) {
-    return <span className="text-xl leading-none">{channel.logoEmoji}</span>
-  }
+function readStr(record: ChannelStatusRecord | undefined, key: string): string | null {
+  const raw = record?.[key]
+  if (typeof raw !== 'string') return null
+  const normalized = raw.trim()
+  return normalized || null
+}
 
-  if (!channel.logoSrc || hasImageError) {
-    return (
-      <span className="text-sm font-semibold uppercase tracking-wide text-foreground/80">
-        {getChannelInitials(channel.label)}
-      </span>
-    )
+function normalizeErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message.trim()) return fallback
+  const message = error.message.trim()
+  const lower = message.toLowerCase()
+  if (lower.includes('not found')) return 'Runtime not ready. Open chat first, then retry.'
+  if (lower.includes('daemon_not_found') || lower.includes('daemon not found')) return 'Daemon not found. Retry in a moment.'
+  if (lower.includes('not_paired') || lower.includes('pairing required') || lower.includes('device identity required')) return 'Channel bridge is still pairing. Retry shortly.'
+  if (lower.includes('control ui requires https') || lower.includes('control ui requires localhost') || lower.includes('secure context')) return 'Bridge setup in progress. Retry shortly.'
+  if (
+    lower.includes('econnrefused') ||
+    lower.includes('econnreset') ||
+    lower.includes('connect handshake') ||
+    lower.includes('gateway websocket closed')
+  ) {
+    return 'OpenClaw is still starting. Retry in a few seconds.'
   }
+  if (lower.includes('gateway_starting') || lower.includes('bootstrapping')) {
+    return 'OpenClaw is still bootstrapping. Retry in a few seconds.'
+  }
+  if (lower.includes('gateway_unavailable') || (lower.includes('gateway') && lower.includes('unavailable'))) return 'OpenClaw is starting. Try again in a moment.'
+  return message
+}
 
+function StatusDot({ status }: { status: 'connected' | 'running' | 'configured' | 'off' | 'loading' }) {
+  if (status === 'loading') {
+    return <span className="relative flex h-2.5 w-2.5"><Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" /></span>
+  }
+  const colorMap = {
+    connected: 'bg-emerald-500',
+    running: 'bg-amber-500',
+    configured: 'bg-blue-400',
+    off: 'bg-zinc-400',
+  }
+  const pulseMap = {
+    connected: true,
+    running: false,
+    configured: false,
+    off: false,
+  }
   return (
-    <div className="flex h-10 w-10 items-center justify-center">
-      <Image
-        src={channel.logoSrc}
-        alt={`${channel.label} logo`}
-        width={40}
-        height={40}
-        className="h-10 w-10 object-contain"
-        style={{ transform: `scale(${channel.logoScale ?? 1})` }}
-        onError={() => onError(channel.id)}
-      />
-    </div>
+    <span className="relative flex h-2.5 w-2.5">
+      {pulseMap[status] && <span className={cn('absolute inline-flex h-full w-full animate-ping rounded-full opacity-75', colorMap[status])} />}
+      <span className={cn('relative inline-flex h-2.5 w-2.5 rounded-full', colorMap[status])} />
+    </span>
   )
+}
+
+function deriveChannelStatus(record: ChannelStatusRecord | null | undefined): 'connected' | 'running' | 'configured' | 'off' {
+  if (!record) return 'off'
+  if (readBool(record, 'connected') === true) return 'connected'
+  if (readBool(record, 'running') === true) return 'running'
+  if (readBool(record, 'configured') === true) return 'configured'
+  return 'off'
+}
+
+function statusLabel(status: 'connected' | 'running' | 'configured' | 'off'): string {
+  const labels: Record<typeof status, string> = {
+    connected: 'Connected',
+    running: 'Running',
+    configured: 'Configured',
+    off: 'Not connected',
+  }
+  return labels[status]
 }
 
 export default function ChannelsPage() {
   const router = useRouter()
+
   const [checkingSession, setCheckingSession] = useState(true)
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
-  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+  const [tenantId, setTenantId] = useState('')
+
+  const [loadingStatus, setLoadingStatus] = useState(false)
+  const [statusError, setStatusError] = useState('')
+  const [statusSnapshot, setStatusSnapshot] = useState<RuntimeChannelsStatusData | null>(null)
+
+  const [activeChannel, setActiveChannel] = useState<ChannelId | null>(null)
+
+  // WhatsApp
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+  const [waQr, setWaQr] = useState<string | null>(null)
+  const [waPhoneMode, setWaPhoneMode] = useState<'personal' | 'dedicated'>('personal')
+  const [waOwnerPhone, setWaOwnerPhone] = useState('')
+
+  // Telegram
+  const [tgBusy, setTgBusy] = useState(false)
+  const [tgMessage, setTgMessage] = useState('')
+  const [tgBotToken, setTgBotToken] = useState('')
+  const [tgShowTokenInput, setTgShowTokenInput] = useState(false)
+
+  const redirectToSignIn = useCallback(() => {
+    const currentPath = typeof window === 'undefined'
+      ? '/dashboard/channels'
+      : `${window.location.pathname}${window.location.search}`
+    router.replace(buildSignInPath(currentPath))
+  }, [router])
+
+  const refreshStatus = useCallback(async (tid: string, probe = true) => {
+    if (!tid) return
+    setLoadingStatus(true)
+    setStatusError('')
+    try {
+      const snapshot = await listRuntimeChannelsStatus(tid, { probe, timeoutMs: 8_000 })
+      setStatusSnapshot(snapshot)
+    } catch (error) {
+      setStatusError(normalizeErrorMessage(error, 'Failed to load channel status.'))
+    } finally {
+      setLoadingStatus(false)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
-
     async function loadSession() {
       try {
         const session = await getRecoveredSupabaseSession()
-        if (!session) {
-          router.replace('/signin')
-          return
-        }
-
-        const storedChannelId = window.localStorage.getItem(CHANNEL_STORAGE_KEY)
-        const channelExists = AVAILABLE_CHANNEL_OPTIONS.some((channel) => channel.id === storedChannelId)
-        if (!cancelled && channelExists && storedChannelId) {
-          setSelectedChannelId(storedChannelId)
-        }
-      } catch {
-        router.replace('/signin')
-        return
-      }
-
-      if (!cancelled) {
-        setCheckingSession(false)
-      }
+        if (!session) { redirectToSignIn(); return }
+        const nextTenantId = deriveTenantIdFromUserId(session.user.id)
+        if (cancelled) return
+        setTenantId(nextTenantId)
+        await refreshStatus(nextTenantId, true)
+      } catch { redirectToSignIn(); return }
+      if (!cancelled) setCheckingSession(false)
     }
-
     void loadSession()
+    return () => { cancelled = true }
+  }, [redirectToSignIn, refreshStatus])
 
-    return () => {
-      cancelled = true
+  const waStatus = useMemo(() => (statusSnapshot?.channels?.whatsapp ?? null) as ChannelStatusRecord | null, [statusSnapshot])
+  const tgStatus = useMemo(() => (statusSnapshot?.channels?.telegram ?? null) as ChannelStatusRecord | null, [statusSnapshot])
+  const tgAccounts = useMemo(() => (statusSnapshot?.channelAccounts?.telegram ?? []) as ChannelAccountRecord[], [statusSnapshot])
+
+  const waDerived = deriveChannelStatus(waStatus)
+  const tgDerived = deriveChannelStatus(tgStatus)
+
+  // --- WhatsApp actions ---
+  const handleWaShowQr = useCallback(async () => {
+    if (!tenantId) return
+    const ownerPhone = waOwnerPhone.trim()
+    if (waPhoneMode === 'personal' && !ownerPhone) {
+      setWaMessage('Enter the personal number you will link with the QR code.')
+      return
     }
-  }, [router])
+    setWaBusy(true)
+    setWaMessage('')
+    try {
+      await connectRuntimeWhatsApp(tenantId, {
+        phoneMode: waPhoneMode,
+        ownerPhone: waPhoneMode === 'personal' ? ownerPhone : undefined,
+        dmPolicy: waPhoneMode === 'dedicated' ? 'pairing' : undefined,
+      })
 
-  function onImageError(channelId: string) {
-    setImageErrors((previous) => ({
-      ...previous,
-      [channelId]: true,
-    }))
-  }
+      let result = await startRuntimeWhatsAppLogin(tenantId, {
+        force: waDerived === 'connected',
+        timeoutMs: 45_000,
+      })
+      const normalizedStartMessage = (result.message ?? '').toLowerCase()
+      const needsForcedRelinkStart = (
+        waDerived !== 'connected' &&
+        !result.connected &&
+        !result.qrDataUrl &&
+        (normalizedStartMessage.includes('already linked') || normalizedStartMessage.includes('relink'))
+      )
+      if (needsForcedRelinkStart) {
+        result = await startRuntimeWhatsAppLogin(tenantId, { force: true, timeoutMs: 45_000 })
+      }
+      setWaQr(result.qrDataUrl ?? null)
+      if (result.connected) {
+        setWaMessage('Already connected.')
+        setWaQr(null)
+        await refreshStatus(tenantId, true)
+      } else {
+        setWaMessage(result.message ?? 'Scan this QR in WhatsApp.')
+        try {
+          let waitResult = await waitRuntimeWhatsAppLogin(tenantId, { timeoutMs: 120_000 })
+          let followupWaitCount = 0
+          const maxFollowupWaits = 1
 
-  function onNext() {
-    if (!selectedChannelId) return
-    window.localStorage.setItem(CHANNEL_STORAGE_KEY, selectedChannelId)
-    router.push('/dashboard/channels/setup')
+          while (!waitResult.connected && waitResult.qrDataUrl && followupWaitCount < maxFollowupWaits) {
+            setWaQr(waitResult.qrDataUrl)
+            setWaMessage('Generated a fresh WhatsApp QR. Scan it now in Linked Devices.')
+            followupWaitCount += 1
+            waitResult = await waitRuntimeWhatsAppLogin(tenantId, { timeoutMs: 120_000 })
+          }
+
+          if (waitResult.connected) {
+            setWaMessage('WhatsApp linked successfully.')
+            setWaQr(null)
+          } else {
+            if (waitResult.qrDataUrl) {
+              setWaQr(waitResult.qrDataUrl)
+            } else {
+              setWaQr(null)
+            }
+            setWaMessage(waitResult.message ?? 'Scan timed out. Show QR again to retry.')
+          }
+          await refreshStatus(tenantId, true)
+        } catch (waitError) {
+          setWaMessage(normalizeErrorMessage(waitError, 'Timed out waiting for scan. Try again.'))
+        }
+      }
+    } catch (error) {
+      setWaMessage(normalizeErrorMessage(error, 'Failed to start WhatsApp login.'))
+      setWaQr(null)
+    } finally {
+      setWaBusy(false)
+    }
+  }, [refreshStatus, tenantId, waDerived, waOwnerPhone, waPhoneMode])
+
+  const handleWaDisconnect = useCallback(async () => {
+    if (!tenantId) return
+    setWaBusy(true)
+    setWaMessage('')
+    try {
+      await logoutRuntimeChannel(tenantId, { channelId: 'whatsapp' })
+      setWaQr(null)
+      setWaMessage('Disconnected.')
+      await refreshStatus(tenantId, true)
+    } catch (error) {
+      setWaMessage(normalizeErrorMessage(error, 'Failed to disconnect WhatsApp.'))
+    } finally {
+      setWaBusy(false)
+    }
+  }, [refreshStatus, tenantId])
+
+  // --- Telegram actions ---
+  const handleTgConnect = useCallback(async () => {
+    if (!tenantId) return
+    const token = tgBotToken.trim()
+    if (!token) { setTgMessage('Bot token is required.'); return }
+    setTgBusy(true)
+    setTgMessage('')
+    try {
+      await connectRuntimeTelegram(tenantId, { botToken: token })
+      setTgBotToken('')
+      setTgShowTokenInput(false)
+      setTgMessage('Connected. Refreshing...')
+      await refreshStatus(tenantId, true)
+      setTgMessage('Telegram connected.')
+    } catch (error) {
+      setTgMessage(normalizeErrorMessage(error, 'Failed to connect Telegram.'))
+    } finally {
+      setTgBusy(false)
+    }
+  }, [refreshStatus, tgBotToken, tenantId])
+
+  const handleTgDisconnect = useCallback(async () => {
+    if (!tenantId) return
+    setTgBusy(true)
+    setTgMessage('')
+    try {
+      await logoutRuntimeChannel(tenantId, { channelId: 'telegram' })
+      setTgMessage('Disconnected.')
+      await refreshStatus(tenantId, true)
+    } catch (error) {
+      setTgMessage(normalizeErrorMessage(error, 'Failed to disconnect Telegram.'))
+    } finally {
+      setTgBusy(false)
+    }
+  }, [refreshStatus, tenantId])
+
+  const toggleChannel = (id: ChannelId) => {
+    setActiveChannel((prev) => (prev === id ? null : id))
   }
 
   if (checkingSession) {
@@ -124,70 +314,319 @@ export default function ChannelsPage() {
     )
   }
 
-  return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
-      />
+  const tgBotUsername = (() => {
+    for (const acc of tgAccounts) {
+      const probe = (acc.probe ?? null) as Record<string, unknown> | null
+      const bot = probe && typeof probe.bot === 'object' && probe.bot ? (probe.bot as Record<string, unknown>) : null
+      if (typeof bot?.username === 'string') return `@${bot.username}`
+    }
+    return null
+  })()
 
-      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
-        <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
-          <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/chat">
-              <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-              Back
+  return (
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 sm:py-10">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-background to-background/95" />
+
+      <div className="relative z-10 mx-auto w-full max-w-2xl space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/dashboard/settings">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Settings
             </Link>
           </Button>
-          <CardTitle className="type-h4">Channels</CardTitle>
-          <CardDescription>Connect channels after deployment</CardDescription>
-        </CardHeader>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loadingStatus || !tenantId}
+            onClick={() => { if (tenantId) void refreshStatus(tenantId, true) }}
+          >
+            {loadingStatus
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh
+          </Button>
+        </div>
 
-        <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {AVAILABLE_CHANNEL_OPTIONS.map((channel) => {
-              const isSelected = selectedChannelId === channel.id
-              return (
-                <button
-                  key={channel.id}
-                  type="button"
-                  onClick={() => setSelectedChannelId(channel.id)}
-                  className={cn(
-                    'rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/40',
-                    isSelected
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                      : 'border-border/70',
-                  )}
-                >
-                  <div className="flex h-14 items-center justify-center rounded-md bg-muted/40 p-2">
-                    <ChannelLogo
-                      channel={channel}
-                      onError={onImageError}
-                      hasImageError={Boolean(imageErrors[channel.id])}
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-foreground/95 line-clamp-2">{channel.label}</p>
-                    {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                  </div>
-                </button>
-              )
-            })}
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">Channels</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Connect messaging platforms to your runtime.</p>
+        </div>
+
+        {statusError && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {statusError}
           </div>
+        )}
 
-          <div className="mt-auto border-t border-border/70 pt-4">
-            <div className="flex justify-end">
-              <Button onClick={onNext} disabled={!selectedChannelId} className="sm:min-w-28">
-                Next
+        {/* Channel selector buttons */}
+        <div className="grid grid-cols-2 gap-3">
+          <ChannelButton
+            name="WhatsApp"
+            icon="/integrations/whatsapp.svg"
+            status={loadingStatus ? 'loading' : waDerived}
+            active={activeChannel === 'whatsapp'}
+            onClick={() => toggleChannel('whatsapp')}
+          />
+          <ChannelButton
+            name="Telegram"
+            icon="/integrations/telegram.svg"
+            status={loadingStatus ? 'loading' : tgDerived}
+            active={activeChannel === 'telegram'}
+            onClick={() => toggleChannel('telegram')}
+          />
+        </div>
+
+        {/* WhatsApp panel */}
+        {activeChannel === 'whatsapp' && (
+          <div className="animate-in fade-in slide-in-from-top-2 space-y-4 rounded-xl border border-border/70 bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Image src="/integrations/whatsapp.svg" alt="WhatsApp" width={28} height={28} />
+                <div>
+                  <p className="text-sm font-medium">WhatsApp</p>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <StatusDot status={waDerived} />
+                    {statusLabel(waDerived)}
+                    {waDerived === 'connected' && readStr(waStatus ?? undefined, 'lastConnectedAt') && (
+                      <span className="text-muted-foreground/60">&middot; since {new Date(readStr(waStatus ?? undefined, 'lastConnectedAt')!).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-foreground/90">Linked account type</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Choose which WhatsApp account will scan the QR. The scanned account is the one OpenClaw will run on.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waPhoneMode === 'personal' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaPhoneMode('personal')}
+                >
+                  Personal account
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waPhoneMode === 'dedicated' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaPhoneMode('dedicated')}
+                >
+                  Separate account
+                </Button>
+              </div>
+              {waPhoneMode === 'personal' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="wa-owner-phone" className="text-xs">Personal number (the same number that will scan QR)</Label>
+                  <Input
+                    id="wa-owner-phone"
+                    type="text"
+                    placeholder="+15555550123"
+                    value={waOwnerPhone}
+                    disabled={waBusy || loadingStatus}
+                    onChange={(event) => setWaOwnerPhone(event.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    OpenClaw will treat this as your own WhatsApp identity and enable self-chat mode.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Use this when a separate WhatsApp account will scan the QR and run OpenClaw. Your personal number can
+                  message it and get approved through pairing.
+                </p>
+              )}
+            </div>
+
+            {waMessage && (
+              <p className={cn(
+                'rounded-lg px-3 py-2 text-sm',
+                waMessage.toLowerCase().includes('fail') || waMessage.toLowerCase().includes('error')
+                  ? 'border border-destructive/30 bg-destructive/5 text-destructive'
+                  : 'border border-border/70 bg-muted/30 text-foreground/80',
+              )}>
+                {waMessage}
+              </p>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              In WhatsApp, open <span className="font-medium">Linked Devices</span> and tap <span className="font-medium">Link a device</span>, then scan this QR directly there.
+            </p>
+
+            {waQr && (
+              <div className="flex justify-center rounded-lg border border-border/70 bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={waQr} alt="WhatsApp QR" className="h-52 w-52 rounded" />
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={waBusy || loadingStatus}
+                onClick={() => void handleWaShowQr()}
+                className="gap-2"
+              >
+                {waBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                {waDerived === 'connected' ? 'Re-link' : 'Show QR'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={waBusy || loadingStatus || waDerived === 'off'}
+                onClick={() => void handleWaDisconnect()}
+                className="gap-2 text-destructive hover:text-destructive"
+              >
+                <Unplug className="h-3.5 w-3.5" />
+                Disconnect
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* Telegram panel */}
+        {activeChannel === 'telegram' && (
+          <div className="animate-in fade-in slide-in-from-top-2 space-y-4 rounded-xl border border-border/70 bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Image src="/integrations/telegram.svg" alt="Telegram" width={28} height={28} />
+                <div>
+                  <p className="text-sm font-medium">Telegram</p>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <StatusDot status={tgDerived} />
+                    {statusLabel(tgDerived)}
+                    {tgBotUsername && (
+                      <span className="text-muted-foreground/60">&middot; {tgBotUsername}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {tgMessage && (
+              <p className={cn(
+                'rounded-lg px-3 py-2 text-sm',
+                tgMessage.toLowerCase().includes('fail') || tgMessage.toLowerCase().includes('error') || tgMessage.toLowerCase().includes('required')
+                  ? 'border border-destructive/30 bg-destructive/5 text-destructive'
+                  : 'border border-border/70 bg-muted/30 text-foreground/80',
+              )}>
+                {tgMessage}
+              </p>
+            )}
+
+            {(tgDerived !== 'connected' || tgShowTokenInput) && (
+              <div className="space-y-2">
+                <Label htmlFor="tg-bot-token" className="text-xs">Bot token from @BotFather</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="tg-bot-token"
+                    type="password"
+                    autoComplete="off"
+                    placeholder="Paste bot token"
+                    value={tgBotToken}
+                    onChange={(e) => setTgBotToken(e.target.value)}
+                    disabled={tgBusy}
+                    className="h-9 text-sm"
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleTgConnect() }}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={tgBusy || loadingStatus || !tgBotToken.trim()}
+                    onClick={() => void handleTgConnect()}
+                    className="gap-2 shrink-0"
+                  >
+                    {tgBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    {tgDerived === 'connected' ? 'Update' : 'Connect'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {tgDerived === 'connected' && !tgShowTokenInput && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={tgBusy || loadingStatus}
+                  onClick={() => { setTgMessage(''); setTgBotToken(''); setTgShowTokenInput(true) }}
+                  className="gap-2"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Update token
+                </Button>
+              )}
+              {tgShowTokenInput && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setTgShowTokenInput(false); setTgBotToken('') }}
+                  className="gap-2"
+                >
+                  Cancel
+                </Button>
+              )}
+              {tgDerived !== 'off' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={tgBusy || loadingStatus}
+                  onClick={() => void handleTgDisconnect()}
+                  className="gap-2 text-destructive hover:text-destructive"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Disconnect
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
+  )
+}
+
+function ChannelButton({
+  name,
+  icon,
+  status,
+  active,
+  onClick,
+}: {
+  name: string
+  icon: string
+  status: 'connected' | 'running' | 'configured' | 'off' | 'loading'
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group relative flex items-center gap-3 rounded-xl border p-4 text-left transition-all',
+        active
+          ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/20'
+          : 'border-border/70 bg-card hover:border-primary/30 hover:bg-muted/30',
+      )}
+    >
+      <Image src={icon} alt={name} width={32} height={32} className="shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{name}</p>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <StatusDot status={status} />
+          {status === 'loading' ? 'Checking...' : statusLabel(status)}
+        </div>
+      </div>
+    </button>
   )
 }

@@ -88,3 +88,89 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+@keyframes chat-bubble-in-user {
+  0% {
+    opacity: 0;
+    transform: translate3d(12px, 10px, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes chat-bubble-in-assistant {
+  0% {
+    opacity: 0;
+    transform: translate3d(-12px, 10px, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes chat-typing-shell {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes chat-typing-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.82);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-5px) scale(1.08);
+  }
+}
+
+@layer utilities {
+  .chat-bubble-enter-user {
+    animation: chat-bubble-in-user 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: right bottom;
+  }
+
+  .chat-bubble-enter-assistant {
+    animation: chat-bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: left top;
+  }
+
+  .chat-typing-shell {
+    animation: chat-typing-shell 1500ms ease-in-out infinite;
+  }
+
+  .chat-typing-dot {
+    animation: chat-typing-dot 1050ms ease-in-out infinite;
+  }
+
+  .chat-typing-dot-delay-1 {
+    animation-delay: 120ms;
+  }
+
+  .chat-typing-dot-delay-2 {
+    animation-delay: 240ms;
+  }
+
+  .chat-typing-dot-delay-3 {
+    animation-delay: 360ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble-enter-user,
+  .chat-bubble-enter-assistant,
+  .chat-typing-shell,
+  .chat-typing-dot {
+    animation: none !important;
+  }
+}

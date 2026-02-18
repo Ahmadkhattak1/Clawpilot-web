@@ -25,6 +25,11 @@ import {
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatus,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -85,6 +90,13 @@ export default function OpenCloudStepPage() {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
           router.replace('/signin')
+          return
+        }
+
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard/chat')
           return
         }
 

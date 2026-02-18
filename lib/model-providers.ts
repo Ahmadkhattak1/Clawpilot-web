@@ -66,6 +66,11 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       label: 'Claude Sonnet 4.5',
       summary: 'Balanced speed and quality for day-to-day assistants.',
     },
+    {
+      id: 'anthropic/claude-haiku-4-5',
+      label: 'Claude Haiku 4.5',
+      summary: 'Fast Anthropic model for lightweight prompts.',
+    },
   ],
   openai: [
     {
@@ -73,6 +78,11 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       label: 'GPT-5.2',
       summary: 'Strong general-purpose default for reasoning and coding.',
       isRecommended: true,
+    },
+    {
+      id: 'openai/gpt-5-mini',
+      label: 'GPT-5 Mini',
+      summary: 'Faster OpenAI option for lower-latency responses.',
     },
     {
       id: 'openai/gpt-5.1-codex',

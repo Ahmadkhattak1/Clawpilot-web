@@ -25,10 +25,19 @@ import { cn } from '@/lib/utils'
 type ChannelId = 'whatsapp' | 'telegram'
 type ChannelStatusRecord = Record<string, unknown>
 type ChannelAccountRecord = Record<string, unknown>
+type WhatsAppDmPolicy = 'pairing' | 'allowlist' | 'open' | 'disabled'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
+}
+
+function parseAllowlistEntries(value: string): string[] {
+  const entries = value
+    .split(/[\n,\s]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  return Array.from(new Set(entries))
 }
 
 function readBool(record: ChannelStatusRecord | undefined, key: string): boolean | null {
@@ -126,6 +135,8 @@ export default function ChannelsPage() {
   const [waQr, setWaQr] = useState<string | null>(null)
   const [waPhoneMode, setWaPhoneMode] = useState<'personal' | 'dedicated'>('personal')
   const [waOwnerPhone, setWaOwnerPhone] = useState('')
+  const [waDmPolicy, setWaDmPolicy] = useState<WhatsAppDmPolicy>('allowlist')
+  const [waAllowFromInput, setWaAllowFromInput] = useState('')
 
   // Telegram
   const [tgBusy, setTgBusy] = useState(false)
@@ -207,6 +218,15 @@ export default function ChannelsPage() {
       jid: null,
     }
   }, [waAccounts, waStatus])
+  const waCurrentDmPolicy = useMemo(() => {
+    const statusPolicy = readStr(waStatus ?? undefined, 'dmPolicy')
+    if (statusPolicy) return statusPolicy
+    for (const account of waAccounts) {
+      const policy = readStr(account, 'dmPolicy')
+      if (policy) return policy
+    }
+    return null
+  }, [waAccounts, waStatus])
 
   const tgConnectedIdentity = useMemo(() => {
     for (const account of tgAccounts) {
@@ -242,6 +262,7 @@ export default function ChannelsPage() {
   const handleWaShowQr = useCallback(async () => {
     if (!tenantId) return
     const ownerPhone = waOwnerPhone.trim()
+    const allowFromEntries = parseAllowlistEntries(waAllowFromInput)
     if (waPhoneMode === 'personal' && !ownerPhone) {
       setWaMessage('Enter the personal number you will link with the QR code.')
       return
@@ -252,7 +273,8 @@ export default function ChannelsPage() {
       await connectRuntimeWhatsApp(tenantId, {
         phoneMode: waPhoneMode,
         ownerPhone: waPhoneMode === 'personal' ? ownerPhone : undefined,
-        dmPolicy: waPhoneMode === 'dedicated' ? 'pairing' : undefined,
+        dmPolicy: waDmPolicy,
+        allowFrom: allowFromEntries.length > 0 ? allowFromEntries : undefined,
       })
 
       let result = await startRuntimeWhatsAppLogin(tenantId, {
@@ -310,7 +332,7 @@ export default function ChannelsPage() {
     } finally {
       setWaBusy(false)
     }
-  }, [refreshStatus, tenantId, waDerived, waOwnerPhone, waPhoneMode])
+  }, [refreshStatus, tenantId, waAllowFromInput, waDerived, waDmPolicy, waOwnerPhone, waPhoneMode])
 
   const handleWaDisconnect = useCallback(async () => {
     if (!tenantId) return
@@ -484,7 +506,10 @@ export default function ChannelsPage() {
                   size="sm"
                   variant={waPhoneMode === 'personal' ? 'default' : 'outline'}
                   disabled={waBusy || loadingStatus}
-                  onClick={() => setWaPhoneMode('personal')}
+                  onClick={() => {
+                    setWaPhoneMode('personal')
+                    setWaDmPolicy('allowlist')
+                  }}
                 >
                   Personal account
                 </Button>
@@ -493,7 +518,10 @@ export default function ChannelsPage() {
                   size="sm"
                   variant={waPhoneMode === 'dedicated' ? 'default' : 'outline'}
                   disabled={waBusy || loadingStatus}
-                  onClick={() => setWaPhoneMode('dedicated')}
+                  onClick={() => {
+                    setWaPhoneMode('dedicated')
+                    setWaDmPolicy('pairing')
+                  }}
                 >
                   Separate account
                 </Button>
@@ -518,6 +546,86 @@ export default function ChannelsPage() {
                 <p className="text-xs text-muted-foreground">
                   Use this when a separate WhatsApp account will scan the QR and run OpenClaw. Your personal number can
                   message it and get approved through pairing.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <p className="text-xs font-medium text-foreground/90">DM access policy</p>
+              <p className="text-xs text-muted-foreground">
+                Controls who can trigger OpenClaw in WhatsApp direct messages.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waDmPolicy === 'pairing' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaDmPolicy('pairing')}
+                >
+                  Pairing (recommended)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waDmPolicy === 'allowlist' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaDmPolicy('allowlist')}
+                >
+                  Allowlist
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waDmPolicy === 'open' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaDmPolicy('open')}
+                >
+                  Open
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={waDmPolicy === 'disabled' ? 'default' : 'outline'}
+                  disabled={waBusy || loadingStatus}
+                  onClick={() => setWaDmPolicy('disabled')}
+                >
+                  Disabled
+                </Button>
+              </div>
+              {waCurrentDmPolicy && (
+                <p className="text-[11px] text-muted-foreground">
+                  Current runtime policy: <span className="font-medium text-foreground/90">{waCurrentDmPolicy}</span>
+                </p>
+              )}
+              {waDmPolicy === 'pairing' && (
+                <p className="text-[11px] text-muted-foreground">
+                  Unknown senders get a code and are blocked until approved with{' '}
+                  <code className="rounded bg-background px-1 py-0.5 text-[11px] text-foreground/90">openclaw pairing approve whatsapp &lt;CODE&gt;</code>.
+                </p>
+              )}
+              {(waDmPolicy === 'allowlist' || waDmPolicy === 'open') && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="wa-allow-from" className="text-xs">Allowlist numbers (E.164; comma or newline separated)</Label>
+                  <Input
+                    id="wa-allow-from"
+                    type="text"
+                    placeholder="+15551234567, +447700900123"
+                    value={waAllowFromInput}
+                    disabled={waBusy || loadingStatus}
+                    onChange={(event) => setWaAllowFromInput(event.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {waDmPolicy === 'open'
+                      ? 'Open mode allows any sender (wildcard is applied automatically).'
+                      : 'Allowlist mode permits only listed numbers plus already-approved pairings.'}
+                  </p>
+                </div>
+              )}
+              {waDmPolicy === 'disabled' && (
+                <p className="text-[11px] text-muted-foreground">
+                  Incoming WhatsApp DMs are ignored until policy is changed.
                 </p>
               )}
             </div>

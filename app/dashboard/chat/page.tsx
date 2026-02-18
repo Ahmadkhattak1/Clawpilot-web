@@ -51,6 +51,7 @@ import {
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -223,15 +224,15 @@ function dedupeAndSortMessages(messages: ChatMessage[]): ChatMessage[] {
 
 function formatAssistantProgressStatus(elapsedSeconds: number): string {
   if (elapsedSeconds <= 2) {
-    return 'Running...'
+    return `Running ${elapsedSeconds}s`
   }
   if (elapsedSeconds <= 8) {
-    return 'Thinking...'
+    return `Thinking ${elapsedSeconds}s`
   }
   if (elapsedSeconds <= 20) {
-    return `Still working... ${elapsedSeconds}s`
+    return `Working ${elapsedSeconds}s`
   }
-  return `Still running... ${elapsedSeconds}s`
+  return `Still running ${elapsedSeconds}s`
 }
 
 function normalizeRuntimeError(message: string): string {
@@ -2244,16 +2245,14 @@ export default function ChatPage() {
 
                 {isAssistantTyping ? (
                   <div className="flex w-full justify-start px-2 sm:px-3">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5">
-                      <div className="h-5">
-                        <div className="inline-flex items-end gap-1.5 chat-typing-shell" role="status" aria-label={`Assistant is typing. ${assistantProgressStatus}`}>
-                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot" />
-                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-1" />
-                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-2" />
-                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-3" />
-                        </div>
-                      </div>
-                      <p className="text-xs font-medium text-muted-foreground">{assistantProgressStatus}</p>
+                    <div
+                      className="inline-flex items-center rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5"
+                      role="status"
+                      aria-label={`Assistant is typing. ${assistantProgressStatus}`}
+                    >
+                      <Shimmer as="p" className="text-xs font-medium">
+                        {assistantProgressStatus}
+                      </Shimmer>
                     </div>
                   </div>
                 ) : null}

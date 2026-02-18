@@ -26,6 +26,11 @@ type ChannelId = 'whatsapp' | 'telegram'
 type ChannelStatusRecord = Record<string, unknown>
 type ChannelAccountRecord = Record<string, unknown>
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
 function readBool(record: ChannelStatusRecord | undefined, key: string): boolean | null {
   const raw = record?.[key]
   return typeof raw === 'boolean' ? raw : null
@@ -168,10 +173,70 @@ export default function ChannelsPage() {
 
   const waStatus = useMemo(() => (statusSnapshot?.channels?.whatsapp ?? null) as ChannelStatusRecord | null, [statusSnapshot])
   const tgStatus = useMemo(() => (statusSnapshot?.channels?.telegram ?? null) as ChannelStatusRecord | null, [statusSnapshot])
+  const waAccounts = useMemo(() => (statusSnapshot?.channelAccounts?.whatsapp ?? []) as ChannelAccountRecord[], [statusSnapshot])
   const tgAccounts = useMemo(() => (statusSnapshot?.channelAccounts?.telegram ?? []) as ChannelAccountRecord[], [statusSnapshot])
 
   const waDerived = deriveChannelStatus(waStatus)
   const tgDerived = deriveChannelStatus(tgStatus)
+  const waLinkedIdentity = useMemo(() => {
+    const statusSelf = asRecord(waStatus?.self)
+    const statusE164 = typeof statusSelf?.e164 === 'string' ? statusSelf.e164.trim() : ''
+    const statusJid = typeof statusSelf?.jid === 'string' ? statusSelf.jid.trim() : ''
+
+    if (statusE164 || statusJid) {
+      return {
+        e164: statusE164 || null,
+        jid: statusJid || null,
+      }
+    }
+
+    for (const account of waAccounts) {
+      const accountSelf = asRecord(account.self)
+      const accountE164 = typeof accountSelf?.e164 === 'string' ? accountSelf.e164.trim() : ''
+      const accountJid = typeof accountSelf?.jid === 'string' ? accountSelf.jid.trim() : ''
+      if (accountE164 || accountJid) {
+        return {
+          e164: accountE164 || null,
+          jid: accountJid || null,
+        }
+      }
+    }
+
+    return {
+      e164: null,
+      jid: null,
+    }
+  }, [waAccounts, waStatus])
+
+  const tgConnectedIdentity = useMemo(() => {
+    for (const account of tgAccounts) {
+      const probe = asRecord(account.probe)
+      const bot = asRecord(probe?.bot)
+      if (!bot) continue
+
+      const usernameRaw = typeof bot.username === 'string' ? bot.username.trim() : ''
+      const firstNameRaw = typeof bot.first_name === 'string' ? bot.first_name.trim() : ''
+      const idRaw = typeof bot.id === 'number'
+        ? String(bot.id)
+        : (typeof bot.id === 'string' ? bot.id.trim() : '')
+
+      if (usernameRaw || firstNameRaw || idRaw) {
+        return {
+          username: usernameRaw ? `@${usernameRaw}` : null,
+          displayName: firstNameRaw || null,
+          id: idRaw || null,
+        }
+      }
+    }
+
+    return {
+      username: null,
+      displayName: null,
+      id: null,
+    }
+  }, [tgAccounts])
+
+  const tgBotUsername = tgConnectedIdentity.username
 
   // --- WhatsApp actions ---
   const handleWaShowQr = useCallback(async () => {
@@ -274,9 +339,9 @@ export default function ChannelsPage() {
       await connectRuntimeTelegram(tenantId, { botToken: token })
       setTgBotToken('')
       setTgShowTokenInput(false)
-      setTgMessage('Connected. Refreshing...')
+      setTgMessage('Bot token saved. Refreshing channel status...')
       await refreshStatus(tenantId, true)
-      setTgMessage('Telegram connected.')
+      setTgMessage('Token configured. Open your bot in Telegram, tap Start, then approve the pairing code in OpenClaw chat.')
     } catch (error) {
       setTgMessage(normalizeErrorMessage(error, 'Failed to connect Telegram.'))
     } finally {
@@ -313,15 +378,6 @@ export default function ChannelsPage() {
       </div>
     )
   }
-
-  const tgBotUsername = (() => {
-    for (const acc of tgAccounts) {
-      const probe = (acc.probe ?? null) as Record<string, unknown> | null
-      const bot = probe && typeof probe.bot === 'object' && probe.bot ? (probe.bot as Record<string, unknown>) : null
-      if (typeof bot?.username === 'string') return `@${bot.username}`
-    }
-    return null
-  })()
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 sm:py-10">
@@ -366,6 +422,7 @@ export default function ChannelsPage() {
             name="WhatsApp"
             icon="/integrations/whatsapp.svg"
             status={loadingStatus ? 'loading' : waDerived}
+            detail={waLinkedIdentity.e164}
             active={activeChannel === 'whatsapp'}
             onClick={() => toggleChannel('whatsapp')}
           />
@@ -373,6 +430,7 @@ export default function ChannelsPage() {
             name="Telegram"
             icon="/integrations/telegram.svg"
             status={loadingStatus ? 'loading' : tgDerived}
+            detail={tgConnectedIdentity.username}
             active={activeChannel === 'telegram'}
             onClick={() => toggleChannel('telegram')}
           />
@@ -396,6 +454,22 @@ export default function ChannelsPage() {
                 </div>
               </div>
             </div>
+
+            {(waLinkedIdentity.e164 || waLinkedIdentity.jid) && (
+              <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <p className="text-xs font-medium text-foreground/90">Current linked identity</p>
+                {waLinkedIdentity.e164 && (
+                  <p className="text-xs text-muted-foreground">
+                    Phone: <span className="font-medium text-foreground/90">{waLinkedIdentity.e164}</span>
+                  </p>
+                )}
+                {waLinkedIdentity.jid && (
+                  <p className="text-xs text-muted-foreground">
+                    JID: <span className="font-medium text-foreground/90">{waLinkedIdentity.jid}</span>
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex items-center justify-between">
@@ -524,6 +598,27 @@ export default function ChannelsPage() {
               </p>
             )}
 
+            {(tgConnectedIdentity.username || tgConnectedIdentity.displayName || tgConnectedIdentity.id) && (
+              <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <p className="text-xs font-medium text-foreground/90">Current connected bot</p>
+                {tgConnectedIdentity.username && (
+                  <p className="text-xs text-muted-foreground">
+                    Username: <span className="font-medium text-foreground/90">{tgConnectedIdentity.username}</span>
+                  </p>
+                )}
+                {tgConnectedIdentity.displayName && (
+                  <p className="text-xs text-muted-foreground">
+                    Name: <span className="font-medium text-foreground/90">{tgConnectedIdentity.displayName}</span>
+                  </p>
+                )}
+                {tgConnectedIdentity.id && (
+                  <p className="text-xs text-muted-foreground">
+                    Bot ID: <span className="font-medium text-foreground/90">{tgConnectedIdentity.id}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {(tgDerived !== 'connected' || tgShowTokenInput) && (
               <div className="space-y-2">
                 <Label htmlFor="tg-bot-token" className="text-xs">Bot token from @BotFather</Label>
@@ -551,6 +646,26 @@ export default function ChannelsPage() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <p className="text-xs font-medium text-foreground/90">First-time Telegram pairing</p>
+              <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                <li>Create the bot in <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="underline underline-offset-2">@BotFather</a>, then paste the token above.</li>
+                <li>Open the bot link from BotFather and press <span className="font-medium text-foreground/90">Start</span>.</li>
+                <li>The bot replies with a pairing code and an approval instruction.</li>
+                <li>In your OpenClaw chat, send <code className="rounded bg-background px-1 py-0.5 text-[11px] text-foreground/90">openclaw pairing approve telegram &lt;CODE&gt;</code>.</li>
+                <li>Wait for the approval confirmation, then refresh this page.</li>
+              </ol>
+              <p className="text-[11px] text-muted-foreground">
+                Send the approval command in the OpenClaw conversation (not in @BotFather).
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Docs:{' '}
+                <a href="https://docs.openclaw.ai/channels/telegram" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                  Telegram setup
+                </a>
+              </p>
+            </div>
 
             <div className="flex gap-2">
               {tgDerived === 'connected' && !tgShowTokenInput && (
@@ -599,12 +714,14 @@ function ChannelButton({
   name,
   icon,
   status,
+  detail,
   active,
   onClick,
 }: {
   name: string
   icon: string
   status: 'connected' | 'running' | 'configured' | 'off' | 'loading'
+  detail?: string | null
   active: boolean
   onClick: () => void
 }) {
@@ -626,6 +743,9 @@ function ChannelButton({
           <StatusDot status={status} />
           {status === 'loading' ? 'Checking...' : statusLabel(status)}
         </div>
+        {detail && (
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">{detail}</p>
+        )}
       </div>
     </button>
   )

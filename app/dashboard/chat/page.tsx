@@ -66,6 +66,7 @@ const INPUT_VERTICAL_PADDING = 20
 const INPUT_MIN_HEIGHT = INPUT_LINE_HEIGHT + INPUT_VERTICAL_PADDING
 const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 11 + INPUT_VERTICAL_PADDING
 const ONLINE_STABILITY_MS = 1800
+const ASSISTANT_PROGRESS_TICK_MS = 1000
 
 function buildProfileInitial(value: string): string {
   const normalized = value.trim()
@@ -182,7 +183,11 @@ function normalizeMessageTimestamp(timestamp: string): number {
 function dedupeAndSortMessages(messages: ChatMessage[]): ChatMessage[] {
   const DEDUP_WINDOW_MS = 60_000
   const indexed = messages
-    .map((message, index) => ({ message, index }))
+    .map((message, index) => ({
+      message,
+      index,
+      timestampMs: normalizeMessageTimestamp(message.timestamp),
+    }))
     .filter(({ message }) => {
       const content = message.content.trim()
       if (!content) return false
@@ -190,30 +195,43 @@ function dedupeAndSortMessages(messages: ChatMessage[]): ChatMessage[] {
       return !isGatewayUnavailableError(content.replace(/^error:\s*/i, ''))
     })
 
-  const result: typeof indexed = []
-  for (const entry of indexed) {
-    const entryTs = normalizeMessageTimestamp(entry.message.timestamp)
-    const isDuplicate = result.some(
-      (existing) =>
-        existing.message.role === entry.message.role &&
-        existing.message.content === entry.message.content &&
-        Math.abs(normalizeMessageTimestamp(existing.message.timestamp) - entryTs) < DEDUP_WINDOW_MS,
-    )
-    if (!isDuplicate) {
-      result.push(entry)
-    }
-  }
-
-  result.sort((left, right) => {
-    const leftTs = normalizeMessageTimestamp(left.message.timestamp)
-    const rightTs = normalizeMessageTimestamp(right.message.timestamp)
-    if (leftTs !== rightTs) {
-      return leftTs - rightTs
+  indexed.sort((left, right) => {
+    if (left.timestampMs !== right.timestampMs) {
+      return left.timestampMs - right.timestampMs
     }
     return left.index - right.index
   })
 
-  return result.map((entry) => entry.message)
+  const deduped: typeof indexed = []
+  const lastTimestampBySignature = new Map<string, number>()
+
+  for (const entry of indexed) {
+    const signature = `${entry.message.role}\u0000${entry.message.content}`
+    const previousTimestamp = lastTimestampBySignature.get(signature)
+    if (
+      previousTimestamp !== undefined &&
+      Math.abs(entry.timestampMs - previousTimestamp) < DEDUP_WINDOW_MS
+    ) {
+      continue
+    }
+    lastTimestampBySignature.set(signature, entry.timestampMs)
+    deduped.push(entry)
+  }
+
+  return deduped.map((entry) => entry.message)
+}
+
+function formatAssistantProgressStatus(elapsedSeconds: number): string {
+  if (elapsedSeconds <= 2) {
+    return 'Running...'
+  }
+  if (elapsedSeconds <= 8) {
+    return 'Thinking...'
+  }
+  if (elapsedSeconds <= 20) {
+    return `Still working... ${elapsedSeconds}s`
+  }
+  return `Still running... ${elapsedSeconds}s`
 }
 
 function normalizeRuntimeError(message: string): string {
@@ -638,6 +656,7 @@ export default function ChatPage() {
   const [sendError, setSendError] = useState('')
   const [historyReady, setHistoryReady] = useState(false)
   const [isConnectionStable, setIsConnectionStable] = useState(false)
+  const [assistantWaitSeconds, setAssistantWaitSeconds] = useState(0)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -682,6 +701,7 @@ export default function ChatPage() {
   const isUnmountingRef = useRef(false)
   const copySessionKeyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoFollowRef = useRef(true)
+  const assistantWaitStartedAtRef = useRef<number | null>(null)
 
   const setShowConnectionIssue = useCallback((visible: boolean) => {
     showConnectionIssueRef.current = visible
@@ -1077,19 +1097,55 @@ export default function ChatPage() {
 
   const resetTypingState = useCallback(() => {
     pendingResponsesRef.current = 0
+    assistantWaitStartedAtRef.current = null
     backendTypingRef.current = false
+    setAssistantWaitSeconds(0)
     setIsAssistantTyping(false)
   }, [])
 
   const beginPendingResponse = useCallback(() => {
+    if (pendingResponsesRef.current === 0 || assistantWaitStartedAtRef.current === null) {
+      assistantWaitStartedAtRef.current = Date.now()
+      setAssistantWaitSeconds(0)
+    }
     pendingResponsesRef.current += 1
     syncTypingIndicator()
   }, [syncTypingIndicator])
 
   const resolvePendingResponse = useCallback(() => {
     pendingResponsesRef.current = Math.max(0, pendingResponsesRef.current - 1)
+    if (pendingResponsesRef.current === 0) {
+      assistantWaitStartedAtRef.current = null
+      setAssistantWaitSeconds(0)
+    }
     syncTypingIndicator()
   }, [syncTypingIndicator])
+
+  useEffect(() => {
+    if (!isAssistantTyping) {
+      setAssistantWaitSeconds(0)
+      return
+    }
+
+    if (assistantWaitStartedAtRef.current === null) {
+      assistantWaitStartedAtRef.current = Date.now()
+    }
+
+    const updateElapsed = () => {
+      const startedAt = assistantWaitStartedAtRef.current
+      if (!startedAt) {
+        setAssistantWaitSeconds(0)
+        return
+      }
+      setAssistantWaitSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    }
+
+    updateElapsed()
+    const interval = setInterval(updateElapsed, ASSISTANT_PROGRESS_TICK_MS)
+    return () => {
+      clearInterval(interval)
+    }
+  }, [isAssistantTyping])
 
   // Stop polling
   const stopPolling = useCallback(() => {
@@ -1963,6 +2019,7 @@ export default function ChatPage() {
     isConnectionStable,
   })
   const transientSendNotice = getTransientSendNotice(sendError)
+  const assistantProgressStatus = formatAssistantProgressStatus(assistantWaitSeconds)
 
   // ─── Loading state ─────────────────────────────────────────────────
 
@@ -2187,19 +2244,16 @@ export default function ChatPage() {
 
                 {isAssistantTyping ? (
                   <div className="flex w-full justify-start px-2 sm:px-3">
-                    <div className="inline-flex items-center px-1 py-1 chat-typing-shell">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5">
                       <div className="h-5">
-                        <div
-                          className="inline-flex items-end gap-1.5"
-                          role="status"
-                          aria-label="Assistant is typing"
-                        >
+                        <div className="inline-flex items-end gap-1.5 chat-typing-shell" role="status" aria-label={`Assistant is typing. ${assistantProgressStatus}`}>
                           <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot" />
                           <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-1" />
                           <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-2" />
                           <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/90 chat-typing-dot chat-typing-dot-delay-3" />
                         </div>
                       </div>
+                      <p className="text-xs font-medium text-muted-foreground">{assistantProgressStatus}</p>
                     </div>
                   </div>
                 ) : null}

@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, Check, Key, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Key, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -15,13 +15,11 @@ import {
   AVAILABLE_MODEL_PROVIDER_OPTIONS,
   getProviderModelOptions,
   toOpenClawProviderId,
-  type ProviderModelOption,
 } from '@/lib/model-providers'
 import {
   DEFAULT_CHAT_SESSION_KEY,
   listRuntimeModels,
   listRuntimeSessions,
-  type RuntimeModelSummary,
   updateRuntimeCurrentModel,
 } from '@/lib/runtime-controls'
 import {
@@ -34,6 +32,7 @@ import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const SUPPORTED_PROVIDER_IDS = ['openai', 'anthropic', 'google'] as const
+const INITIAL_VISIBLE_MODELS = 3
 type SupportedProviderId = (typeof SUPPORTED_PROVIDER_IDS)[number]
 
 function isSupportedProviderId(value: string | null): value is SupportedProviderId {
@@ -109,11 +108,11 @@ export default function SettingsPage() {
   const [loadingRuntime, setLoadingRuntime] = useState(false)
   const [runtimeError, setRuntimeError] = useState('')
 
-  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelSummary[]>([])
   const [runtimeCurrentModelId, setRuntimeCurrentModelId] = useState('')
 
   const [selectedProviderId, setSelectedProviderId] = useState<SupportedProviderId>('openai')
   const [selectedModelId, setSelectedModelId] = useState('')
+  const [showAllModels, setShowAllModels] = useState(false)
   const [authMethod, setAuthMethod] = useState<'api-key' | 'oauth'>('api-key')
   const [authApiKey, setAuthApiKey] = useState('')
   const [oauthConnected, setOauthConnected] = useState(false)
@@ -128,16 +127,8 @@ export default function SettingsPage() {
   }, [])
 
   const providerModelOptions = useMemo(() => {
-    const known = getProviderModelOptions(selectedProviderId)
-    const discoveredIds = runtimeModels
-      .map((model) => model.id)
-      .filter((modelId) => inferProviderFromModelId(modelId) === selectedProviderId)
-    const knownIds = new Set(known.map((m) => m.id))
-    const extras: ProviderModelOption[] = discoveredIds
-      .filter((id) => !knownIds.has(id))
-      .map((id) => ({ id, label: shortModelLabel(id), summary: 'Discovered from runtime.' }))
-    return [...known, ...extras]
-  }, [runtimeModels, selectedProviderId])
+    return getProviderModelOptions(selectedProviderId)
+  }, [selectedProviderId])
 
   useEffect(() => {
     if (!providerModelOptions.length) return
@@ -147,6 +138,28 @@ export default function SettingsPage() {
       setSelectedModelId(rec?.id ?? providerModelOptions[0].id)
     }
   }, [providerModelOptions, selectedModelId])
+
+  useEffect(() => {
+    setShowAllModels(false)
+  }, [selectedProviderId])
+
+  const visibleModelOptions = useMemo(() => {
+    if (showAllModels || providerModelOptions.length <= INITIAL_VISIBLE_MODELS) {
+      return providerModelOptions
+    }
+
+    const initialModels = providerModelOptions.slice(0, INITIAL_VISIBLE_MODELS)
+    if (!selectedModelId) return initialModels
+    if (initialModels.some((model) => model.id === selectedModelId)) return initialModels
+
+    const selectedModel = providerModelOptions.find((model) => model.id === selectedModelId)
+    if (!selectedModel) return initialModels
+
+    return [...initialModels, selectedModel]
+  }, [providerModelOptions, selectedModelId, showAllModels])
+
+  const hiddenModelCount = providerModelOptions.length - visibleModelOptions.length
+  const shouldShowModelToggle = showAllModels || hiddenModelCount > 0
 
   const activeModelLabel = useMemo(() => {
     const id = runtimeCurrentModelId.trim()
@@ -203,7 +216,6 @@ export default function SettingsPage() {
         }).catch(() => null),
       ])
 
-      setRuntimeModels(runtime.models)
       const sessionModel = sessionsResult
         ? resolveCurrentModelFromSessions(sessionsResult.sessions)
         : null
@@ -444,7 +456,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Model</p>
               <div className="space-y-2">
-                {providerModelOptions.map((model) => {
+                {visibleModelOptions.map((model) => {
                   const active = isCurrentModel(model.id)
                   const selected = selectedModelId === model.id
                   return (
@@ -487,6 +499,27 @@ export default function SettingsPage() {
                   )
                 })}
               </div>
+              {shouldShowModelToggle && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAllModels((previous) => !previous)}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {showAllModels ? (
+                    <>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                      Show less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      Show more{hiddenModelCount > 0 ? ` (${hiddenModelCount})` : ''}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Auth section */}

@@ -22,6 +22,11 @@ import {
   getSkillOptionById,
 } from '@/lib/skill-options'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatus,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 export default function SkillsPage() {
@@ -50,6 +55,13 @@ export default function SkillsPage() {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
           redirectToSignIn()
+          return
+        }
+
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard/chat')
           return
         }
 

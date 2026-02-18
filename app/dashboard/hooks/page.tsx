@@ -22,6 +22,11 @@ import {
 } from '@/lib/model-providers'
 import { SKILLS_CONFIG_STORAGE_KEY, SKILLS_STORAGE_KEY, type SkillConfigStorage } from '@/lib/skill-options'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatus,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 function getStoredProviderSetup(): ProviderSetupStorage {
@@ -67,11 +72,6 @@ function getStoredSkillConfig(): SkillConfigStorage {
   } catch {
     return {}
   }
-}
-
-function deriveTenantIdFromUserId(userId: string) {
-  const normalized = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return `tenant_${normalized}`.slice(0, 64)
 }
 
 const DEPLOY_STAGE_LABELS = [
@@ -240,6 +240,11 @@ export default function HooksPage() {
         }
 
         const derivedTenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonStatus = await fetchTenantDaemonStatus(derivedTenantId)
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard/chat')
+          return
+        }
 
         const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
         const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)

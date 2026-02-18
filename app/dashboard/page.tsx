@@ -18,6 +18,11 @@ import {
   type ModelProviderOption,
 } from '@/lib/model-providers'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatus,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -104,6 +109,13 @@ export default function DashboardPage() {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
           redirectToSignIn()
+          return
+        }
+
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard/chat')
           return
         }
 

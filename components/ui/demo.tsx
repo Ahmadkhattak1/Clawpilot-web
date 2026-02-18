@@ -1,60 +1,63 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Loader2, Plus } from "lucide-react"
+import Image from "next/image"
+import { useState } from "react"
+import { Loader2 } from "lucide-react"
 
-import { renderCanvas } from "@/components/ui/canvas"
 import { trackEvent } from "@/lib/analytics"
 import { subscribeEmail } from "@/lib/supabase"
 
 export function Hero() {
-  useEffect(() => {
-    const cleanup = renderCanvas()
-    return cleanup
-  }, [])
-
   return (
-    <section id="home" className="relative min-h-[70vh] overflow-hidden md:min-h-[78vh]">
-      <div className="relative z-10 mt-20 flex flex-col items-center justify-center px-4 text-center md:mt-20">
-        <div className="mb-10 mt-4 md:mt-6">
-          <div className="px-2">
-            <div className="relative mx-auto h-full max-w-7xl border border-border p-6 [mask-image:radial-gradient(800rem_96rem_at_center,white,transparent)] md:px-12 md:py-20">
-              <Plus
-                strokeWidth={3}
-                className="absolute -left-5 -top-5 h-10 w-10 text-border"
-              />
-              <Plus
-                strokeWidth={3}
-                className="absolute -bottom-5 -left-5 h-10 w-10 text-border"
-              />
-              <Plus
-                strokeWidth={3}
-                className="absolute -right-5 -top-5 h-10 w-10 text-border"
-              />
-              <Plus
-                strokeWidth={3}
-                className="absolute -bottom-5 -right-5 h-10 w-10 text-border"
-              />
+    <section id="home" className="relative overflow-hidden px-4 pb-14 pt-10 sm:px-6 md:pb-20 md:pt-12">
+      <div className="relative z-10 mx-auto max-w-6xl px-5 py-5 sm:px-8 md:px-12 md:py-7">
+        <h1 className="mx-auto max-w-5xl text-balance text-center text-[44px] font-semibold leading-[0.95] tracking-tight sm:text-[56px] md:text-[74px]">
+          Openclaw, without the setup headache.
+        </h1>
 
-              <h1 className="type-h1 flex select-none flex-col px-3 py-2 text-center lg:flex-row">
-                Openclaw, without the setup headache.
-              </h1>
-            </div>
-          </div>
+        <div className="relative mx-auto mt-6 w-full max-w-[280px] sm:mt-7 sm:max-w-[350px] md:mt-8 md:max-w-[430px]">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-[-22%] -bottom-10 -top-12 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(249,188,116,0.50)_0%,rgba(249,188,116,0.22)_38%,rgba(249,188,116,0.06)_58%,transparent_76%)] blur-3xl"
+          />
+          <Image
+            src="/hero-hatch.svg"
+            alt="OpenClaw mascot hatching from an egg"
+            width={4563}
+            height={3676}
+            priority
+            className="relative z-10 -my-6 h-auto w-full object-contain drop-shadow-[0_14px_24px_rgba(0,0,0,0.16)] sm:-my-8 md:-my-10"
+          />
+        </div>
 
-          <p className="type-body mx-auto mb-8 mt-8 max-w-3xl px-6 sm:px-6 md:px-20">
-            No Mac Minis, TUI management, We host it and keep it running so you
-            can just use it.
-          </p>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none relative left-1/2 z-0 -mt-12 mb-0 h-20 w-screen -translate-x-1/2 overflow-hidden sm:-mt-14 sm:h-24 md:-mt-16 md:h-28"
+        >
+          <svg
+            viewBox="0 0 1440 260"
+            preserveAspectRatio="none"
+            className="h-full w-full"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M0 260 C300 118 1140 118 1440 260 L1440 260 L0 260 Z" fill="white" />
+            <path
+              d="M0 260 C300 118 1140 118 1440 260"
+              fill="none"
+              stroke="rgba(15,23,42,0.06)"
+              strokeWidth="1.5"
+            />
+          </svg>
+        </div>
 
+        <p className="type-body mx-auto mt-0 max-w-2xl px-2 text-center sm:mt-1">
+          No Mac Minis, TUI management, We host it and keep it running so you can just use it.
+        </p>
+
+        <div className="mt-5">
           <WaitlistForm />
         </div>
       </div>
-
-      <canvas
-        id="canvas"
-        className="pointer-events-none absolute inset-0 mx-auto bg-background"
-      />
     </section>
   )
 }
@@ -106,7 +109,7 @@ function WaitlistForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto flex max-w-sm flex-col gap-2.5 sm:flex-row"
+      className="mx-auto flex max-w-md flex-col gap-2.5 sm:flex-row"
     >
       <label htmlFor="hero-waitlist-email" className="sr-only">
         Email
@@ -118,12 +121,12 @@ function WaitlistForm() {
         onChange={(event) => setEmail(event.target.value)}
         placeholder="Enter your email"
         required
-        className="h-11 flex-1 rounded-lg border border-border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+        className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
       />
       <button
         type="submit"
         disabled={loading}
-        className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+        className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Join waitlist"}
       </button>

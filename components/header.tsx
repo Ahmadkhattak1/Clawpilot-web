@@ -84,6 +84,12 @@ export function Header() {
             Idea
           </Link>
           <Link
+            href="#social-proof"
+            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Proof
+          </Link>
+          <Link
             href="#use-cases"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >

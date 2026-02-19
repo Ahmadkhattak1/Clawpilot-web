@@ -6,16 +6,16 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Circle,
   Copy,
   Loader2,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -31,12 +31,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Toggle } from '@/components/ui/toggle'
 import {
   DEFAULT_CHAT_SESSION_KEY,
+  listRuntimeChannelEvents,
+  listRuntimeChannelsStatus,
   listRuntimeChatHistory,
   patchRuntimeSession,
   listRuntimeSessions,
   readStoredChatSessionKey,
+  type RuntimeChannelEvent,
+  type RuntimeChannelsStatusData,
   type RuntimeSessionSummary,
   writeStoredChatSessionKey,
 } from '@/lib/runtime-controls'
@@ -54,13 +59,17 @@ import { cn } from '@/lib/utils'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 
 interface ChatMessage {
+  id?: string
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string
+  channelId?: 'whatsapp' | 'telegram' | 'web'
+  channelDirection?: 'inbound' | 'outbound'
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 type SetupPhase = 'checking' | 'provisioning' | 'installing' | 'starting' | 'ready' | null
+type ChannelHealthStatus = 'connected' | 'running' | 'configured' | 'off'
 
 const INPUT_LINE_HEIGHT = 24
 const INPUT_VERTICAL_PADDING = 20
@@ -68,6 +77,57 @@ const INPUT_MIN_HEIGHT = INPUT_LINE_HEIGHT + INPUT_VERTICAL_PADDING
 const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 11 + INPUT_VERTICAL_PADDING
 const ONLINE_STABILITY_MS = 1800
 const ASSISTANT_PROGRESS_TICK_MS = 1000
+const COMPOSER_TEMPLATE_COLLAPSED_COUNT = 4
+const SESSIONS_SIDEBAR_PREFERENCE_KEY = 'clawpilot:chat:sessions-sidebar:expanded'
+const COMPOSER_PROMPT_TEMPLATES: ReadonlyArray<{ id: string; label: string; prompt: string }> = [
+  {
+    id: 'morning-brief',
+    label: 'Morning brief',
+    prompt:
+      'Every day at [07:30] {time-zone}, send me weather for {city}, {country}, top priorities for today, and my first calendar event.',
+  },
+  {
+    id: 'weather-rain-alert',
+    label: 'Weather + rain',
+    prompt:
+      'Every day at [07:00] {time-zone}, send weather for {city}, {country}. If rain chance in the next 24 hours is above [40]%, send an extra alert.',
+  },
+  {
+    id: 'workday-kickoff',
+    label: 'Workday kickoff',
+    prompt:
+      "On weekdays at [09:00] {time-zone}, start with: 'What are your top 3 tasks and blockers today?' then suggest a focused plan.",
+  },
+  {
+    id: 'midweek-followups',
+    label: 'Midweek follow-ups',
+    prompt:
+      'Every Wednesday at [14:00] {time-zone}, remind me to follow up on pending messages and tasks from this week.',
+  },
+  {
+    id: 'end-of-day-wrap',
+    label: 'End-of-day wrap',
+    prompt:
+      "On weekdays at [18:00] {time-zone}, ask for progress and generate an end-of-day summary with tomorrow's top 3 tasks.",
+  },
+  {
+    id: 'learning-nudge',
+    label: 'Learning nudge',
+    prompt: 'Every day at [20:00] {time-zone}, send me a 5-minute lesson on [topic].',
+  },
+  {
+    id: 'bill-reminder',
+    label: 'Bill reminder',
+    prompt:
+      'On day [5] of each month at [10:00] {time-zone}, remind me to pay [bill name] and ask me to confirm when done.',
+  },
+  {
+    id: 'random-joke',
+    label: 'Random joke',
+    prompt:
+      'Once per day at a random time between [10:00] and [18:00] {time-zone}, send me a short joke.',
+  },
+]
 
 function buildProfileInitial(value: string): string {
   const normalized = value.trim()
@@ -173,6 +233,177 @@ function getTransientSendNotice(message: string): string | null {
   return null
 }
 
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function readRecordBool(record: Record<string, unknown> | null | undefined, key: string): boolean | null {
+  const value = record?.[key]
+  return typeof value === 'boolean' ? value : null
+}
+
+function readRecordString(record: Record<string, unknown> | null | undefined, key: string): string | null {
+  const value = record?.[key]
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized || null
+}
+
+function deriveChannelHealthStatus(record: Record<string, unknown> | null | undefined): ChannelHealthStatus {
+  if (!record) return 'off'
+  if (readRecordBool(record, 'connected') === true) return 'connected'
+  if (readRecordBool(record, 'running') === true) return 'running'
+  if (readRecordBool(record, 'configured') === true) return 'configured'
+  return 'off'
+}
+
+function channelHealthStatusLabel(status: ChannelHealthStatus): string {
+  const labels: Record<ChannelHealthStatus, string> = {
+    connected: 'On',
+    running: 'Run',
+    configured: 'Cfg',
+    off: 'Off',
+  }
+  return labels[status]
+}
+
+function shortenChannelDetail(detail: string | null): string | null {
+  if (!detail) return null
+  const normalized = detail.trim()
+  if (!normalized) return null
+
+  if (/^\+\d{7,}$/.test(normalized)) {
+    return `...${normalized.slice(-4)}`
+  }
+
+  if (normalized.startsWith('@')) {
+    const username = normalized.slice(1)
+    return username.length > 8 ? `@${username.slice(0, 8)}…` : normalized
+  }
+
+  return normalized.length > 10 ? `${normalized.slice(0, 10)}…` : normalized
+}
+
+function extractWhatsAppLiveIdentity(snapshot: RuntimeChannelsStatusData | null): {
+  status: ChannelHealthStatus
+  e164: string | null
+  jid: string | null
+  detail: string | null
+} {
+  const waStatus = asObjectRecord(snapshot?.channels?.whatsapp)
+  const waAccountsRaw = snapshot?.channelAccounts?.whatsapp ?? []
+  const waAccounts = Array.isArray(waAccountsRaw)
+    ? waAccountsRaw.map((item) => asObjectRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item))
+    : []
+
+  const status = deriveChannelHealthStatus(waStatus)
+  const statusSelf = asObjectRecord(waStatus?.self)
+  const statusE164 = readRecordString(statusSelf, 'e164')
+  const statusJid = readRecordString(statusSelf, 'jid')
+
+  if (statusE164 || statusJid) {
+    return {
+      status,
+      e164: statusE164,
+      jid: statusJid,
+      detail: statusE164 ?? statusJid,
+    }
+  }
+
+  for (const account of waAccounts) {
+    const accountSelf = asObjectRecord(account.self)
+    const e164 = readRecordString(accountSelf, 'e164')
+    const jid = readRecordString(accountSelf, 'jid')
+    if (e164 || jid) {
+      return {
+        status,
+        e164,
+        jid,
+        detail: e164 ?? jid,
+      }
+    }
+  }
+
+  return {
+    status,
+    e164: null,
+    jid: null,
+    detail: null,
+  }
+}
+
+function extractTelegramLiveIdentity(snapshot: RuntimeChannelsStatusData | null): {
+  status: ChannelHealthStatus
+  username: string | null
+  detail: string | null
+} {
+  const tgStatus = asObjectRecord(snapshot?.channels?.telegram)
+  const tgAccountsRaw = snapshot?.channelAccounts?.telegram ?? []
+  const tgAccounts = Array.isArray(tgAccountsRaw)
+    ? tgAccountsRaw.map((item) => asObjectRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item))
+    : []
+  const status = deriveChannelHealthStatus(tgStatus)
+
+  for (const account of tgAccounts) {
+    const probe = asObjectRecord(account.probe)
+    const bot = asObjectRecord(probe?.bot)
+    const usernameRaw = readRecordString(bot, 'username')
+    if (usernameRaw) {
+      const username = usernameRaw.startsWith('@') ? usernameRaw : `@${usernameRaw}`
+      return {
+        status,
+        username,
+        detail: username,
+      }
+    }
+  }
+
+  return {
+    status,
+    username: null,
+    detail: null,
+  }
+}
+
+function ChannelHealthPill({
+  label,
+  status,
+  detail,
+}: {
+  label: string
+  status: ChannelHealthStatus
+  detail: string | null
+}) {
+  const statusTone = {
+    connected: {
+      shell: 'border-emerald-200/70 bg-emerald-500/10 text-emerald-700',
+      dot: 'bg-emerald-500',
+    },
+    running: {
+      shell: 'border-amber-200/70 bg-amber-500/10 text-amber-700',
+      dot: 'bg-amber-500',
+    },
+    configured: {
+      shell: 'border-blue-200/70 bg-blue-500/10 text-blue-700',
+      dot: 'bg-blue-500',
+    },
+    off: {
+      shell: 'border-border/70 bg-card text-muted-foreground',
+      dot: 'bg-zinc-400',
+    },
+  }[status]
+
+  return (
+    <span className={cn('inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors', statusTone.shell)}>
+      <span className={cn('h-1.5 w-1.5 rounded-full', statusTone.dot)} />
+      <span className="font-medium">{label}</span>
+      <span>{channelHealthStatusLabel(status)}</span>
+      {detail ? <span className="truncate text-[10px] opacity-80">{detail}</span> : null}
+    </span>
+  )
+}
+
 function normalizeMessageTimestamp(timestamp: string): number {
   const parsed = Date.parse(timestamp)
   if (!Number.isFinite(parsed)) {
@@ -207,7 +438,7 @@ function dedupeAndSortMessages(messages: ChatMessage[]): ChatMessage[] {
   const lastTimestampBySignature = new Map<string, number>()
 
   for (const entry of indexed) {
-    const signature = `${entry.message.role}\u0000${entry.message.content}`
+    const signature = entry.message.id?.trim() || `${entry.message.role}\u0000${entry.message.content}`
     const previousTimestamp = lastTimestampBySignature.get(signature)
     if (
       previousTimestamp !== undefined &&
@@ -273,6 +504,33 @@ function toChatMessage(message: PersistedRuntimeMessage): ChatMessage {
     role: message.role,
     content: message.content,
     timestamp: message.timestamp ?? new Date().toISOString(),
+  }
+}
+
+function normalizeChannelEventRole(event: RuntimeChannelEvent): 'user' | 'assistant' | 'system' {
+  if (event.role === 'user' || event.role === 'assistant' || event.role === 'system') {
+    return event.role
+  }
+  return event.direction === 'inbound' ? 'user' : 'assistant'
+}
+
+function toChatMessageFromChannelEvent(event: RuntimeChannelEvent): ChatMessage | null {
+  const content = event.content?.trim()
+  if (!content) {
+    return null
+  }
+
+  if (event.channelId !== 'whatsapp') {
+    return null
+  }
+
+  return {
+    id: `channel-event:${event.eventId}`,
+    role: normalizeChannelEventRole(event),
+    content,
+    timestamp: event.timestamp ?? new Date().toISOString(),
+    channelId: 'whatsapp',
+    channelDirection: event.direction,
   }
 }
 
@@ -417,6 +675,56 @@ function formatSessionLabel(session: RuntimeSessionSummary): string {
   }
 
   return 'Session'
+}
+
+function hasCronKeyword(value: string | null | undefined): boolean {
+  if (!value) return false
+  return /(cron|scheduler|scheduled|automation)/i.test(value.trim())
+}
+
+function hasCronMetadata(record: Record<string, unknown> | null | undefined): boolean {
+  if (!record) return false
+
+  for (const key of Object.keys(record)) {
+    if (/(cron|scheduler)/i.test(key)) {
+      return true
+    }
+  }
+
+  for (const key of ['spawnedBy', 'spawned_by', 'source', 'origin', 'type', 'kind', 'category', 'trigger', 'reason']) {
+    const value = readRecordString(record, key)
+    if (hasCronKeyword(value)) {
+      return true
+    }
+  }
+
+  const nestedRecords = [
+    asObjectRecord(record.metadata),
+    asObjectRecord(record.meta),
+    asObjectRecord(record.context),
+  ]
+
+  for (const nested of nestedRecords) {
+    if (hasCronMetadata(nested)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function isCronSessionSummary(session: RuntimeSessionSummary): boolean {
+  const normalizedKey = session.key.trim().toLowerCase()
+  if (/(?:^|:)cron(?:$|[:-])/.test(normalizedKey)) {
+    return true
+  }
+
+  const normalizedLabel = session.label?.trim().toLowerCase() ?? ''
+  if (normalizedLabel.startsWith('cron:')) {
+    return true
+  }
+
+  return hasCronMetadata(asObjectRecord(session.raw))
 }
 
 // ─── Setup progress view ──────────────────────────────────────────────
@@ -637,6 +945,7 @@ export default function ChatPage() {
   const [tenantId, setTenantId] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [showAllComposerTemplates, setShowAllComposerTemplates] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
   const [isAssistantTyping, setIsAssistantTyping] = useState(false)
   const [showConnectionIssue, _setShowConnectionIssue] = useState(false)
@@ -658,6 +967,8 @@ export default function ChatPage() {
   const [historyReady, setHistoryReady] = useState(false)
   const [isConnectionStable, setIsConnectionStable] = useState(false)
   const [assistantWaitSeconds, setAssistantWaitSeconds] = useState(0)
+  const [channelStatusSnapshot, setChannelStatusSnapshot] = useState<RuntimeChannelsStatusData | null>(null)
+  const [hasHydratedSidebarPreference, setHasHydratedSidebarPreference] = useState(false)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -685,6 +996,7 @@ export default function ChatPage() {
   const backendTypingRef = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const channelsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const historyPollInFlightRef = useRef(false)
   const wsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsInitialConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -703,11 +1015,71 @@ export default function ChatPage() {
   const copySessionKeyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoFollowRef = useRef(true)
   const assistantWaitStartedAtRef = useRef<number | null>(null)
+  const templateChipsScrollerRef = useRef<HTMLDivElement>(null)
+  const templateChipsDragRef = useRef({
+    active: false,
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    startScrollLeft: 0,
+    moved: false,
+  })
+  const templateChipsIgnoreClickUntilRef = useRef(0)
+
+  const { regularChatSessions, cronChatSessions } = useMemo(() => {
+    const regular: RuntimeSessionSummary[] = []
+    const cron: RuntimeSessionSummary[] = []
+
+    for (const session of chatSessions) {
+      if (isCronSessionSummary(session)) {
+        cron.push(session)
+      } else {
+        regular.push(session)
+      }
+    }
+
+    return {
+      regularChatSessions: regular,
+      cronChatSessions: cron,
+    }
+  }, [chatSessions])
+  const hasCronSessions = cronChatSessions.length > 0
 
   const setShowConnectionIssue = useCallback((visible: boolean) => {
     showConnectionIssueRef.current = visible
     _setShowConnectionIssue(visible)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const storedPreference = window.localStorage.getItem(SESSIONS_SIDEBAR_PREFERENCE_KEY)
+      if (storedPreference === 'true') {
+        setShowSessionsSidebar(true)
+      } else if (storedPreference === 'false') {
+        setShowSessionsSidebar(false)
+      }
+    } catch {
+      // Ignore storage failures in private mode or blocked storage.
+    } finally {
+      setHasHydratedSidebarPreference(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hasHydratedSidebarPreference) {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(SESSIONS_SIDEBAR_PREFERENCE_KEY, String(showSessionsSidebar))
+    } catch {
+      // Ignore storage failures in private mode or blocked storage.
+    }
+  }, [hasHydratedSidebarPreference, showSessionsSidebar])
 
   const clearConnectionStableTimer = useCallback(() => {
     if (connectionStableTimeoutRef.current) {
@@ -978,6 +1350,16 @@ export default function ChatPage() {
     }
   }, [loadPersistedSessions, persistSession])
 
+  const refreshChannelStatus = useCallback(async (tid: string) => {
+    if (!tid) return
+    try {
+      const snapshot = await listRuntimeChannelsStatus(tid, { probe: true, timeoutMs: 8_000 })
+      setChannelStatusSnapshot(snapshot)
+    } catch {
+      // Ignore transient probe failures here. This is a best-effort live indicator.
+    }
+  }, [])
+
   const isNearBottom = useCallback((threshold = 100) => {
     if (typeof window === 'undefined') return true
     const root = document.documentElement
@@ -1060,22 +1442,36 @@ export default function ChatPage() {
         }
       }
 
-      const history = await listRuntimeChatHistory(tid, normalizedSessionKey, 250)
+      const [history, whatsappEvents] = await Promise.all([
+        listRuntimeChatHistory(tid, normalizedSessionKey, 250),
+        listRuntimeChannelEvents(tid, {
+          channelId: 'whatsapp',
+          sessionKey: normalizedSessionKey,
+          limit: 250,
+        }).catch(() => []),
+      ])
       if (!isCurrentRequest()) {
         return
       }
-      if (history.messages.length > 0) {
-        const mappedMessages = dedupeAndSortMessages(
-          history.messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-            timestamp: message.timestamp ?? new Date().toISOString(),
-          })),
-        )
+      const mappedMessages = history.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp ?? new Date().toISOString(),
+      }))
+      const mappedWhatsAppMessages = whatsappEvents
+        .map((event) => toChatMessageFromChannelEvent(event))
+        .filter((message): message is ChatMessage => Boolean(message))
+
+      const combinedRuntimeMessages = dedupeAndSortMessages([
+        ...mappedMessages,
+        ...mappedWhatsAppMessages,
+      ])
+
+      if (combinedRuntimeMessages.length > 0) {
         if (shouldMerge) {
-          setMessages((prev) => dedupeAndSortMessages([...prev, ...mappedMessages]))
+          setMessages((prev) => dedupeAndSortMessages([...prev, ...combinedRuntimeMessages]))
         } else {
-          setMessages(mappedMessages)
+          setMessages(combinedRuntimeMessages)
         }
         scrollToBottom({ force: !shouldMerge })
       } else if (!hasPersistedHistory && !shouldMerge) {
@@ -1275,6 +1671,7 @@ export default function ChatPage() {
           if (data.type === 'connected') {
             setConnectionStatus('connected')
             beginConnectionStabilityCheck()
+            void refreshChannelStatus(tid)
             if (typeof data.sessionKey === 'string' && data.sessionKey.trim()) {
               const normalizedSessionKey = data.sessionKey.trim()
               const requestedSessionKey = lastRequestedSessionKeyRef.current?.trim() || null
@@ -1373,6 +1770,7 @@ export default function ChatPage() {
               setMessages((prev) => dedupeAndSortMessages([...prev, assistantMessage]))
               scrollToBottom({ behavior: 'smooth' })
             }
+            void refreshChannelStatus(tid)
             return
           }
 
@@ -1403,6 +1801,7 @@ export default function ChatPage() {
               setMessages((prev) => dedupeAndSortMessages([...prev, systemMessage]))
               scrollToBottom({ behavior: 'smooth' })
             }
+            void refreshChannelStatus(tid)
           }
         } catch {
           // ignore unparseable messages
@@ -1434,6 +1833,7 @@ export default function ChatPage() {
       loadSessionHistory,
       loadSessions,
       beginConnectionStabilityCheck,
+      refreshChannelStatus,
       persistMessage,
       resetConnectionStability,
       resetTypingState,
@@ -1680,6 +2080,10 @@ export default function ChatPage() {
         clearTimeout(copySessionKeyTimeoutRef.current)
         copySessionKeyTimeoutRef.current = null
       }
+      if (channelsPollRef.current) {
+        clearInterval(channelsPollRef.current)
+        channelsPollRef.current = null
+      }
       if (wsRef.current) {
         wsRef.current.close()
       }
@@ -1745,6 +2149,114 @@ export default function ChatPage() {
     syncSessionKey,
     tenantId,
   ])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId) {
+      return
+    }
+
+    void refreshChannelStatus(tenantId)
+
+    if (channelsPollRef.current) {
+      clearInterval(channelsPollRef.current)
+      channelsPollRef.current = null
+    }
+
+    channelsPollRef.current = setInterval(() => {
+      void refreshChannelStatus(tenantId)
+    }, 15_000)
+
+    return () => {
+      if (channelsPollRef.current) {
+        clearInterval(channelsPollRef.current)
+        channelsPollRef.current = null
+      }
+    }
+  }, [checkingSession, refreshChannelStatus, tenantId])
+
+  function handleTemplateChipsPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!showAllComposerTemplates) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+
+    const scroller = templateChipsScrollerRef.current
+    if (!scroller) return
+
+    templateChipsDragRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: scroller.scrollLeft,
+      moved: false,
+    }
+  }
+
+  function handleTemplateChipsPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const state = templateChipsDragRef.current
+    if (!state.active || state.pointerId !== event.pointerId) return
+
+    const scroller = templateChipsScrollerRef.current
+    if (!scroller) return
+
+    const deltaX = event.clientX - state.startX
+    const deltaY = event.clientY - state.startY
+
+    if (!state.moved) {
+      const horizontalIntent = Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY) + 2
+      if (!horizontalIntent) {
+        return
+      }
+
+      state.moved = true
+      if (!scroller.hasPointerCapture(event.pointerId)) {
+        scroller.setPointerCapture(event.pointerId)
+      }
+    }
+
+    if (state.moved) {
+      event.preventDefault()
+      scroller.scrollLeft = state.startScrollLeft - deltaX
+    }
+  }
+
+  function handleTemplateChipsPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    const state = templateChipsDragRef.current
+    if (!state.active || state.pointerId !== event.pointerId) return
+
+    if (state.moved) {
+      templateChipsIgnoreClickUntilRef.current = Date.now() + 160
+    }
+
+    const scroller = templateChipsScrollerRef.current
+    if (scroller?.hasPointerCapture(event.pointerId)) {
+      scroller.releasePointerCapture(event.pointerId)
+    }
+
+    templateChipsDragRef.current = {
+      active: false,
+      pointerId: -1,
+      startX: 0,
+      startY: 0,
+      startScrollLeft: 0,
+      moved: false,
+    }
+  }
+
+  function applyComposerTemplate(prompt: string) {
+    setInput(prompt)
+    setShowAllComposerTemplates(false)
+
+    requestAnimationFrame(() => {
+      const textarea = inputRef.current
+      if (!textarea) return
+
+      textarea.focus()
+      textarea.style.height = `${INPUT_MIN_HEIGHT}px`
+      textarea.style.height = `${Math.min(textarea.scrollHeight, INPUT_MAX_HEIGHT)}px`
+      const cursor = prompt.length
+      textarea.setSelectionRange(cursor, cursor)
+    })
+  }
 
   function sendMessage() {
     const trimmed = input.trim()
@@ -1899,63 +2411,111 @@ export default function ChatPage() {
     }
   }
 
+  const sidebarListClassName = 'space-y-0.5 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:hsl(var(--border)/0.78)_transparent] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--border)/0.78)]'
+
+  const renderSidebarSessionRows = (sessions: RuntimeSessionSummary[], emptyStateLabel: string) => {
+    if (!sessions.length) {
+      return (
+        <p className="rounded-md border border-dashed border-border/60 px-2.5 py-2 text-[11px] text-muted-foreground">
+          {emptyStateLabel}
+        </p>
+      )
+    }
+
+    return sessions.map((session) => {
+      const sessionLabel = formatSessionLabel(session)
+      const isActive = activeSessionKey === session.key
+      return (
+        <button
+          key={session.key}
+          type="button"
+          onClick={() => selectSession(session.key)}
+          className={cn(
+            'group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ease-out',
+            isActive
+              ? 'bg-primary/10 text-foreground'
+              : 'text-foreground/80 hover:bg-muted/40',
+          )}
+          aria-label={`Open ${sessionLabel}`}
+        >
+          <Circle
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 fill-current',
+              isActive ? 'text-primary' : 'text-transparent',
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{sessionLabel}</span>
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(event) => {
+              event.stopPropagation()
+              void copySessionKey(session.key)
+            }}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 pointer-events-none transition-[opacity,color] duration-150 ease-out hover:text-foreground group-hover:opacity-100 group-hover:pointer-events-auto"
+            aria-label={`Copy session ID for ${sessionLabel}`}
+            title="Copy session ID"
+          >
+            {copiedSessionKey === session.key ? (
+              <Check className="h-3 w-3" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </span>
+        </button>
+      )
+    })
+  }
+
+  const renderNewSessionAction = () => (
+    <div className="px-1.5 pt-1.5">
+      {showNewSessionConfirm ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-2">
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Start a new session? It won&apos;t share context with previous sessions.
+          </p>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Button variant="default" size="sm" className="h-6 px-2 text-[11px]" onClick={createNewSession}>
+              Create
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => setShowNewSessionConfirm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowNewSessionConfirm(true)}
+          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/70 px-2.5 py-2 text-xs text-muted-foreground transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-muted/20 hover:text-foreground"
+        >
+          <span className="text-sm leading-none">+</span>
+          New session
+        </button>
+      )}
+    </div>
+  )
+
   const conversationsSidebar = (
     <Card className="border-border/70 lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <CardContent className="p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/50 px-3 py-2.5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sessions</p>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setShowSessionsSidebar(false)}
-              className="hidden h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:inline-flex"
-              aria-label="Collapse sessions sidebar"
-              title="Collapse sessions sidebar"
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (tenantId) void loadSessions(tenantId)
-              }}
-              disabled={loadingSessions}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-50"
-              aria-label="Refresh"
-              title="Refresh sessions"
-            >
-              {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            </button>
-          </div>
-        </div>
-
-        {/* New session button */}
-        <div className="px-2 pt-2">
-          {showNewSessionConfirm ? (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-2">
-              <p className="text-[11px] leading-snug text-muted-foreground">
-                Start a new session? It won&apos;t share context with previous sessions.
-              </p>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <Button variant="default" size="sm" className="h-6 px-2 text-[11px]" onClick={createNewSession}>
-                  Create
-                </Button>
-                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => setShowNewSessionConfirm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowNewSessionConfirm(true)}
-              className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/70 px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-muted/20 hover:text-foreground"
-            >
-              <span className="text-sm leading-none">+</span>
-              New session
-            </button>
-          )}
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {hasCronSessions ? 'Conversations' : 'Sessions'}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (tenantId) void loadSessions(tenantId)
+            }}
+            disabled={loadingSessions}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-50"
+            aria-label="Refresh sessions and cron jobs"
+            title="Refresh sessions and cron jobs"
+          >
+            {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </button>
         </div>
 
         {sessionsError && (
@@ -1964,50 +2524,32 @@ export default function ChatPage() {
           </p>
         )}
 
-        {/* Session list */}
-        <div className="mt-2 max-h-[56svh] space-y-0.5 overflow-y-auto px-2 pb-2 [scrollbar-width:thin] [scrollbar-color:hsl(var(--border)/0.78)_transparent] [-ms-overflow-style:auto] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--border)/0.78)] lg:min-h-0 lg:flex-1 lg:max-h-none">
-          {chatSessions.map((session) => {
-            const sessionLabel = formatSessionLabel(session)
-            const isActive = activeSessionKey === session.key
-            return (
-              <button
-                key={session.key}
-                type="button"
-                onClick={() => selectSession(session.key)}
-                className={cn(
-                  'group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-foreground'
-                    : 'text-foreground/80 hover:bg-muted/40',
-                )}
-                aria-label={`Open ${sessionLabel}`}
-              >
-                <Circle className={cn(
-                  'h-1.5 w-1.5 shrink-0 fill-current',
-                  isActive ? 'text-primary' : 'text-transparent',
-                )} />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{sessionLabel}</span>
-                <span
-                  role="button"
-                  tabIndex={-1}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void copySessionKey(session.key)
-                  }}
-                  className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground group-hover:inline-flex"
-                  aria-label={`Copy session ID for ${sessionLabel}`}
-                  title="Copy session ID"
-                >
-                  {copiedSessionKey === session.key ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+        {/* Session list(s) */}
+        {hasCronSessions ? (
+          <div className="mt-2 grid gap-2 px-2 pb-2 lg:min-h-0 lg:flex-1 lg:grid-rows-2">
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 lg:min-h-0">
+              <div className="border-b border-border/60 px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</p>
+              </div>
+              <div className={cn(sidebarListClassName, 'max-h-[24svh] p-1.5 lg:min-h-0 lg:flex-1 lg:max-h-none')}>
+                {renderSidebarSessionRows(regularChatSessions, 'No direct sessions yet.')}
+              </div>
+            </div>
+
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border/60 bg-card/35 lg:min-h-0">
+              <div className="border-b border-border/60 px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cron Jobs</p>
+              </div>
+              <div className={cn(sidebarListClassName, 'max-h-[24svh] p-1.5 lg:min-h-0 lg:flex-1 lg:max-h-none')}>
+                {renderSidebarSessionRows(cronChatSessions, 'No cron jobs yet.')}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={cn(sidebarListClassName, 'mt-2 max-h-[56svh] px-2 pb-2 lg:min-h-0 lg:flex-1 lg:max-h-none')}>
+            {renderSidebarSessionRows(regularChatSessions, 'No sessions yet.')}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -2021,6 +2563,19 @@ export default function ChatPage() {
   })
   const transientSendNotice = getTransientSendNotice(sendError)
   const assistantProgressStatus = formatAssistantProgressStatus(assistantWaitSeconds)
+  const liveWhatsApp = useMemo(() => extractWhatsAppLiveIdentity(channelStatusSnapshot), [channelStatusSnapshot])
+  const liveTelegram = useMemo(() => extractTelegramLiveIdentity(channelStatusSnapshot), [channelStatusSnapshot])
+  const liveWhatsAppDetail = useMemo(() => shortenChannelDetail(liveWhatsApp.detail), [liveWhatsApp.detail])
+  const liveTelegramDetail = useMemo(() => shortenChannelDetail(liveTelegram.detail), [liveTelegram.detail])
+  const showComposerTemplates = input.trim().length === 0
+  const hasConnectedMessagingChannel = liveWhatsApp.status === 'connected' || liveTelegram.status === 'connected'
+  const hasChannelSetupInProgress = liveWhatsApp.status !== 'off' || liveTelegram.status !== 'off'
+  const shouldShowTemplateSetupNudge =
+    showComposerTemplates && channelStatusSnapshot !== null && !hasConnectedMessagingChannel
+  const hasMoreComposerTemplates = COMPOSER_PROMPT_TEMPLATES.length > COMPOSER_TEMPLATE_COLLAPSED_COUNT
+  const visibleComposerTemplates = showAllComposerTemplates
+    ? COMPOSER_PROMPT_TEMPLATES
+    : COMPOSER_PROMPT_TEMPLATES.slice(0, COMPOSER_TEMPLATE_COLLAPSED_COUNT)
 
   // ─── Loading state ─────────────────────────────────────────────────
 
@@ -2097,17 +2652,30 @@ export default function ChatPage() {
         <header className="sticky top-0 z-40 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/75">
           <div className="flex w-full items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="min-w-0 flex flex-1 items-center gap-2">
-              {!showSessionsSidebar ? (
-                <button
-                  type="button"
-                  onClick={() => setShowSessionsSidebar(true)}
-                  className="hidden h-9 w-9 items-center justify-center rounded-md border border-border/70 bg-card text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:inline-flex"
-                  aria-label="Expand sessions sidebar"
-                  title="Expand sessions sidebar"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              ) : null}
+              <Toggle
+                pressed={showSessionsSidebar}
+                onPressedChange={setShowSessionsSidebar}
+                variant="outline"
+                size="sm"
+                className="hidden h-9 w-9 rounded-md border-border/70 bg-card p-0 text-muted-foreground transition-all duration-200 ease-out hover:bg-muted/40 hover:text-foreground data-[state=on]:bg-card data-[state=on]:text-muted-foreground data-[state=on]:hover:bg-muted/40 data-[state=on]:hover:text-foreground motion-reduce:transition-none lg:inline-flex"
+                aria-label={showSessionsSidebar ? 'Collapse sessions sidebar' : 'Expand sessions sidebar'}
+                title={showSessionsSidebar ? 'Collapse sessions sidebar' : 'Expand sessions sidebar'}
+              >
+                <span className="relative h-4 w-4">
+                  <PanelLeftClose
+                    className={cn(
+                      'absolute inset-0 h-4 w-4 transition-all duration-200 ease-out motion-reduce:transition-none',
+                      showSessionsSidebar ? 'rotate-0 scale-100 opacity-100' : '-rotate-12 scale-75 opacity-0',
+                    )}
+                  />
+                  <PanelLeftOpen
+                    className={cn(
+                      'absolute inset-0 h-4 w-4 transition-all duration-200 ease-out motion-reduce:transition-none',
+                      showSessionsSidebar ? 'rotate-12 scale-75 opacity-0' : 'rotate-0 scale-100 opacity-100',
+                    )}
+                  />
+                </span>
+              </Toggle>
               <span className="inline-flex h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-card p-0.5 sm:h-10 sm:w-10">
                 <Image
                   src="/logo.png"
@@ -2117,7 +2685,27 @@ export default function ChatPage() {
                   className="h-full w-full object-contain"
                 />
               </span>
-              <p className="truncate text-sm font-medium text-foreground sm:text-base">Agent Main</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground sm:text-base">Agent Main</p>
+                {channelStatusSnapshot ? (
+                  <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                    <Link
+                      href="/dashboard/channels"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-full"
+                      title="Open channel settings"
+                    >
+                      <ChannelHealthPill label="WA" status={liveWhatsApp.status} detail={liveWhatsAppDetail} />
+                    </Link>
+                    <Link
+                      href="/dashboard/channels"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-full"
+                      title="Open channel settings"
+                    >
+                      <ChannelHealthPill label="TG" status={liveTelegram.status} detail={liveTelegramDetail} />
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
@@ -2180,14 +2768,29 @@ export default function ChatPage() {
         </header>
 
         <main className="flex-1 px-4 pb-40 pt-4 sm:px-6 sm:pt-5">
-          <div className={cn('grid w-full gap-6', showSessionsSidebar ? 'lg:grid-cols-[260px_minmax(0,1fr)]' : 'lg:grid-cols-1')}>
-            {showSessionsSidebar ? (
-              <aside className="hidden lg:fixed lg:left-6 lg:top-20 lg:bottom-20 lg:z-30 lg:block lg:w-[260px]">
+          <div
+            className={cn(
+              'relative w-full transition-[padding-left] duration-300 ease-out motion-reduce:transition-none',
+              showSessionsSidebar ? 'lg:pl-[284px]' : 'lg:pl-0',
+            )}
+          >
+            <aside
+              className={cn(
+                'pointer-events-none hidden lg:fixed lg:left-6 lg:top-20 lg:bottom-20 lg:z-30 lg:block lg:w-[260px] lg:transition-all lg:duration-300 lg:ease-out lg:motion-reduce:transition-none',
+                showSessionsSidebar ? 'lg:translate-x-0 lg:opacity-100 lg:pointer-events-auto' : 'lg:-translate-x-6 lg:opacity-0',
+              )}
+            >
+              <div
+                className={cn(
+                  'h-full transition-transform duration-300 ease-out motion-reduce:transition-none',
+                  showSessionsSidebar ? 'scale-100' : 'scale-[0.985]',
+                )}
+              >
                 {conversationsSidebar}
-              </aside>
-            ) : null}
+              </div>
+            </aside>
 
-            <section className={cn('min-w-0', showSessionsSidebar && 'lg:col-start-2')}>
+            <section className="min-w-0">
               <div className="mx-auto w-full max-w-3xl space-y-7">
                 {messages.length === 0 && historyReady ? (
                   <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
@@ -2210,9 +2813,11 @@ export default function ChatPage() {
                 ) : null}
 
                 {messages.map((msg, index) => {
+                  const messageKey = msg.id ?? `${msg.timestamp}-${index}`
+
                   if (msg.role === 'system') {
                     return (
-                      <div key={`${msg.timestamp}-${index}`} className="flex w-full justify-center px-2 sm:px-3">
+                      <div key={messageKey} className="flex w-full justify-center px-2 sm:px-3">
                         <p className="max-w-md rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs text-muted-foreground">
                           {msg.content}
                         </p>
@@ -2222,8 +2827,13 @@ export default function ChatPage() {
 
                   if (msg.role === 'user') {
                     return (
-                      <div key={`${msg.timestamp}-${index}`} className="flex w-full justify-end px-2 sm:px-3">
+                      <div key={messageKey} className="flex w-full justify-end px-2 sm:px-3">
                         <div className="max-w-[74%] sm:max-w-[62%] chat-bubble-enter-user">
+                          {msg.channelId === 'whatsapp' ? (
+                            <p className="mb-1 text-right text-[11px] uppercase tracking-wide text-muted-foreground">
+                              WhatsApp
+                            </p>
+                          ) : null}
                           <article className="rounded-[18px] rounded-br-none border border-[hsl(var(--foreground)/0.14)] bg-[hsl(var(--foreground)/0.09)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground shadow-[0_9px_22px_-16px_rgba(0,0,0,0.35)] sm:text-[13px]">
                             <p className="whitespace-pre-wrap">{msg.content}</p>
                           </article>
@@ -2233,8 +2843,13 @@ export default function ChatPage() {
                   }
 
                   return (
-                    <div key={`${msg.timestamp}-${index}`} className="flex w-full justify-start px-2 sm:px-3">
+                    <div key={messageKey} className="flex w-full justify-start px-2 sm:px-3">
                       <div className="w-full max-w-[88%] sm:max-w-[78%] chat-bubble-enter-assistant">
+                        {msg.channelId === 'whatsapp' ? (
+                          <p className="mb-1 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                            WhatsApp
+                          </p>
+                        ) : null}
                         <article className="w-full px-1 py-0.5 text-[14px] leading-7 text-foreground sm:text-[15px]">
                           <MarkdownMessage content={msg.content} />
                         </article>
@@ -2280,8 +2895,12 @@ export default function ChatPage() {
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-20 bg-gradient-to-t from-background via-background/90 to-transparent" />
       <div className="fixed inset-x-0 bottom-0 z-30 pb-4 sm:pb-6">
         <div className="w-full px-4 sm:px-6">
-          <div className={cn('grid', showSessionsSidebar ? 'lg:grid-cols-[260px_minmax(0,1fr)]' : 'lg:grid-cols-1')}>
-            {showSessionsSidebar ? <div className="hidden lg:block" /> : null}
+          <div
+            className={cn(
+              'transition-[padding-left] duration-300 ease-out motion-reduce:transition-none',
+              showSessionsSidebar ? 'lg:pl-[284px]' : 'lg:pl-0',
+            )}
+          >
             <div className="w-full px-0 sm:px-2">
               <div className="relative mx-auto w-full max-w-3xl">
                 {/* Scroll to bottom FAB */}
@@ -2347,6 +2966,73 @@ export default function ChatPage() {
                     </Button>
                   </div>
                 </div>
+                {shouldShowTemplateSetupNudge ? (
+                  <div className="pointer-events-auto mt-2 px-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex rounded-full border border-border/75 bg-card/95 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm">
+                        {hasChannelSetupInProgress
+                          ? 'Finish pairing to deliver scheduled tasks.'
+                          : 'Recurring tasks deliver through connected channels.'}
+                      </span>
+                      <Link
+                        href="/dashboard/channels"
+                        className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+                      >
+                        {hasChannelSetupInProgress ? 'Finish setup' : 'Connect channel'}
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
+                {showComposerTemplates ? (
+                  <div className="pointer-events-auto mt-2 px-1">
+                    <div
+                      ref={templateChipsScrollerRef}
+                      onPointerDown={handleTemplateChipsPointerDown}
+                      onPointerMove={handleTemplateChipsPointerMove}
+                      onPointerUp={handleTemplateChipsPointerEnd}
+                      onPointerCancel={handleTemplateChipsPointerEnd}
+                      className={cn(
+                        'flex items-center gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                        showAllComposerTemplates && 'touch-pan-x select-none cursor-grab active:cursor-grabbing',
+                      )}
+                    >
+                      {visibleComposerTemplates.map((template) => {
+                        return (
+                          <button
+                            key={template.id}
+                            type="button"
+                            onClick={(event) => {
+                              if (Date.now() < templateChipsIgnoreClickUntilRef.current) {
+                                event.preventDefault()
+                                return
+                              }
+                              applyComposerTemplate(template.prompt)
+                            }}
+                            className="shrink-0 rounded-full border border-border/75 bg-card/95 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/35 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            title={template.prompt}
+                          >
+                            {template.label}
+                          </button>
+                        )
+                      })}
+                      {hasMoreComposerTemplates ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            if (Date.now() < templateChipsIgnoreClickUntilRef.current) {
+                              event.preventDefault()
+                              return
+                            }
+                            setShowAllComposerTemplates((current) => !current)
+                          }}
+                          className="shrink-0 rounded-full border border-border/75 bg-card/95 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        >
+                          {showAllComposerTemplates ? 'Fewer' : 'More'}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

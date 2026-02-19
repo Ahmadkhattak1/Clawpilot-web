@@ -20,39 +20,25 @@ export function SocialProof() {
   const [scriptReady, setScriptReady] = useState(false)
   const tweets = useMemo(
     () => [
-      { url: "https://x.com/blakeurmos/status/2018880632370192763", handle: "@blakeurmos" },
-      { url: "https://x.com/theguti/status/2015116359458336872", handle: "@theguti" },
-      { url: "https://x.com/Thomas_jebarsan/status/2017529705931681795", handle: "@Thomas_jebarsan" },
-      { url: "https://x.com/cailynyongyong/status/2015974075215314976", handle: "@cailynyongyong" },
-      { url: "https://x.com/Mach_500/status/2018103568130089009", handle: "@Mach_500" },
-      { url: "https://x.com/ayushtweetshere/status/2018322592810287572", handle: "@ayushtweetshere" },
-      { url: "https://x.com/bobtabor/status/2015148501332562005", handle: "@bobtabor" },
-      { url: "https://x.com/corpojozef/status/2017482546976854093", handle: "@corpojozef" },
-      { url: "https://x.com/kevu_sol/status/2018556250355577038", handle: "@kevu_sol" },
-      { url: "https://x.com/miratisu_ps/status/2017961097513611645", handle: "@miratisu_ps" },
-      { url: "https://x.com/emigal/status/2018089526124486973", handle: "@emigal" },
-      { url: "https://x.com/kyrvag/status/2017983811577880753", handle: "@kyrvag" },
-      { url: "https://x.com/pbteja1998/status/2017495026230775832", handle: "@pbteja1998" },
-      { url: "https://x.com/tengyanAI/status/2019168098415440059", handle: "@tengyanAI" },
-      { url: "https://x.com/GreatUGB/status/2019074825449599349", handle: "@GreatUGB" },
-      { url: "https://x.com/aleph_im/status/2018986621043872013", handle: "@aleph_im" },
-      { url: "https://x.com/tolibear_/status/2019475860605010221", handle: "@tolibear_" },
-      { url: "https://x.com/jcdenton/status/2017547717384503706", handle: "@jcdenton" },
-      { url: "https://x.com/HelloBenWhite/status/2019466934740206030", handle: "@HelloBenWhite" },
-      { url: "https://x.com/AIBuzzNews/status/2019448468146692498", handle: "@AIBuzzNews" },
+      { url: "https://x.com/therno/status/2014216984267780431", handle: "@therno" },
       { url: "https://x.com/danpeguine/status/2014760164113477700", handle: "@danpeguine" },
+      { url: "https://x.com/nateliason/status/2013725082850414592", handle: "@nateliason" },
+      { url: "https://x.com/markjaquith/status/2010430366944055433", handle: "@markjaquith" },
+      { url: "https://x.com/AryehDubois/status/2011742378655432791", handle: "@AryehDubois" },
+      { url: "https://x.com/jonahships_/status/2010605025844723765", handle: "@jonahships_" },
+      { url: "https://x.com/nickvasiles/status/2014790519529095447", handle: "@nickvasiles" },
+      { url: "https://x.com/nathanclark_/status/2014647048612773912", handle: "@nathanclark_" },
+      { url: "https://x.com/lycfyi/status/2014513697557758002", handle: "@lycfyi" },
+      { url: "https://x.com/davemorin/status/2013723700668096605", handle: "@davemorin" },
+      { url: "https://x.com/cnakazawa/status/2014145277465432519", handle: "@cnakazawa" },
+      { url: "https://x.com/christinetyip/status/2010776377931575569", handle: "@christinetyip" },
+      { url: "https://x.com/jdrhyne/status/2010155191731950036", handle: "@jdrhyne" },
+      { url: "https://x.com/AlbertMoral/status/2010288787885064227", handle: "@AlbertMoral" },
+      { url: "https://x.com/jakubkrcmar/status/2011186102367814135", handle: "@jakubkrcmar" },
+      { url: "https://x.com/darrwalk/status/2010426677730660603", handle: "@darrwalk" },
+      { url: "https://x.com/KrauseFx/status/2008531076487246176", handle: "@KrauseFx" },
+      { url: "https://x.com/Hormold/status/2011133394764382583", handle: "@Hormold" },
       { url: "https://x.com/KKaWSB/status/2015445691532001624", handle: "@KKaWSB" },
-      { url: "https://x.com/Italianclownz/status/2019197499366600846", handle: "@Italianclownz" },
-      { url: "https://x.com/SethiPoW_Asia/status/2019320191239573862", handle: "@SethiPoW_Asia" },
-      { url: "https://x.com/NicolasZu/status/2015644177602679240", handle: "@NicolasZu" },
-      { url: "https://x.com/davidtab/status/2018168237557416234", handle: "@davidtab" },
-      { url: "https://x.com/convex/status/2019470415991644634", handle: "@convex" },
-      { url: "https://x.com/davemorin/status/2019293290617794721", handle: "@davemorin" },
-      { url: "https://x.com/yuri_namikawa/status/2019281013055320526", handle: "@yuri_namikawa" },
-      { url: "https://x.com/kjoh94/status/2018291103217443000", handle: "@kjoh94" },
-      { url: "https://x.com/dashwizzle/status/2019015619920703853", handle: "@dashwizzle" },
-      { url: "https://x.com/alexbuilds91/status/2018594395529056746", handle: "@alexbuilds91" },
-      { url: "https://x.com/Muzzy5150/status/2019387356944760956", handle: "@Muzzy5150" },
     ],
     []
   )
@@ -100,10 +86,10 @@ export function SocialProof() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="type-h2 mb-4">
-            What people are saying about OpenClaw
+            People are already running serious work with OpenClaw
           </h2>
-          <p className="type-body">
-            Real posts from the community, linked to the original source.
+          <p className="type-body mx-auto max-w-2xl">
+            Real posts. Linked to source. Fast to scan.
           </p>
         </div>
 

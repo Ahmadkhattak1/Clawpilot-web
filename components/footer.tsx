@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 
 export function Footer() {
@@ -7,10 +8,12 @@ export function Footer() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-md overflow-hidden flex items-center justify-center">
-            <img
+            <Image
               src="/logo.png"
               alt="ClawPilot Logo"
-              className="w-full h-full object-contain"
+              width={32}
+              height={32}
+              className="h-full w-full object-contain"
             />
           </div>
           <span className="type-brand ml-1">ClawPilot</span>
@@ -43,9 +46,18 @@ export function Footer() {
         </div>
 
         {/* Copyright */}
-        <p className="type-nav text-muted-foreground">
-          Hosted with ClawPilot
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="type-nav text-muted-foreground">
+            Hosted with ClawPilot
+          </p>
+          <Image
+            src="/waving.svg"
+            alt="Waving lobster mascot"
+            width={1024}
+            height={1024}
+            className="-translate-y-1 h-11 w-11 object-contain"
+          />
+        </div>
       </div>
     </footer>
   )

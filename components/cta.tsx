@@ -1,17 +1,44 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CheckCircle2 } from "lucide-react"
+import Image from "next/image"
+import { CheckCircle2, Loader2 } from "lucide-react"
+import { buildAuthCallbackUrl, getSupabaseAuthClient } from "@/lib/supabase-auth"
 
 const controlPoints = [
-  "You approve what it can connect to",
-  "You can require confirmation for sensitive actions",
-  "You can review what happened when",
+  "Approve sensitive connections once.",
+  "Require confirmation for risky actions.",
+  "Review what happened in one timeline.",
 ]
 
 export function CTA() {
   const [visible, setVisible] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [authError, setAuthError] = useState("")
   const sectionRef = useRef<HTMLElement>(null)
+
+  const onGoogleSignIn = async () => {
+    if (isGoogleLoading) return
+
+    setAuthError("")
+    setIsGoogleLoading(true)
+    try {
+      const supabase = getSupabaseAuthClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildAuthCallbackUrl("/dashboard"),
+        },
+      })
+
+      if (error) {
+        throw error
+      }
+    } catch {
+      setAuthError("Google sign-in is temporarily unavailable. Please try again.")
+      setIsGoogleLoading(false)
+    }
+  }
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -39,10 +66,10 @@ export function CTA() {
           }`}
       >
         <h2 className="type-h2 mb-4">
-          You stay in control
+          Powerful agent. You stay in control.
         </h2>
         <p className="type-body mb-6">
-          This is an assistant that can take actions, so control matters:
+          Fast automation with clear guardrails.
         </p>
 
         <ul className="space-y-3">
@@ -53,6 +80,33 @@ export function CTA() {
             </li>
           ))}
         </ul>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onGoogleSignIn}
+            disabled={isGoogleLoading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isGoogleLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Image src="/google.svg" alt="" aria-hidden width={16} height={16} className="h-4 w-4" />
+            )}
+            Sign in with Google
+          </button>
+          <a
+            href="https://openclaw.ai/integrations"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-border/70 bg-background px-6 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            See integrations
+          </a>
+        </div>
+        {authError ? (
+          <p className="mt-3 text-sm text-destructive">{authError}</p>
+        ) : null}
       </div>
     </section>
   )

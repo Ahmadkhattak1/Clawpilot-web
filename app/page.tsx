@@ -1,6 +1,7 @@
 import { Header } from "@/components/header"
 import { Hero } from "@/components/hero"
 import { SimpleIdea } from "@/components/simple-idea"
+import { SocialProof } from "@/components/social-proof"
 import { Agents } from "@/components/agents"
 import { Features } from "@/components/features"
 import { HowItWorks } from "@/components/how-it-works"
@@ -18,6 +19,7 @@ export default function Home() {
       <Header />
       <Hero />
       <SimpleIdea />
+      <SocialProof />
       <Agents />
       <MultiOrbitSemiCircle />
       <Features />

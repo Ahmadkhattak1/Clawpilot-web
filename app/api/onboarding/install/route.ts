@@ -40,6 +40,17 @@ interface BackendRequestOptions {
   body?: unknown
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
 async function backendRequest<T>({
   path,
   method = 'GET',
@@ -163,6 +174,7 @@ export async function POST(request: Request) {
       method: 'POST',
       headers: {
         'x-tenant-id': body.tenantId,
+        'x-internal-api-token': internalToken,
       },
       body: {
         desiredState: 'RUNNING',
@@ -171,6 +183,18 @@ export async function POST(request: Request) {
     })
 
     if (daemonResponse.status >= 400) {
+      const backendError = readString(readRecord(daemonResponse.data)?.error)
+      if (daemonResponse.status === 403 && backendError === 'TENANT_TERMINATED') {
+        return NextResponse.json(
+          {
+            error: 'UPGRADE_REQUIRED',
+            message: 'Your trial has ended. Upgrade to deploy your managed OpenClaw instance.',
+            backend: daemonResponse.data,
+          },
+          { status: 403 },
+        )
+      }
+
       return NextResponse.json(
         {
           error: 'DAEMON_PROVISION_FAILED',
@@ -199,6 +223,7 @@ export async function POST(request: Request) {
       method: 'GET',
       headers: {
         'x-tenant-id': body.tenantId,
+        'x-internal-api-token': internalToken,
       },
     })
 
@@ -207,6 +232,7 @@ export async function POST(request: Request) {
       method: 'GET',
       headers: {
         'x-tenant-id': body.tenantId,
+        'x-internal-api-token': internalToken,
       },
     })
 

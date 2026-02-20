@@ -1,3 +1,5 @@
+import { buildTenantAuthHeaders } from '@/lib/backend-auth'
+
 export interface TenantDaemonStatus {
   daemon?: {
     runtimeMode?: string
@@ -32,8 +34,9 @@ export async function fetchTenantDaemonStatus(tenantId: string): Promise<TenantD
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
 
   try {
+    const headers = await buildTenantAuthHeaders(tenantId)
     const response = await fetch(`${backendUrl}/api/v1/daemons/${tenantId}/status`, {
-      headers: { 'x-tenant-id': tenantId },
+      headers,
     })
 
     if (!response.ok) return null

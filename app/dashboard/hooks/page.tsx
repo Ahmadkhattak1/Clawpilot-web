@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { SetupStepper } from '@/components/ui/setup-stepper'
+import { buildTenantAuthHeaders } from '@/lib/backend-auth'
 import {
   MODEL_PROVIDER_SETUP_STORAGE_KEY,
   type ProviderSetupRecord,
@@ -88,6 +89,15 @@ function readErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+function isRuntimeGatewayStartingError(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return (
+    normalized.includes('gateway_starting') ||
+    normalized.includes('still bootstrapping') ||
+    normalized.includes('runtime gateway is not reachable yet')
+  )
+}
+
 const DEPLOY_STAGE_LABELS = [
   'bootstrap runtime',
   'install dependencies',
@@ -95,6 +105,92 @@ const DEPLOY_STAGE_LABELS = [
   'hydrate skills',
   'final health check',
 ] as const
+const DEFAULT_BACKEND_URL = 'http://localhost:4000'
+const PAYWALL_MONTHLY_PRICE_USD = 25
+const PAYWALL_YEARLY_PRICE_USD = 240
+
+type UpgradePlan = 'monthly' | 'yearly'
+const USD_NO_CENTS = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
+function formatUsd(value: number): string {
+  return USD_NO_CENTS.format(value)
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function toIsoTimestampMs(value: unknown): number | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null
+  }
+
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+
+  return parsed
+}
+
+const OAUTH_EXPIRY_LOCAL_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZoneName: 'short',
+})
+
+const OAUTH_EXPIRY_UTC_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZone: 'UTC',
+  timeZoneName: 'short',
+})
+
+function formatOAuthExpiryLabel(expiresAt: string): string {
+  const expiresAtMs = Date.parse(expiresAt)
+  if (!Number.isFinite(expiresAtMs)) {
+    return expiresAt
+  }
+
+  const remainingMs = expiresAtMs - Date.now()
+  const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const remainingMinutes = Math.floor(remainingSeconds / 60)
+  const secondsPart = remainingSeconds % 60
+  const remainingLabel = remainingMs > 0
+    ? `in ${remainingMinutes}m ${secondsPart}s`
+    : 'expired'
+
+  const date = new Date(expiresAtMs)
+  const localLabel = OAUTH_EXPIRY_LOCAL_FORMATTER.format(date)
+  const utcLabel = OAUTH_EXPIRY_UTC_FORMATTER.format(date)
+  return `${remainingLabel} · ${localLabel} (${utcLabel})`
+}
 
 interface TerminalLine {
   id: string
@@ -246,6 +342,12 @@ export default function HooksPage() {
   const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
   const [oauthCallback, setOauthCallback] = useState('')
   const [oauthSubmitting, setOauthSubmitting] = useState(false)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
+  const [upgradeCheckoutLoading, setUpgradeCheckoutLoading] = useState(false)
+  const [postCheckoutSuccess, setPostCheckoutSuccess] = useState(false)
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
+  const [checkoutSessionId, setCheckoutSessionId] = useState('')
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -328,17 +430,24 @@ export default function HooksPage() {
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
   const requiresPostInstallOpenAIOAuth = isOpenAIOAuthSetupPending(selectedModelProviderId, providerSetup)
+  const oauthSessionReady = Boolean(oauthSessionId && oauthAuthUrl)
+  const waitingForRuntimeBeforeOpenAIOAuth =
+    requiresPostInstallOpenAIOAuth &&
+    hasDeployStarted &&
+    !submitting &&
+    !showConfetti &&
+    !oauthSessionReady
   const waitingForPostInstallOpenAIOAuth =
     requiresPostInstallOpenAIOAuth &&
     hasDeployStarted &&
     !submitting &&
     !showConfetti &&
-    deployStageIndex >= DEPLOY_STAGE_LABELS.length
+    oauthSessionReady
 
   useEffect(() => {
-    if (submitting || showConfetti || waitingForPostInstallOpenAIOAuth) return
+    if (submitting || showConfetti || waitingForPostInstallOpenAIOAuth || waitingForRuntimeBeforeOpenAIOAuth) return
     setDeployStageIndex(0)
-  }, [showConfetti, submitting, waitingForPostInstallOpenAIOAuth])
+  }, [showConfetti, submitting, waitingForPostInstallOpenAIOAuth, waitingForRuntimeBeforeOpenAIOAuth])
 
   useEffect(() => {
     if (!submitting) return
@@ -357,6 +466,237 @@ export default function HooksPage() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const checkoutState = new URLSearchParams(window.location.search).get('checkout')
+    const successSessionId = new URLSearchParams(window.location.search).get('session_id') ?? ''
+    if (checkoutState === 'success') {
+      setPostCheckoutSuccess(true)
+      setCheckoutSessionId(successSessionId.trim())
+      setUpgradeRequired(false)
+      setUpgradeModalOpen(false)
+      setStatus('Finalizing payment...')
+      setError('')
+    } else if (checkoutState === 'cancel') {
+      setPostCheckoutSuccess(false)
+      setCheckoutSessionId('')
+      setUpgradeRequired(true)
+      setUpgradeModalOpen(true)
+      setStatus('')
+      setError('Checkout canceled. Upgrade to deploy.')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!postCheckoutSuccess || !tenantId || !checkoutSessionId) {
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      setStatus('Finalizing payment...')
+      const upgraded = await confirmStripeCheckoutSession(checkoutSessionId)
+      if (cancelled) {
+        return
+      }
+
+      if (upgraded) {
+        setUpgradeRequired(false)
+        setUpgradeModalOpen(false)
+        setPostCheckoutSuccess(false)
+        setStatus('Payment received. You can deploy now.')
+        setError('')
+
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href)
+          url.searchParams.delete('checkout')
+          url.searchParams.delete('session_id')
+          window.history.replaceState({}, '', url.toString())
+        }
+        return
+      }
+
+      setUpgradeRequired(true)
+      setUpgradeModalOpen(true)
+      setStatus('')
+      setError('Payment is processing. Try again in a few seconds.')
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [checkoutSessionId, postCheckoutSuccess, tenantId])
+
+  async function ensureDeploymentAllowedBySubscription(): Promise<boolean> {
+    if (!tenantId) {
+      return false
+    }
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const attempts = postCheckoutSuccess ? 6 : 1
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const headers = await buildTenantAuthHeaders(tenantId)
+        const response = await fetch(`${backendUrl}/api/v1/subscription`, {
+          method: 'GET',
+          headers,
+        })
+
+        const payloadText = await response.text()
+        let payload: Record<string, unknown> | null = null
+        try {
+          payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+        } catch {
+          payload = null
+        }
+
+        const plan = readString(payload?.plan)
+        const isPaidPlan =
+          payload?.isPaidPlan === true || plan === 'PRO_MONTHLY' || plan === 'PRO_YEARLY'
+        if (isPaidPlan) {
+          setUpgradeRequired(false)
+          setPostCheckoutSuccess(false)
+          return true
+        }
+
+        const isTerminated = response.status === 403 && readString(payload?.error) === 'TENANT_TERMINATED'
+        if (!isTerminated && (!response.ok || !payload)) {
+          // Do not hard-block deploy if entitlement probe fails unexpectedly.
+          return true
+        }
+
+        const trialEndsAtMs = toIsoTimestampMs(
+          readRecord(payload?.paywall)?.trialEndsAt ?? payload?.trialEndsAt ?? null,
+        )
+        const state = readString(payload?.state)
+        const nowMs = Date.now()
+        const trialExpired = state === 'TERMINATED' || isTerminated || (trialEndsAtMs !== null && trialEndsAtMs <= nowMs)
+
+        if (!trialExpired) {
+          setUpgradeRequired(false)
+          return true
+        }
+
+        if (attempt + 1 < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 + attempt * 500))
+          continue
+        }
+
+        setUpgradeRequired(true)
+        setError('Your trial ended. Upgrade to deploy.')
+        return false
+      } catch {
+        // If this check fails, let the server-side deploy endpoint enforce the final guard.
+        return true
+      }
+    }
+
+    return true
+  }
+
+  async function startUpgradeCheckout(plan: UpgradePlan = selectedUpgradePlan) {
+    if (!tenantId) {
+      setError('Session error.')
+      return
+    }
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const successUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/dashboard/hooks?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+        : undefined
+    const cancelUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/dashboard/hooks?checkout=cancel`
+        : undefined
+
+    setUpgradeCheckoutLoading(true)
+    setError('')
+    setStatus('')
+
+    try {
+      const headers = await buildTenantAuthHeaders(tenantId, {
+        'content-type': 'application/json',
+      })
+
+      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          plan,
+          applyDiscount: false,
+          successUrl,
+          cancelUrl,
+          customerEmail: activeSession?.user.email ?? undefined,
+        }),
+      })
+
+      const payloadText = await response.text()
+      let payload: Record<string, unknown> | null = null
+      try {
+        payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        const message = readString(payload?.message) ?? 'Could not start checkout.'
+        throw new Error(message)
+      }
+
+      const checkoutUrl = readString(payload?.url)
+      if (!checkoutUrl) {
+        throw new Error('Checkout session was created without a redirect URL.')
+      }
+
+      window.location.assign(checkoutUrl)
+    } catch (checkoutError) {
+      setError(readErrorMessage(checkoutError, 'Could not start checkout.'))
+      setUpgradeCheckoutLoading(false)
+    }
+  }
+
+  async function confirmStripeCheckoutSession(sessionId: string): Promise<boolean> {
+    if (!tenantId || !sessionId) {
+      return false
+    }
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    try {
+      const headers = await buildTenantAuthHeaders(tenantId, {
+        'content-type': 'application/json',
+      })
+
+      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/confirm`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          sessionId,
+        }),
+      })
+
+      const payloadText = await response.text()
+      let payload: Record<string, unknown> | null = null
+      try {
+        payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        return false
+      }
+
+      return payload?.upgraded === true
+    } catch {
+      return false
+    }
+  }
 
   function validateBeforeSubmit() {
     if (!selectedModelProviderId || !selectedModelId || !providerSetup) {
@@ -420,10 +760,10 @@ export default function HooksPage() {
     }, 1200)
   }
 
-  async function startOpenAIOAuthSession(options?: { auto?: boolean }) {
+  async function startOpenAIOAuthSession(options?: { auto?: boolean }): Promise<boolean> {
     if (!tenantId) {
       setError('Session error.')
-      return
+      return false
     }
 
     setOauthSubmitting(true)
@@ -441,11 +781,23 @@ export default function HooksPage() {
           ? 'Deployment complete. Open the OAuth URL, sign in, then paste the localhost callback URL below.'
           : 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.',
       )
+      return true
     } catch (oauthError) {
-      setError(readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.'))
-      if (options?.auto) {
-        setStatus('Deployment complete. Generate an OAuth URL to finish setup.')
+      const message = readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.')
+      if (isRuntimeGatewayStartingError(message)) {
+        setOauthSessionId('')
+        setOauthAuthUrl('')
+        setOauthExpiresAt(null)
+        setError('')
+        setStatus('Deployment complete. Finalizing runtime startup before OAuth...')
+        return false
       }
+
+      setError(message)
+      if (options?.auto) {
+        setStatus('Deployment complete. Retry OAuth preparation in a moment.')
+      }
+      return false
     } finally {
       setOauthSubmitting(false)
     }
@@ -501,6 +853,13 @@ export default function HooksPage() {
       return
     }
 
+    setStatus('Checking subscription...')
+    const deploymentAllowed = await ensureDeploymentAllowedBySubscription()
+    if (!deploymentAllowed) {
+      setStatus('')
+      return
+    }
+
     setSubmitting(true)
     setHasDeployStarted(true)
     setError('')
@@ -535,18 +894,36 @@ export default function HooksPage() {
       const payload = (await response.json()) as {
         error?: string
         message?: string
+        backend?: {
+          error?: string
+          message?: string
+        }
       }
 
       if (!response.ok) {
+        const backendError = payload.backend?.error ?? null
+        const isUpgradeRequired =
+          response.status === 403 &&
+          (payload.error === 'UPGRADE_REQUIRED' || payload.error === 'TENANT_TERMINATED' || backendError === 'TENANT_TERMINATED')
+
+        if (isUpgradeRequired) {
+          setUpgradeRequired(true)
+          setError(payload.message ?? payload.backend?.message ?? 'Your trial ended. Upgrade to deploy.')
+          setStatus('')
+          setDeployStageIndex(0)
+          return
+        }
+
         setError(payload.message ?? payload.error ?? 'Deploy failed.')
         setStatus('')
         setDeployStageIndex(0)
         return
       }
 
+      setUpgradeRequired(false)
       setDeployStageIndex(DEPLOY_STAGE_LABELS.length)
       if (requiresPostInstallOpenAIOAuth) {
-        setStatus('Deployment complete. Preparing OpenAI OAuth...')
+        setStatus('Deployment complete. Finalizing runtime startup before OAuth...')
         await startOpenAIOAuthSession({ auto: true })
         return
       }
@@ -561,6 +938,18 @@ export default function HooksPage() {
     }
   }
 
+  useEffect(() => {
+    if (!waitingForRuntimeBeforeOpenAIOAuth || oauthSubmitting || oauthSessionReady) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      void startOpenAIOAuthSession({ auto: true })
+    }, 4000)
+
+    return () => clearTimeout(timer)
+  }, [oauthSessionReady, oauthSubmitting, waitingForRuntimeBeforeOpenAIOAuth])
+
   const terminalLines = useMemo(() => {
     const checkLines: TerminalLine[] = onboardingChecks.map((check) => ({
       id: `check-${check.label}`,
@@ -569,7 +958,11 @@ export default function HooksPage() {
     }))
 
     const deployLines: TerminalLine[] = DEPLOY_STAGE_LABELS.map((label, index) => {
-      const isDone = showConfetti || waitingForPostInstallOpenAIOAuth || (submitting && index < deployStageIndex)
+      const isDone =
+        showConfetti ||
+        waitingForRuntimeBeforeOpenAIOAuth ||
+        waitingForPostInstallOpenAIOAuth ||
+        (submitting && index < deployStageIndex)
       const isActive = submitting && !showConfetti && index === deployStageIndex
       return {
         id: `deploy-${label}`,
@@ -578,7 +971,13 @@ export default function HooksPage() {
       }
     })
 
-    if (waitingForPostInstallOpenAIOAuth) {
+    if (waitingForRuntimeBeforeOpenAIOAuth) {
+      deployLines.push({
+        id: 'deploy-oauth-preparing',
+        text: '[deploy] runtime is still bootstrapping, OAuth step pending',
+        tone: 'active',
+      })
+    } else if (waitingForPostInstallOpenAIOAuth) {
       deployLines.push({
         id: 'deploy-oauth-wait',
         text: '[deploy] runtime reachable, waiting for OpenAI OAuth callback',
@@ -601,7 +1000,15 @@ export default function HooksPage() {
     }
 
     return [...checkLines, ...deployLines]
-  }, [deployStageIndex, error, onboardingChecks, showConfetti, submitting, waitingForPostInstallOpenAIOAuth])
+  }, [
+    deployStageIndex,
+    error,
+    onboardingChecks,
+    showConfetti,
+    submitting,
+    waitingForPostInstallOpenAIOAuth,
+    waitingForRuntimeBeforeOpenAIOAuth,
+  ])
 
   if (checkingSession) {
     return (
@@ -685,6 +1092,35 @@ export default function HooksPage() {
                   </div>
                 </section>
 
+                {waitingForRuntimeBeforeOpenAIOAuth ? (
+                  <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                      Preparing OpenAI OAuth
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Runtime is still starting. OAuth options will appear once gateway is ready.
+                    </p>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void startOpenAIOAuthSession()}
+                      disabled={submitting || oauthSubmitting}
+                    >
+                      {oauthSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Checking
+                        </>
+                      ) : (
+                        'Check now'
+                      )}
+                    </Button>
+                  </section>
+                ) : null}
+
                 {waitingForPostInstallOpenAIOAuth ? (
                   <section className="rounded-xl border border-border/70 bg-card/80 p-4">
                     <p className="inline-flex items-center gap-2 text-sm font-semibold">
@@ -726,7 +1162,7 @@ export default function HooksPage() {
 
                     {oauthExpiresAt ? (
                       <p className="mt-2 text-[11px] text-muted-foreground">
-                        Expires: {new Date(oauthExpiresAt).toLocaleString()}
+                        Expires: {formatOAuthExpiryLabel(oauthExpiresAt)}
                       </p>
                     ) : null}
 
@@ -766,8 +1202,12 @@ export default function HooksPage() {
               <div className="max-w-2xl flex-1 space-y-1">
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-                {waitingForPostInstallOpenAIOAuth ? (
+                {waitingForRuntimeBeforeOpenAIOAuth ? (
+                  <p className="text-xs text-muted-foreground">Waiting for runtime readiness before OAuth.</p>
+                ) : waitingForPostInstallOpenAIOAuth ? (
                   <p className="text-xs text-muted-foreground">Finish OAuth to complete onboarding.</p>
+                ) : upgradeRequired ? (
+                  <p className="text-xs text-muted-foreground">Trial ended. Upgrade to deploy a managed instance.</p>
                 ) : !allChecksComplete ? (
                   <p className="text-xs text-muted-foreground">Complete checks.</p>
                 ) : null}
@@ -775,15 +1215,32 @@ export default function HooksPage() {
 
               <Button
                 type="button"
-                onClick={completeSetup}
-                disabled={submitting || oauthSubmitting || showConfetti || waitingForPostInstallOpenAIOAuth || !allChecksComplete}
+                onClick={upgradeRequired ? () => setUpgradeModalOpen(true) : completeSetup}
+                disabled={
+                  submitting ||
+                  oauthSubmitting ||
+                  showConfetti ||
+                  waitingForRuntimeBeforeOpenAIOAuth ||
+                  waitingForPostInstallOpenAIOAuth ||
+                  !allChecksComplete ||
+                  upgradeCheckoutLoading
+                }
                 className="self-end sm:ml-auto sm:min-w-28"
               >
-                {submitting ? (
+                {upgradeCheckoutLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Redirecting
+                  </>
+                ) : submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Deploying
                   </>
+                ) : upgradeRequired ? (
+                  'Upgrade to deploy'
+                ) : waitingForRuntimeBeforeOpenAIOAuth ? (
+                  'Finalizing'
                 ) : waitingForPostInstallOpenAIOAuth ? (
                   'Awaiting OAuth'
                 ) : showConfetti ? (
@@ -799,6 +1256,96 @@ export default function HooksPage() {
           </div>
         </CardContent>
       </Card>
+
+      {upgradeModalOpen ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+          <button
+            type="button"
+            onClick={() => setUpgradeModalOpen(false)}
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full cursor-default"
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
+            <p className="text-xl font-semibold text-foreground">Upgrade to keep your OpenClaw running</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              OpenClaw is free. You pay for managed hosting and secure infrastructure.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setSelectedUpgradePlan('monthly')}
+                className={cn(
+                  'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                  selectedUpgradePlan === 'monthly'
+                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                    : 'border-border/70 bg-background/60 hover:border-border',
+                )}
+                aria-pressed={selectedUpgradePlan === 'monthly'}
+              >
+                <p
+                  className={cn(
+                    'text-xs font-medium uppercase tracking-wide',
+                    selectedUpgradePlan === 'monthly' ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                >
+                  Monthly
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_MONTHLY_PRICE_USD)}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">/mo</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedUpgradePlan('yearly')}
+                className={cn(
+                  'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                  selectedUpgradePlan === 'yearly'
+                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                    : 'border-border/70 bg-background/60 hover:border-border',
+                )}
+                aria-pressed={selectedUpgradePlan === 'yearly'}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className={cn(
+                      'text-xs font-medium uppercase tracking-wide',
+                      selectedUpgradePlan === 'yearly' ? 'text-primary' : 'text-muted-foreground',
+                    )}
+                  >
+                    Yearly
+                  </p>
+                  <span className="rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                    Save 20%
+                  </span>
+                </div>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_YEARLY_PRICE_USD)}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">/year</p>
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              Choose monthly or yearly. No discounts are applied in this flow.
+            </p>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <Button
+                onClick={() => {
+                  void startUpgradeCheckout(selectedUpgradePlan)
+                }}
+                disabled={upgradeCheckoutLoading}
+              >
+                {upgradeCheckoutLoading
+                  ? 'Redirecting...'
+                  : `Upgrade (${selectedUpgradePlan === 'yearly' ? 'Yearly' : 'Monthly'})`}
+              </Button>
+              <Button variant="outline" onClick={() => setUpgradeModalOpen(false)} disabled={upgradeCheckoutLoading}>
+                Not now
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

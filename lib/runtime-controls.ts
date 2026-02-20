@@ -1,3 +1,5 @@
+import { buildTenantAuthHeaders } from '@/lib/backend-auth'
+
 const DEFAULT_BACKEND_URL = 'http://localhost:4000'
 
 interface RuntimeEnvelope<T = unknown> {
@@ -852,13 +854,14 @@ async function runtimeRequest<T>(
 
   const backendUrl = getBackendUrl()
   const requestPromise = (async () => {
+    const headers = await buildTenantAuthHeaders(tenantId, {
+      'content-type': 'application/json',
+      ...(init.headers ?? {}),
+    })
+
     const response = await fetch(`${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}${path}`, {
       ...init,
-      headers: {
-        'content-type': 'application/json',
-        'x-tenant-id': tenantId,
-        ...(init.headers ?? {}),
-      },
+      headers,
     })
 
     let payload: unknown = null

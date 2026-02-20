@@ -9,6 +9,7 @@ import {
   Clock3,
   Circle,
   Copy,
+  ExternalLink,
   Info,
   Loader2,
   Menu,
@@ -19,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -38,7 +39,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Toggle } from '@/components/ui/toggle'
 import {
   DEFAULT_CHAT_SESSION_KEY,
-  terminateManagedDaemon,
   listRuntimeChannelEvents,
   listRuntimeChannelsStatus,
   listRuntimeChatHistory,
@@ -58,7 +58,8 @@ import {
   type PersistedRuntimeMessage,
   type PersistedRuntimeSession,
 } from '@/lib/runtime-persistence'
-import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import { getBrowserAccessToken } from '@/lib/backend-auth'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
@@ -1063,6 +1064,105 @@ function SetupProgressView({
   )
 }
 
+const ChatTimeline = memo(function ChatTimeline({
+  assistantProgressStatus,
+  historyReady,
+  isAssistantTyping,
+  messages,
+  openClawStatusLabel,
+}: {
+  assistantProgressStatus: string
+  historyReady: boolean
+  isAssistantTyping: boolean
+  messages: ChatMessage[]
+  openClawStatusLabel: string
+}) {
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-7">
+      {messages.length === 0 && historyReady ? (
+        <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
+          <span className="inline-flex h-24 w-24 overflow-hidden rounded-full border border-border/70 bg-card sm:h-28 sm:w-28">
+            <Image
+              src="/pfp.webp"
+              alt="Lobster"
+              width={112}
+              height={112}
+              className="h-full w-full object-cover"
+            />
+          </span>
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            OpenClaw is {openClawStatusLabel}.
+          </h1>
+          <p className="mt-2 max-w-md text-[13px] text-muted-foreground sm:text-sm">
+            Ask anything. Delegate the work.
+          </p>
+        </div>
+      ) : null}
+
+      {messages.map((msg, index) => {
+        const messageKey = msg.id ?? `${msg.timestamp}-${index}`
+
+        if (msg.role === 'system') {
+          return (
+            <div key={messageKey} className="flex w-full justify-center px-2 sm:px-3">
+              <p className="max-w-md rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs text-muted-foreground">
+                {msg.content}
+              </p>
+            </div>
+          )
+        }
+
+        if (msg.role === 'user') {
+          return (
+            <div key={messageKey} className="flex w-full justify-end px-2 sm:px-3">
+              <div className="max-w-[74%] sm:max-w-[62%] chat-bubble-enter-user">
+                {msg.channelId === 'whatsapp' ? (
+                  <p className="mb-1 text-right text-[11px] uppercase tracking-wide text-muted-foreground">
+                    WhatsApp
+                  </p>
+                ) : null}
+                <article className="rounded-[18px] rounded-br-none border border-[hsl(var(--foreground)/0.14)] bg-[hsl(var(--foreground)/0.09)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground shadow-[0_9px_22px_-16px_rgba(0,0,0,0.35)] sm:text-[13px]">
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </article>
+              </div>
+            </div>
+          )
+        }
+
+        return (
+          <div key={messageKey} className="flex w-full justify-start px-2 sm:px-3">
+            <div className="w-full max-w-[88%] sm:max-w-[78%] chat-bubble-enter-assistant">
+              {msg.channelId === 'whatsapp' ? (
+                <p className="mb-1 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  WhatsApp
+                </p>
+              ) : null}
+              <article className="w-full px-1 py-0.5 text-[14px] leading-7 text-foreground sm:text-[15px]">
+                <MarkdownMessage content={msg.content} />
+              </article>
+            </div>
+          </div>
+        )
+      })}
+
+      {isAssistantTyping ? (
+        <div className="flex w-full justify-start px-2 sm:px-3">
+          <div
+            className="inline-flex items-center rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5"
+            role="status"
+            aria-label={`Assistant is typing. ${assistantProgressStatus}`}
+          >
+            <Shimmer as="p" className="text-xs font-medium">
+              {assistantProgressStatus}
+            </Shimmer>
+          </div>
+        </div>
+      ) : null}
+      <div aria-hidden="true" className="h-px w-full" />
+    </div>
+  )
+})
+
 // ─── Main chat page ──────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -1109,6 +1209,7 @@ export default function ChatPage() {
   const [isHeadsUpDiscountEligible, setIsHeadsUpDiscountEligible] = useState(false)
   const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false)
   const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null)
+  const [isOpeningOpenClawUi, setIsOpeningOpenClawUi] = useState(false)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -1140,6 +1241,7 @@ export default function ChatPage() {
   const historyPollInFlightRef = useRef(false)
   const wsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsInitialConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const accessTokenRef = useRef('')
   const connectionStableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestIdRef = useRef(0)
   const hasHydratedSessionsOnConnectRef = useRef(false)
@@ -1250,16 +1352,20 @@ export default function ChatPage() {
     }
   }, [hasHydratedSidebarPreference, showSessionsSidebar])
 
-  const userMessageCount = useMemo(
-    () => messages.reduce((count, message) => (message.role === 'user' ? count + 1 : count), 0),
-    [messages],
+  const buildTenantRequestHeaders = useCallback(
+    async (
+      targetTenantId: string,
+      headers: Record<string, string> = {},
+    ): Promise<Record<string, string>> => {
+      const accessToken = await getBrowserAccessToken()
+      return {
+        ...headers,
+        'x-tenant-id': targetTenantId,
+        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+      }
+    },
+    [],
   )
-
-  useEffect(() => {
-    if (paywallStatus !== 'not-triggered') return
-    if (userMessageCount <= freeMessageCount) return
-    setFreeMessageCount(userMessageCount)
-  }, [freeMessageCount, paywallStatus, userMessageCount])
 
   const activateFrontendUpgrade = useCallback(
     async (options?: { plan?: PaywallPlan; applyDiscount?: boolean }) => {
@@ -1289,12 +1395,12 @@ export default function ChatPage() {
           : undefined
 
       try {
+        const headers = await buildTenantRequestHeaders(tenantId, {
+          'content-type': 'application/json',
+        })
         const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-tenant-id': tenantId,
-          },
+          headers,
           body: JSON.stringify({
             plan: selectedPlan,
             applyDiscount,
@@ -1332,7 +1438,7 @@ export default function ChatPage() {
         setIsCheckoutRedirecting(false)
       }
     },
-    [isCheckoutRedirecting, profileEmail, selectedPaywallPlan, tenantId],
+    [buildTenantRequestHeaders, isCheckoutRedirecting, profileEmail, selectedPaywallPlan, tenantId],
   )
 
   const applySubscriptionSnapshotToPaywall = useCallback(
@@ -1409,11 +1515,10 @@ export default function ChatPage() {
       }
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
       try {
+        const headers = await buildTenantRequestHeaders(normalizedTenantId)
         const response = await fetch(`${backendUrl}/api/v1/subscription`, {
           method: 'GET',
-          headers: {
-            'x-tenant-id': normalizedTenantId,
-          },
+          headers,
         })
 
         const payloadText = await response.text()
@@ -1440,7 +1545,7 @@ export default function ChatPage() {
         return null
       }
     },
-    [],
+    [buildTenantRequestHeaders],
   )
 
   const refreshSubscriptionEntitlement = useCallback(
@@ -1552,6 +1657,63 @@ export default function ChatPage() {
     setSendError('')
   }, [paywallCountdownEndsAtMs])
 
+  const startBackendManagedPaywallCountdown = useCallback(
+    async (options?: { showNote?: boolean; keepDiscountForHeadsUp?: boolean }) => {
+      const normalizedTenantId = tenantId.trim()
+      if (!normalizedTenantId) {
+        startPaywallCountdown(options)
+        return
+      }
+
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      try {
+        const headers = await buildTenantRequestHeaders(normalizedTenantId, {
+          'content-type': 'application/json',
+        })
+        const response = await fetch(`${backendUrl}/api/v1/subscription/paywall/start-trial`, {
+          method: 'POST',
+          headers,
+          body: '{}',
+        })
+
+        const payloadText = await response.text()
+        let payload: Record<string, unknown> | null = null
+        try {
+          payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+        } catch {
+          payload = null
+        }
+
+        if (response.ok && payload) {
+          const state = typeof payload.state === 'string' ? payload.state.trim().toUpperCase() : ''
+          if (state === 'TERMINATED') {
+            setPaywallStatus('deleted')
+            setPaywallCountdownEndsAtMs(null)
+            setPaywallRemainingMs(0)
+            setPaywallModal('deleted')
+            return
+          }
+
+          const trialEndsAtMs = toIsoTimestampMs(
+            typeof payload.trialEndsAt === 'string' ? payload.trialEndsAt : null,
+          )
+          if (trialEndsAtMs !== null && trialEndsAtMs > Date.now()) {
+            startPaywallCountdown({
+              ...options,
+              countdownEndsAtMs: trialEndsAtMs,
+            })
+            return
+          }
+        }
+      } catch {
+        // Fall through to local countdown fallback.
+      }
+
+      startPaywallCountdown(options)
+    },
+    [buildTenantRequestHeaders, startPaywallCountdown, tenantId],
+  )
+
   const closePaywallModal = useCallback(() => {
     if (paywallModal === 'initial') {
       setSelectedPaywallPlan('monthly')
@@ -1559,7 +1721,7 @@ export default function ChatPage() {
       return
     }
     if (paywallModal === 'discount') {
-      startPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
+      void startBackendManagedPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
       return
     }
     if (paywallModal === 'leave-warning') {
@@ -1572,7 +1734,7 @@ export default function ChatPage() {
       return
     }
     setPaywallModal('none')
-  }, [paywallModal, startPaywallCountdown])
+  }, [paywallModal, startBackendManagedPaywallCountdown])
 
   const handlePaywallNavigationInterception = useCallback(
     (event: React.MouseEvent<HTMLElement>, href: string) => {
@@ -2308,19 +2470,18 @@ export default function ChatPage() {
     if (paywallDeletionHandledRef.current || paywallDeletionSyncRef.current) return
 
     paywallDeletionSyncRef.current = (async () => {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
       try {
-        await terminateManagedDaemon(tenantId)
+        const headers = await buildTenantRequestHeaders(tenantId, {
+          'content-type': 'application/json',
+        })
+        await fetch(`${backendUrl}/api/v1/subscription/paywall/expire`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ force: true }),
+        })
       } catch (error) {
-        console.error('Failed to terminate daemon after trial expiry', error)
-      }
-
-      try {
-        const session = await getRecoveredSupabaseSession()
-        if (session) {
-          await markOnboardingIncomplete(session)
-        }
-      } catch (error) {
-        console.error('Failed to reset onboarding after trial expiry', error)
+        console.error('Failed to finalize trial expiry on backend', error)
       }
 
       stopPolling()
@@ -2337,7 +2498,7 @@ export default function ChatPage() {
       paywallDeletionHandledRef.current = true
       paywallDeletionSyncRef.current = null
     })
-  }, [hasLoadedPaywallState, paywallStatus, stopHistoryPolling, stopPolling, tenantId])
+  }, [buildTenantRequestHeaders, hasLoadedPaywallState, paywallStatus, stopHistoryPolling, stopPolling, tenantId])
 
   const startHistoryPolling = useCallback(
     (tid: string, sessionKey: string) => {
@@ -2418,6 +2579,10 @@ export default function ChatPage() {
       const sessionKey = preferred && !isPendingSessionKey(preferred) ? preferred : null
       if (sessionKey !== null) {
         query.set('sessionKey', sessionKey)
+      }
+      const accessToken = accessTokenRef.current.trim()
+      if (accessToken) {
+        query.set('accessToken', accessToken)
       }
       lastRequestedSessionKeyRef.current = sessionKey ?? null
       const wsUrl = backendUrl.replace(/^http/, 'ws') + `/ws/chat?${query.toString()}`
@@ -2603,6 +2768,13 @@ export default function ChatPage() {
               setSendError(errMsg || 'Upgrade to keep your OpenClaw running.')
               return
             }
+            if (errorCode === 'TENANT_SUSPENDED') {
+              if (paywallStatusRef.current !== 'deleted') {
+                setPaywallModal('later-upgrade')
+              }
+              setSendError(errMsg || 'Billing is inactive. Upgrade to continue.')
+              return
+            }
 
             if (isGatewayUnavailableError(errMsg)) {
               setSendError(toChatAlertMessage(errMsg))
@@ -2696,8 +2868,9 @@ export default function ChatPage() {
 
       const poll = async () => {
         try {
+          const headers = await buildTenantRequestHeaders(tid)
           const res = await fetch(`${backendUrl}/api/v1/daemons/${tid}/status`, {
-            headers: { 'x-tenant-id': tid },
+            headers,
           })
 
           if (!res.ok) {
@@ -2750,7 +2923,7 @@ export default function ChatPage() {
         setSetupTimedOut(true)
       }, 600000)
     },
-    [connectWebSocket, stopPolling],
+    [buildTenantRequestHeaders, connectWebSocket, stopPolling],
   )
 
   // Use a ref for router to avoid re-triggering the effect on every render
@@ -2782,6 +2955,112 @@ export default function ChatPage() {
       router.replace('/signin')
     }
   }, [isSigningOut, router])
+
+  useEffect(() => {
+    let unsubscribe = () => {}
+    try {
+      const supabase = getSupabaseAuthClient()
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        accessTokenRef.current = session?.access_token?.trim() ?? ''
+      })
+      unsubscribe = () => {
+        data.subscription.unsubscribe()
+      }
+    } catch {
+      accessTokenRef.current = ''
+    }
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  const handleOpenOpenClawUi = useCallback(async () => {
+    if (!tenantId.trim() || isOpeningOpenClawUi) {
+      return
+    }
+
+    const openedWindow = window.open('about:blank', '_blank')
+    if (!openedWindow) {
+      setSendError('Popup blocked. Allow popups to open OpenClaw in a new tab.')
+      return
+    }
+    try {
+      openedWindow.opener = null
+      openedWindow.document.title = 'Opening OpenClaw...'
+    } catch {
+      // Ignore cross-window assignment errors.
+    }
+
+    setIsOpeningOpenClawUi(true)
+    try {
+      const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
+      const accessToken = session?.access_token?.trim() ?? ''
+      if (!accessToken) {
+        if (!openedWindow.closed) {
+          openedWindow.close()
+        }
+        redirectToSignIn()
+        return
+      }
+
+      const response = await fetch('/api/openclaw/launch', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      let payload: unknown = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      const payloadRecord =
+        payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>)
+          : null
+      const launchRecord =
+        payloadRecord?.launch && typeof payloadRecord.launch === 'object' && !Array.isArray(payloadRecord.launch)
+          ? (payloadRecord.launch as Record<string, unknown>)
+          : null
+      const message =
+        typeof payloadRecord?.message === 'string' && payloadRecord.message.trim()
+          ? payloadRecord.message.trim()
+          : null
+
+      if (!response.ok) {
+        throw new Error(message ?? 'Unable to open OpenClaw right now.')
+      }
+
+      const launchUrl =
+        typeof launchRecord?.url === 'string' && launchRecord.url.trim()
+          ? launchRecord.url.trim()
+          : null
+
+      if (!launchUrl) {
+        throw new Error('Launch URL is missing. Please try again.')
+      }
+
+      if (openedWindow.closed) {
+        throw new Error('Launch tab was closed before OpenClaw could load.')
+      }
+      openedWindow.location.replace(launchUrl)
+    } catch (error) {
+      if (!openedWindow.closed) {
+        openedWindow.close()
+      }
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Unable to open OpenClaw right now.'
+      setSendError(message)
+    } finally {
+      setIsOpeningOpenClawUi(false)
+    }
+  }, [isOpeningOpenClawUi, redirectToSignIn, tenantId])
 
   useEffect(() => {
     isUnmountingRef.current = false
@@ -2821,6 +3100,7 @@ export default function ChatPage() {
 
         const tid = deriveTenantIdFromUserId(session.user.id)
         userIdRef.current = session.user.id
+        accessTokenRef.current = session.access_token?.trim() ?? ''
 
         let persistedSessions: RuntimeSessionSummary[] = []
         try {
@@ -2865,8 +3145,9 @@ export default function ChatPage() {
           // Check if instance exists and what state it's in
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
           try {
+            const headers = await buildTenantRequestHeaders(tid)
             const res = await fetch(`${backendUrl}/api/v1/daemons/${tid}/status`, {
-              headers: { 'x-tenant-id': tid },
+              headers,
             })
 
             if (res.ok) {
@@ -2904,6 +3185,7 @@ export default function ChatPage() {
       cancelled = true
       isUnmountingRef.current = true
       userIdRef.current = ''
+      accessTokenRef.current = ''
       stopPolling()
       stopHistoryPolling()
       clearConnectionStableTimer()
@@ -3092,7 +3374,6 @@ export default function ChatPage() {
   function sendMessage() {
     const trimmed = input.trim()
     if (!trimmed) return
-    const currentFreeMessageCount = Math.max(freeMessageCountRef.current, userMessageCount)
     if (isInstanceDeleted) {
       setSendError('Instance deleted. Redeploy OpenClaw or upgrade to continue.')
       setPaywallModal('deleted')
@@ -3104,11 +3385,6 @@ export default function ChatPage() {
     }
     if (paywallStatusRef.current === 'not-triggered' && !historyReady) {
       setSendError('Loading your chat... try again in a second.')
-      return
-    }
-    if (paywallStatusRef.current === 'not-triggered' && currentFreeMessageCount >= PAYWALL_FREE_MESSAGE_LIMIT) {
-      setPaywallModal('initial')
-      setSendError('Upgrade to keep your OpenClaw running.')
       return
     }
     if (paywallModal === 'initial' || paywallModal === 'discount' || paywallModal === 'later-upgrade') {
@@ -3144,13 +3420,6 @@ export default function ChatPage() {
     setMessages((prev) => dedupeAndSortMessages([...prev, userMessage]))
     persistMessage(tenantId, currentSessionKey, userMessage)
     touchSessionActivity(tenantId, currentSessionKey)
-    if (paywallStatusRef.current === 'not-triggered') {
-      const nextFreeCount = currentFreeMessageCount + 1
-      setFreeMessageCount(nextFreeCount)
-      if (nextFreeCount >= PAYWALL_FREE_MESSAGE_LIMIT) {
-        setPaywallModal('initial')
-      }
-    }
 
     const currentSession = chatSessions.find((session) => session.key === currentSessionKey)
     const currentLabel = currentSession?.label?.trim() ?? ''
@@ -3628,6 +3897,21 @@ export default function ChatPage() {
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 text-xs"
+                type="button"
+                onClick={handleOpenOpenClawUi}
+                disabled={!tenantId || isOpeningOpenClawUi}
+              >
+                {isOpeningOpenClawUi ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Open OpenClaw UI
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 text-xs"
                 onClick={kickStartPaywallTest}
               >
                 Test paywall
@@ -3725,88 +4009,13 @@ export default function ChatPage() {
             </aside>
 
             <section className="min-w-0">
-              <div className="mx-auto w-full max-w-3xl space-y-7">
-                {messages.length === 0 && historyReady ? (
-                  <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
-                    <span className="inline-flex h-24 w-24 overflow-hidden rounded-full border border-border/70 bg-card sm:h-28 sm:w-28">
-                      <Image
-                        src="/pfp.webp"
-                        alt="Lobster"
-                        width={112}
-                        height={112}
-                        className="h-full w-full object-cover"
-                      />
-                    </span>
-                    <h1 className="mt-5 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                      OpenClaw is {openClawStatusLabel}.
-                    </h1>
-                    <p className="mt-2 max-w-md text-[13px] text-muted-foreground sm:text-sm">
-                      Ask anything. Delegate the work.
-                    </p>
-                  </div>
-                ) : null}
-
-                {messages.map((msg, index) => {
-                  const messageKey = msg.id ?? `${msg.timestamp}-${index}`
-
-                  if (msg.role === 'system') {
-                    return (
-                      <div key={messageKey} className="flex w-full justify-center px-2 sm:px-3">
-                        <p className="max-w-md rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs text-muted-foreground">
-                          {msg.content}
-                        </p>
-                      </div>
-                    )
-                  }
-
-                  if (msg.role === 'user') {
-                    return (
-                      <div key={messageKey} className="flex w-full justify-end px-2 sm:px-3">
-                        <div className="max-w-[74%] sm:max-w-[62%] chat-bubble-enter-user">
-                          {msg.channelId === 'whatsapp' ? (
-                            <p className="mb-1 text-right text-[11px] uppercase tracking-wide text-muted-foreground">
-                              WhatsApp
-                            </p>
-                          ) : null}
-                          <article className="rounded-[18px] rounded-br-none border border-[hsl(var(--foreground)/0.14)] bg-[hsl(var(--foreground)/0.09)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground shadow-[0_9px_22px_-16px_rgba(0,0,0,0.35)] sm:text-[13px]">
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
-                          </article>
-                        </div>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div key={messageKey} className="flex w-full justify-start px-2 sm:px-3">
-                      <div className="w-full max-w-[88%] sm:max-w-[78%] chat-bubble-enter-assistant">
-                        {msg.channelId === 'whatsapp' ? (
-                          <p className="mb-1 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                            WhatsApp
-                          </p>
-                        ) : null}
-                        <article className="w-full px-1 py-0.5 text-[14px] leading-7 text-foreground sm:text-[15px]">
-                          <MarkdownMessage content={msg.content} />
-                        </article>
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {isAssistantTyping ? (
-                  <div className="flex w-full justify-start px-2 sm:px-3">
-                    <div
-                      className="inline-flex items-center rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5"
-                      role="status"
-                      aria-label={`Assistant is typing. ${assistantProgressStatus}`}
-                    >
-                      <Shimmer as="p" className="text-xs font-medium">
-                        {assistantProgressStatus}
-                      </Shimmer>
-                    </div>
-                  </div>
-                ) : null}
-                <div aria-hidden="true" className="h-px w-full" />
-              </div>
+              <ChatTimeline
+                assistantProgressStatus={assistantProgressStatus}
+                historyReady={historyReady}
+                isAssistantTyping={isAssistantTyping}
+                messages={messages}
+                openClawStatusLabel={openClawStatusLabel}
+              />
             </section>
           </div>
         </main>
@@ -4130,7 +4339,9 @@ export default function ChatPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => startPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })}
+                    onClick={() => {
+                      void startBackendManagedPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
+                    }}
                   >
                     No thanks, start 15-min timer
                   </Button>

@@ -82,7 +82,7 @@ export function AuthCard({ mode }: AuthCardProps) {
   const [loadingMethod, setLoadingMethod] = useState<AuthMethod | null>(null)
   const [lastUsedMethod, setLastUsedMethod] = useState<AuthMethod | null>(null)
   const nextPath = useMemo(() => {
-    if (typeof window === 'undefined') return '/dashboard'
+    if (typeof window === 'undefined') return '/chat'
     const params = new URLSearchParams(window.location.search)
     return getSafeNextPath(params.get('next'))
   }, [])

@@ -6,13 +6,17 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  Clock3,
   Circle,
   Copy,
+  Info,
   Loader2,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  TriangleAlert,
+  X,
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -34,6 +38,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Toggle } from '@/components/ui/toggle'
 import {
   DEFAULT_CHAT_SESSION_KEY,
+  terminateManagedDaemon,
   listRuntimeChannelEvents,
   listRuntimeChannelsStatus,
   listRuntimeChatHistory,
@@ -53,6 +58,7 @@ import {
   type PersistedRuntimeMessage,
   type PersistedRuntimeSession,
 } from '@/lib/runtime-persistence'
+import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
@@ -79,6 +85,56 @@ const ONLINE_STABILITY_MS = 1800
 const ASSISTANT_PROGRESS_TICK_MS = 1000
 const COMPOSER_TEMPLATE_COLLAPSED_COUNT = 4
 const SESSIONS_SIDEBAR_PREFERENCE_KEY = 'clawpilot:chat:sessions-sidebar:expanded'
+const PAYWALL_STORAGE_KEY_PREFIX = 'clawpilot:paywall:v1'
+const PAYWALL_FREE_MESSAGE_LIMIT = 3
+const PAYWALL_COUNTDOWN_DURATION_MS = 15 * 60 * 1000
+const PAYWALL_FINAL_HOUR_MS = 10 * 60 * 1000
+const PAYWALL_MONTHLY_PRICE_USD = 25
+const PAYWALL_YEARLY_PRICE_USD = 240
+const PAYWALL_FIRST_MONTH_DISCOUNT_RATE = 0.25
+const PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD =
+  Math.round(PAYWALL_MONTHLY_PRICE_USD * (1 - PAYWALL_FIRST_MONTH_DISCOUNT_RATE) * 100) / 100
+const PAYWALL_DISCOUNT_STRIKE_DELAY_MS = 500
+const PAYWALL_DISCOUNT_NEW_PRICE_DELAY_MS = 300
+const PAYWALL_DISCOUNT_ANIMATION_MS = 2300
+const DEFAULT_BACKEND_URL = 'http://localhost:4000'
+type PaywallStatus = 'not-triggered' | 'countdown' | 'deleted' | 'upgraded'
+type PaywallPlan = 'monthly' | 'yearly'
+type DiscountAnimationPhase = 'initial' | 'struck' | 'counting' | 'done'
+type PaywallModal =
+  | 'none'
+  | 'initial'
+  | 'discount'
+  | 'later-upgrade'
+  | 'why-limit'
+  | 'leave-warning'
+  | 'deleted'
+interface PersistedPaywallState {
+  status: PaywallStatus
+  freeMessageCount: number
+  countdownEndsAtMs: number | null
+}
+
+interface SubscriptionSnapshot {
+  state?: string
+  plan?: string
+  billingStatus?: string
+  isPaidPlan?: boolean
+  trialEndsAt?: string | null
+  paywall?: {
+    freeMessageLimit?: number
+    freeMessagesUsed?: number
+    trialDurationMinutes?: number
+    trialEndsAt?: string | null
+    trialRemainingMs?: number | null
+  }
+}
+
+interface WsPaywallPayload {
+  freeMessageLimit?: number
+  freeMessagesUsed?: number
+  trialEndsAt?: string | null
+}
 const COMPOSER_PROMPT_TEMPLATES: ReadonlyArray<{ id: string; label: string; prompt: string }> = [
   {
     id: 'morning-brief',
@@ -128,6 +184,71 @@ const COMPOSER_PROMPT_TEMPLATES: ReadonlyArray<{ id: string; label: string; prom
       'Once per day at a random time between [10:00] and [18:00] {time-zone}, send me a short joke.',
   },
 ]
+
+function buildPaywallStorageKey(tenantId: string): string {
+  const normalizedTenantId = tenantId.trim()
+  return `${PAYWALL_STORAGE_KEY_PREFIX}:${normalizedTenantId || 'anonymous'}`
+}
+
+function normalizePaywallFreeMessageCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0
+  }
+  const rounded = Math.round(value)
+  if (rounded < 0) return 0
+  return rounded
+}
+
+function normalizePaywallStatus(value: unknown): PaywallStatus {
+  if (value === 'countdown' || value === 'deleted' || value === 'upgraded') {
+    return value
+  }
+  return 'not-triggered'
+}
+
+function readPersistedPaywallState(tenantId: string): PersistedPaywallState | null {
+  if (typeof window === 'undefined' || !tenantId.trim()) return null
+  try {
+    const raw = window.localStorage.getItem(buildPaywallStorageKey(tenantId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const record = parsed as Record<string, unknown>
+    const countdownEndsAtRaw = record.countdownEndsAtMs
+    const countdownEndsAtMs =
+      typeof countdownEndsAtRaw === 'number' && Number.isFinite(countdownEndsAtRaw) && countdownEndsAtRaw > 0
+        ? countdownEndsAtRaw
+        : null
+    return {
+      status: normalizePaywallStatus(record.status),
+      freeMessageCount: normalizePaywallFreeMessageCount(record.freeMessageCount),
+      countdownEndsAtMs,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writePersistedPaywallState(tenantId: string, state: PersistedPaywallState) {
+  if (typeof window === 'undefined' || !tenantId.trim()) return
+  try {
+    window.localStorage.setItem(buildPaywallStorageKey(tenantId), JSON.stringify(state))
+  } catch {
+    // Ignore storage write failures in private mode.
+  }
+}
+
+function formatCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(2)}`
+}
 
 function buildProfileInitial(value: string): string {
   const normalized = value.trim()
@@ -586,6 +707,12 @@ function toSessionTimestamp(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function toIsoTimestampMs(value: string | null | undefined): number | null {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function sortSessionsByActivity(sessions: RuntimeSessionSummary[]): RuntimeSessionSummary[] {
   return [...sessions].sort((left, right) => {
     const leftIsMain = left.key === DEFAULT_CHAT_SESSION_KEY
@@ -969,6 +1096,19 @@ export default function ChatPage() {
   const [assistantWaitSeconds, setAssistantWaitSeconds] = useState(0)
   const [channelStatusSnapshot, setChannelStatusSnapshot] = useState<RuntimeChannelsStatusData | null>(null)
   const [hasHydratedSidebarPreference, setHasHydratedSidebarPreference] = useState(false)
+  const [paywallStatus, _setPaywallStatus] = useState<PaywallStatus>('not-triggered')
+  const [paywallModal, setPaywallModal] = useState<PaywallModal>('none')
+  const [freeMessageCount, _setFreeMessageCount] = useState(0)
+  const [paywallCountdownEndsAtMs, setPaywallCountdownEndsAtMs] = useState<number | null>(null)
+  const [paywallRemainingMs, setPaywallRemainingMs] = useState<number | null>(null)
+  const [hasLoadedPaywallState, setHasLoadedPaywallState] = useState(false)
+  const [selectedPaywallPlan, setSelectedPaywallPlan] = useState<PaywallPlan>('yearly')
+  const [discountAnimatedPriceUsd, setDiscountAnimatedPriceUsd] = useState(PAYWALL_MONTHLY_PRICE_USD)
+  const [discountAnimationPhase, setDiscountAnimationPhase] = useState<DiscountAnimationPhase>('initial')
+  const [isDiscountAnimating, setIsDiscountAnimating] = useState(false)
+  const [isHeadsUpDiscountEligible, setIsHeadsUpDiscountEligible] = useState(false)
+  const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false)
+  const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -1025,6 +1165,35 @@ export default function ChatPage() {
     moved: false,
   })
   const templateChipsIgnoreClickUntilRef = useRef(0)
+  const paywallStatusRef = useRef<PaywallStatus>('not-triggered')
+  const freeMessageCountRef = useRef(0)
+  const paywallDeletionHandledRef = useRef(false)
+  const paywallDeletionSyncRef = useRef<Promise<void> | null>(null)
+  const hasRunInitialEntitlementSyncRef = useRef(false)
+  const lastHandledCheckoutOutcomeRef = useRef<string | null>(null)
+
+  const setPaywallStatus = useCallback((value: PaywallStatus | ((prev: PaywallStatus) => PaywallStatus)) => {
+    if (typeof value !== 'function') {
+      paywallStatusRef.current = value
+    }
+    _setPaywallStatus((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value
+      paywallStatusRef.current = next
+      return next
+    })
+  }, [])
+
+  const setFreeMessageCount = useCallback((value: number | ((prev: number) => number)) => {
+    if (typeof value !== 'function') {
+      freeMessageCountRef.current = normalizePaywallFreeMessageCount(value)
+    }
+    _setFreeMessageCount((prev) => {
+      const nextRaw = typeof value === 'function' ? value(prev) : value
+      const next = normalizePaywallFreeMessageCount(nextRaw)
+      freeMessageCountRef.current = next
+      return next
+    })
+  }, [])
 
   const { regularChatSessions, cronChatSessions } = useMemo(() => {
     const regular: RuntimeSessionSummary[] = []
@@ -1080,6 +1249,572 @@ export default function ChatPage() {
       // Ignore storage failures in private mode or blocked storage.
     }
   }, [hasHydratedSidebarPreference, showSessionsSidebar])
+
+  const userMessageCount = useMemo(
+    () => messages.reduce((count, message) => (message.role === 'user' ? count + 1 : count), 0),
+    [messages],
+  )
+
+  useEffect(() => {
+    if (paywallStatus !== 'not-triggered') return
+    if (userMessageCount <= freeMessageCount) return
+    setFreeMessageCount(userMessageCount)
+  }, [freeMessageCount, paywallStatus, userMessageCount])
+
+  const activateFrontendUpgrade = useCallback(
+    async (options?: { plan?: PaywallPlan; applyDiscount?: boolean }) => {
+      if (isCheckoutRedirecting) {
+        return
+      }
+
+      if (!tenantId.trim()) {
+        setSendError('Missing tenant context. Please refresh and try again.')
+        return
+      }
+
+      setSendError('')
+      setIsCheckoutRedirecting(true)
+
+      const selectedPlan = options?.plan ?? selectedPaywallPlan
+      const applyDiscount = Boolean(options?.applyDiscount && selectedPlan === 'monthly')
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+
+      const successUrl =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/dashboard/chat?checkout=success`
+          : undefined
+      const cancelUrl =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/dashboard/chat?checkout=cancel`
+          : undefined
+
+      try {
+        const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-tenant-id': tenantId,
+          },
+          body: JSON.stringify({
+            plan: selectedPlan,
+            applyDiscount,
+            successUrl,
+            cancelUrl,
+            customerEmail: profileEmail || undefined,
+          }),
+        })
+
+        const payloadText = await response.text()
+        let payload: Record<string, unknown> | null = null
+        try {
+          payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+        } catch {
+          payload = null
+        }
+
+        if (!response.ok) {
+          const message =
+            typeof payload?.message === 'string' && payload.message.trim().length > 0
+              ? payload.message
+              : 'Could not start checkout. Please try again.'
+          throw new Error(message)
+        }
+
+        const checkoutUrl = typeof payload?.url === 'string' ? payload.url.trim() : ''
+        if (!checkoutUrl) {
+          throw new Error('Checkout session was created without a redirect URL.')
+        }
+
+        window.location.assign(checkoutUrl)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not start checkout. Please try again.'
+        setSendError(message)
+        setIsCheckoutRedirecting(false)
+      }
+    },
+    [isCheckoutRedirecting, profileEmail, selectedPaywallPlan, tenantId],
+  )
+
+  const applySubscriptionSnapshotToPaywall = useCallback(
+    (snapshot: SubscriptionSnapshot, options?: { openPaywallModalOnLimit?: boolean }) => {
+      const freeMessagesUsedRaw = snapshot.paywall?.freeMessagesUsed
+      const freeMessagesUsed =
+        typeof freeMessagesUsedRaw === 'number' && Number.isFinite(freeMessagesUsedRaw)
+          ? Math.max(0, Math.round(freeMessagesUsedRaw))
+          : null
+      if (freeMessagesUsed !== null) {
+        setFreeMessageCount((current) => Math.max(current, freeMessagesUsed))
+      }
+
+      const isPaidPlan =
+        snapshot.isPaidPlan === true || snapshot.plan === 'PRO_MONTHLY' || snapshot.plan === 'PRO_YEARLY'
+      if (isPaidPlan) {
+        setPaywallStatus('upgraded')
+        setPaywallModal('none')
+        setPaywallCountdownEndsAtMs(null)
+        setPaywallRemainingMs(null)
+        setIsHeadsUpDiscountEligible(false)
+        setSendError('')
+        return 'paid' as const
+      }
+
+      const trialEndsAtMs = toIsoTimestampMs(snapshot.paywall?.trialEndsAt ?? snapshot.trialEndsAt ?? null)
+      const now = Date.now()
+      if (snapshot.state === 'TERMINATED' || (trialEndsAtMs !== null && trialEndsAtMs <= now)) {
+        setPaywallStatus('deleted')
+        setPaywallCountdownEndsAtMs(null)
+        setPaywallRemainingMs(0)
+        setPaywallModal('deleted')
+        return 'terminated' as const
+      }
+
+      if (trialEndsAtMs !== null && trialEndsAtMs > now) {
+        setPaywallStatus('countdown')
+        setPaywallCountdownEndsAtMs(trialEndsAtMs)
+        setPaywallRemainingMs(Math.max(0, trialEndsAtMs - now))
+        if (
+          options?.openPaywallModalOnLimit &&
+          (paywallModal === 'none' || paywallModal === 'later-upgrade') &&
+          paywallStatusRef.current !== 'deleted'
+        ) {
+          setPaywallModal('initial')
+        }
+        return 'trialing' as const
+      }
+
+      if (paywallStatusRef.current === 'upgraded') {
+        setPaywallStatus('not-triggered')
+      }
+
+      if (
+        options?.openPaywallModalOnLimit &&
+        freeMessagesUsed !== null &&
+        freeMessagesUsed >= PAYWALL_FREE_MESSAGE_LIMIT &&
+        paywallStatusRef.current === 'not-triggered' &&
+        paywallModal === 'none'
+      ) {
+        setPaywallModal('initial')
+      }
+
+      return 'free' as const
+    },
+    [paywallModal, setFreeMessageCount, setPaywallStatus],
+  )
+
+  const fetchSubscriptionSnapshot = useCallback(
+    async (tid: string): Promise<SubscriptionSnapshot | null> => {
+      const normalizedTenantId = tid.trim()
+      if (!normalizedTenantId) {
+        return null
+      }
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      try {
+        const response = await fetch(`${backendUrl}/api/v1/subscription`, {
+          method: 'GET',
+          headers: {
+            'x-tenant-id': normalizedTenantId,
+          },
+        })
+
+        const payloadText = await response.text()
+        let payload: Record<string, unknown> | null = null
+        try {
+          payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
+        } catch {
+          payload = null
+        }
+
+        if (response.status === 403 && payload?.error === 'TENANT_TERMINATED') {
+          return {
+            state: 'TERMINATED',
+            isPaidPlan: false,
+          }
+        }
+
+        if (!response.ok || !payload) {
+          return null
+        }
+
+        return payload as SubscriptionSnapshot
+      } catch {
+        return null
+      }
+    },
+    [],
+  )
+
+  const refreshSubscriptionEntitlement = useCallback(
+    async (options?: { tenantId?: string; retryUntilPaid?: boolean; openPaywallModalOnLimit?: boolean }) => {
+      const targetTenantId = options?.tenantId?.trim() || tenantId.trim()
+      if (!targetTenantId) {
+        return null
+      }
+
+      const attempts = options?.retryUntilPaid ? 8 : 1
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const snapshot = await fetchSubscriptionSnapshot(targetTenantId)
+        if (!snapshot) {
+          if (attempt + 1 < attempts) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 + attempt * 1000))
+            continue
+          }
+          return null
+        }
+
+        const outcome = applySubscriptionSnapshotToPaywall(snapshot, {
+          openPaywallModalOnLimit: options?.openPaywallModalOnLimit,
+        })
+        if (!options?.retryUntilPaid || outcome === 'paid' || outcome === 'terminated') {
+          return snapshot
+        }
+
+        if (attempt + 1 < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 + attempt * 1000))
+        }
+      }
+
+      return null
+    },
+    [applySubscriptionSnapshotToPaywall, fetchSubscriptionSnapshot, tenantId],
+  )
+
+  const handleBackendPaywallPayload = useCallback(
+    (payload: WsPaywallPayload & { status?: string }) => {
+      const freeMessagesUsedRaw = payload.freeMessagesUsed
+      const freeMessagesUsed =
+        typeof freeMessagesUsedRaw === 'number' && Number.isFinite(freeMessagesUsedRaw)
+          ? Math.max(0, Math.round(freeMessagesUsedRaw))
+          : null
+      if (freeMessagesUsed !== null) {
+        setFreeMessageCount((current) => Math.max(current, freeMessagesUsed))
+      }
+
+      const trialEndsAtMs = toIsoTimestampMs(payload.trialEndsAt ?? null)
+      const now = Date.now()
+      if (trialEndsAtMs !== null && trialEndsAtMs <= now) {
+        setPaywallStatus('deleted')
+        setPaywallCountdownEndsAtMs(null)
+        setPaywallRemainingMs(0)
+        setPaywallModal('deleted')
+        return
+      }
+
+      if (trialEndsAtMs !== null && trialEndsAtMs > now) {
+        setPaywallStatus('countdown')
+        setPaywallCountdownEndsAtMs(trialEndsAtMs)
+        setPaywallRemainingMs(Math.max(0, trialEndsAtMs - now))
+        if (
+          payload.status === 'trial_started' &&
+          paywallStatusRef.current !== 'deleted' &&
+          paywallStatusRef.current !== 'upgraded' &&
+          (paywallModal === 'none' || paywallModal === 'later-upgrade')
+        ) {
+          setPaywallModal('initial')
+        }
+        return
+      }
+
+      if (
+        freeMessagesUsed !== null &&
+        freeMessagesUsed >= PAYWALL_FREE_MESSAGE_LIMIT &&
+        paywallStatusRef.current === 'not-triggered' &&
+        (paywallModal === 'none' || paywallModal === 'later-upgrade')
+      ) {
+        setPaywallModal('initial')
+      }
+    },
+    [paywallModal, setFreeMessageCount, setPaywallStatus],
+  )
+
+  const startPaywallCountdown = useCallback((options?: {
+    showNote?: boolean
+    keepDiscountForHeadsUp?: boolean
+    countdownEndsAtMs?: number
+  }) => {
+    const now = Date.now()
+    const existingCountdownEndsAt =
+      paywallStatusRef.current === 'countdown' &&
+      typeof paywallCountdownEndsAtMs === 'number' &&
+      paywallCountdownEndsAtMs > now
+        ? paywallCountdownEndsAtMs
+        : null
+    const countdownEndsAt =
+      options?.countdownEndsAtMs && Number.isFinite(options.countdownEndsAtMs) && options.countdownEndsAtMs > now
+        ? options.countdownEndsAtMs
+        : existingCountdownEndsAt ?? now + PAYWALL_COUNTDOWN_DURATION_MS
+    paywallDeletionHandledRef.current = false
+    setPaywallStatus('countdown')
+    setPaywallModal(options?.showNote ? 'why-limit' : 'none')
+    setIsHeadsUpDiscountEligible(Boolean(options?.showNote && options?.keepDiscountForHeadsUp))
+    setPaywallCountdownEndsAtMs(countdownEndsAt)
+    setPaywallRemainingMs(Math.max(0, countdownEndsAt - now))
+    setPendingLeaveHref(null)
+    setSendError('')
+  }, [paywallCountdownEndsAtMs])
+
+  const closePaywallModal = useCallback(() => {
+    if (paywallModal === 'initial') {
+      setSelectedPaywallPlan('monthly')
+      setPaywallModal('discount')
+      return
+    }
+    if (paywallModal === 'discount') {
+      startPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
+      return
+    }
+    if (paywallModal === 'leave-warning') {
+      setPendingLeaveHref(null)
+    }
+    if (paywallModal === 'why-limit') {
+      setIsHeadsUpDiscountEligible(false)
+    }
+    if (paywallModal === 'deleted') {
+      return
+    }
+    setPaywallModal('none')
+  }, [paywallModal, startPaywallCountdown])
+
+  const handlePaywallNavigationInterception = useCallback(
+    (event: React.MouseEvent<HTMLElement>, href: string) => {
+      if (paywallStatus !== 'countdown') {
+        return
+      }
+      event.preventDefault()
+      setPendingLeaveHref(href)
+      setPaywallModal('leave-warning')
+    },
+    [paywallStatus],
+  )
+
+  const continueLeaveNavigation = useCallback(() => {
+    const targetHref = pendingLeaveHref
+    setPaywallModal('none')
+    setPendingLeaveHref(null)
+    if (!targetHref) return
+    router.push(targetHref)
+  }, [pendingLeaveHref, router])
+
+  const kickStartPaywallTest = useCallback(() => {
+    setPaywallStatus('not-triggered')
+    setPaywallCountdownEndsAtMs(null)
+    setPaywallRemainingMs(null)
+    setPaywallModal('initial')
+    setFreeMessageCount(0)
+    paywallDeletionHandledRef.current = false
+    setPendingLeaveHref(null)
+    setSendError('')
+  }, [])
+
+  useEffect(() => {
+    if (!tenantId) return
+    const persisted = readPersistedPaywallState(tenantId)
+    if (!persisted) {
+      setPaywallStatus('not-triggered')
+      setPaywallModal('none')
+      setFreeMessageCount(0)
+      setPaywallCountdownEndsAtMs(null)
+      setPaywallRemainingMs(null)
+      setHasLoadedPaywallState(true)
+      return
+    }
+
+    const now = Date.now()
+    const persistedCountdownEndsAtMs = persisted.countdownEndsAtMs
+    const hasCountdown =
+      persisted.status === 'countdown' &&
+      typeof persistedCountdownEndsAtMs === 'number' &&
+      persistedCountdownEndsAtMs > now
+
+    if (hasCountdown) {
+      setPaywallStatus('countdown')
+      setPaywallCountdownEndsAtMs(persistedCountdownEndsAtMs)
+      setPaywallRemainingMs(persistedCountdownEndsAtMs - now)
+    } else if (persisted.status === 'countdown' || persisted.status === 'deleted') {
+      setPaywallStatus('deleted')
+      setPaywallCountdownEndsAtMs(null)
+      setPaywallRemainingMs(0)
+      setPaywallModal('deleted')
+    } else {
+      setPaywallStatus(persisted.status)
+      setPaywallCountdownEndsAtMs(null)
+      setPaywallRemainingMs(null)
+    }
+
+    setFreeMessageCount(normalizePaywallFreeMessageCount(persisted.freeMessageCount))
+    setHasLoadedPaywallState(true)
+  }, [tenantId])
+
+  useEffect(() => {
+    hasRunInitialEntitlementSyncRef.current = false
+    lastHandledCheckoutOutcomeRef.current = null
+  }, [tenantId])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId || !hasLoadedPaywallState) {
+      return
+    }
+    if (hasRunInitialEntitlementSyncRef.current) {
+      return
+    }
+
+    hasRunInitialEntitlementSyncRef.current = true
+    void refreshSubscriptionEntitlement({
+      openPaywallModalOnLimit: true,
+    })
+  }, [checkingSession, hasLoadedPaywallState, refreshSubscriptionEntitlement, tenantId])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId || typeof window === 'undefined') {
+      return
+    }
+
+    const query = new URLSearchParams(window.location.search)
+    const checkout = query.get('checkout')
+    if (checkout !== 'success' && checkout !== 'cancel') {
+      return
+    }
+
+    if (lastHandledCheckoutOutcomeRef.current === checkout) {
+      return
+    }
+    lastHandledCheckoutOutcomeRef.current = checkout
+
+    query.delete('checkout')
+    const nextQuery = query.toString()
+    const nextHref = nextQuery ? `${pathname}?${nextQuery}` : pathname
+    router.replace(nextHref, { scroll: false })
+
+    if (checkout === 'success') {
+      setSendError('Finalizing your upgrade...')
+      void refreshSubscriptionEntitlement({
+        retryUntilPaid: true,
+      }).then((snapshot) => {
+        const upgraded = snapshot?.isPaidPlan === true || snapshot?.plan === 'PRO_MONTHLY' || snapshot?.plan === 'PRO_YEARLY'
+        if (!upgraded) {
+          setSendError('Payment is processing. Refresh in a few seconds.')
+          return
+        }
+        setSendError('')
+      })
+      return
+    }
+
+    setSendError('Checkout canceled.')
+    void refreshSubscriptionEntitlement({
+      openPaywallModalOnLimit: true,
+    }).then((snapshot) => {
+      const upgraded = snapshot?.isPaidPlan === true || snapshot?.plan === 'PRO_MONTHLY' || snapshot?.plan === 'PRO_YEARLY'
+      if (upgraded) {
+        setSendError('')
+        return
+      }
+
+      if (paywallStatusRef.current !== 'deleted') {
+        setPaywallModal('later-upgrade')
+      }
+    })
+  }, [checkingSession, pathname, refreshSubscriptionEntitlement, router, tenantId])
+
+  useEffect(() => {
+    if (!tenantId || !hasLoadedPaywallState) return
+    writePersistedPaywallState(tenantId, {
+      status: paywallStatus,
+      freeMessageCount,
+      countdownEndsAtMs: paywallStatus === 'countdown' ? paywallCountdownEndsAtMs : null,
+    })
+  }, [freeMessageCount, hasLoadedPaywallState, paywallCountdownEndsAtMs, paywallStatus, tenantId])
+
+  useEffect(() => {
+    if (!hasLoadedPaywallState || !historyReady) return
+    if (paywallStatus !== 'not-triggered') return
+    if (paywallModal !== 'none') return
+    if (freeMessageCount < PAYWALL_FREE_MESSAGE_LIMIT) return
+    setPaywallModal('initial')
+  }, [
+    freeMessageCount,
+    hasLoadedPaywallState,
+    historyReady,
+    paywallModal,
+    paywallStatus,
+  ])
+
+  useEffect(() => {
+    if (paywallStatus !== 'countdown' || !paywallCountdownEndsAtMs) {
+      if (paywallStatus !== 'deleted') {
+        setPaywallRemainingMs(null)
+      }
+      return
+    }
+
+    const countdownEndsAtMs = paywallCountdownEndsAtMs
+    function tickCountdown() {
+      const nextRemaining = countdownEndsAtMs - Date.now()
+      if (nextRemaining <= 0) {
+        setPaywallRemainingMs(0)
+        setPaywallStatus('deleted')
+        setPaywallCountdownEndsAtMs(null)
+        setPaywallModal('deleted')
+        return
+      }
+      setPaywallRemainingMs(nextRemaining)
+    }
+
+    tickCountdown()
+    const interval = setInterval(tickCountdown, 1000)
+    return () => clearInterval(interval)
+  }, [paywallCountdownEndsAtMs, paywallStatus])
+
+  useEffect(() => {
+    if (paywallModal !== 'discount') {
+      setDiscountAnimatedPriceUsd(PAYWALL_MONTHLY_PRICE_USD)
+      setDiscountAnimationPhase('initial')
+      setIsDiscountAnimating(false)
+      return
+    }
+
+    const from = PAYWALL_MONTHLY_PRICE_USD
+    const to = PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD
+    let frameId = 0
+    let strikeTimer: ReturnType<typeof setTimeout> | null = null
+    let revealTimer: ReturnType<typeof setTimeout> | null = null
+
+    setDiscountAnimatedPriceUsd(from)
+    setDiscountAnimationPhase('initial')
+    setIsDiscountAnimating(true)
+
+    strikeTimer = setTimeout(() => {
+      setDiscountAnimationPhase('struck')
+
+      revealTimer = setTimeout(() => {
+        setDiscountAnimationPhase('counting')
+
+        const startAt = performance.now()
+        const tick = (now: number) => {
+          const elapsed = now - startAt
+          const progress = Math.min(1, elapsed / PAYWALL_DISCOUNT_ANIMATION_MS)
+          const eased = 1 - Math.pow(1 - progress, 2.2)
+          const nextValue = from - (from - to) * eased
+          const rounded = Math.round(nextValue * 100) / 100
+          setDiscountAnimatedPriceUsd(rounded)
+          if (progress < 1) {
+            frameId = requestAnimationFrame(tick)
+            return
+          }
+          setDiscountAnimatedPriceUsd(to)
+          setDiscountAnimationPhase('done')
+          setIsDiscountAnimating(false)
+        }
+
+        frameId = requestAnimationFrame(tick)
+      }, PAYWALL_DISCOUNT_NEW_PRICE_DELAY_MS)
+    }, PAYWALL_DISCOUNT_STRIKE_DELAY_MS)
+
+    return () => {
+      if (strikeTimer) clearTimeout(strikeTimer)
+      if (revealTimer) clearTimeout(revealTimer)
+      cancelAnimationFrame(frameId)
+    }
+  }, [paywallModal])
 
   const clearConnectionStableTimer = useCallback(() => {
     if (connectionStableTimeoutRef.current) {
@@ -1568,6 +2303,42 @@ export default function ChatPage() {
     historyPollInFlightRef.current = false
   }, [])
 
+  useEffect(() => {
+    if (!tenantId || !hasLoadedPaywallState || paywallStatus !== 'deleted') return
+    if (paywallDeletionHandledRef.current || paywallDeletionSyncRef.current) return
+
+    paywallDeletionSyncRef.current = (async () => {
+      try {
+        await terminateManagedDaemon(tenantId)
+      } catch (error) {
+        console.error('Failed to terminate daemon after trial expiry', error)
+      }
+
+      try {
+        const session = await getRecoveredSupabaseSession()
+        if (session) {
+          await markOnboardingIncomplete(session)
+        }
+      } catch (error) {
+        console.error('Failed to reset onboarding after trial expiry', error)
+      }
+
+      stopPolling()
+      stopHistoryPolling()
+      if (wsRef.current) {
+        wsRef.current.onclose = null
+        wsRef.current.onerror = null
+        wsRef.current.onmessage = null
+        wsRef.current.close()
+        wsRef.current = null
+      }
+      setConnectionStatus('disconnected')
+    })().finally(() => {
+      paywallDeletionHandledRef.current = true
+      paywallDeletionSyncRef.current = null
+    })
+  }, [hasLoadedPaywallState, paywallStatus, stopHistoryPolling, stopPolling, tenantId])
+
   const startHistoryPolling = useCallback(
     (tid: string, sessionKey: string) => {
       const normalizedSessionKey = sessionKey.trim()
@@ -1614,6 +2385,12 @@ export default function ChatPage() {
   const connectWebSocket = useCallback(
     (tid: string, preferredSessionKey?: string) => {
       if (isUnmountingRef.current) return
+      if (paywallStatusRef.current === 'deleted') {
+        setConnectionStatus('disconnected')
+        resetConnectionStability()
+        resetTypingState()
+        return
+      }
 
       // Clear any pending retry to prevent cascade
       if (wsRetryRef.current) {
@@ -1660,11 +2437,20 @@ export default function ChatPage() {
             type?: string
             status?: string
             message?: ChatMessage | string
-            error?: string | { message?: string }
+            error?:
+              | string
+              | {
+                  code?: string
+                  message?: string
+                  paywall?: WsPaywallPayload
+                }
             sessionKey?: string
             reason?: string
             previousSessionKey?: string
             result?: { messages?: ChatMessage[] }
+            freeMessageLimit?: number
+            freeMessagesUsed?: number
+            trialEndsAt?: string | null
           }
 
           // Initial connection message
@@ -1756,6 +2542,16 @@ export default function ChatPage() {
             return
           }
 
+          if (data.type === 'billing.paywall') {
+            handleBackendPaywallPayload({
+              status: data.status,
+              freeMessageLimit: data.freeMessageLimit,
+              freeMessagesUsed: data.freeMessagesUsed,
+              trialEndsAt: data.trialEndsAt,
+            })
+            return
+          }
+
           // Assistant response
           if (data.type === 'chat.message' && data.message && typeof data.message === 'object') {
             resolvePendingResponse()
@@ -1777,10 +2573,37 @@ export default function ChatPage() {
           // Error from server
           if (data.error) {
             resolvePendingResponse()
+            const errorRecord =
+              typeof data.error === 'object' && data.error !== null
+                ? (data.error as { code?: string; message?: string; paywall?: WsPaywallPayload })
+                : null
+            const errorCode = typeof errorRecord?.code === 'string' ? errorRecord.code.trim() : ''
             const errMsg =
               typeof data.error === 'string'
                 ? data.error
-                : (data.error as { message?: string })?.message ?? JSON.stringify(data.error)
+                : errorRecord?.message ?? JSON.stringify(data.error)
+            const paywallPayload = errorRecord?.paywall
+            if (paywallPayload) {
+              handleBackendPaywallPayload(paywallPayload)
+            }
+
+            if (errorCode === 'TENANT_TERMINATED') {
+              setPaywallStatus('deleted')
+              setPaywallCountdownEndsAtMs(null)
+              setPaywallRemainingMs(0)
+              setPaywallModal('deleted')
+              setSendError(errMsg || 'Trial ended. Your OpenClaw instance was deleted.')
+              return
+            }
+
+            if (errorCode === 'PAYWALL_REQUIRED') {
+              if (paywallStatusRef.current !== 'deleted' && paywallStatusRef.current !== 'upgraded') {
+                setPaywallModal('initial')
+              }
+              setSendError(errMsg || 'Upgrade to keep your OpenClaw running.')
+              return
+            }
+
             if (isGatewayUnavailableError(errMsg)) {
               setSendError(toChatAlertMessage(errMsg))
               setShowConnectionIssue(true)
@@ -1811,15 +2634,17 @@ export default function ChatPage() {
       ws.onclose = () => {
         resetTypingState()
         resetConnectionStability()
+        if (isUnmountingRef.current || paywallStatusRef.current === 'deleted') {
+          setConnectionStatus('disconnected')
+          return
+        }
         // Silently reconnect in the background — never block the UI.
         const currentPhase = setupPhaseRef.current
         const retryDelay = currentPhase && currentPhase !== 'ready' ? 15000 : 5000
         setConnectionStatus('connecting')
-        if (!isUnmountingRef.current) {
-          wsRetryRef.current = setTimeout(() => {
-            connectWebSocket(tid, activeSessionKeyRef.current ?? undefined)
-          }, retryDelay)
-        }
+        wsRetryRef.current = setTimeout(() => {
+          connectWebSocket(tid, activeSessionKeyRef.current ?? undefined)
+        }, retryDelay)
       }
 
       ws.onerror = () => {
@@ -1833,6 +2658,7 @@ export default function ChatPage() {
       loadSessionHistory,
       loadSessions,
       beginConnectionStabilityCheck,
+      handleBackendPaywallPayload,
       refreshChannelStatus,
       persistMessage,
       resetConnectionStability,
@@ -1933,7 +2759,7 @@ export default function ChatPage() {
 
   const redirectToSignIn = useCallback(() => {
     const currentPath = typeof window === 'undefined'
-      ? '/dashboard/chat'
+      ? '/chat'
       : `${window.location.pathname}${window.location.search}`
     routerRef.current.replace(buildSignInPath(currentPath))
   }, [])
@@ -1967,6 +2793,11 @@ export default function ChatPage() {
         const session = await getRecoveredSupabaseSession()
         if (!session) {
           redirectToSignIn()
+          return
+        }
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (!complete) {
+          router.replace('/dashboard')
           return
         }
 
@@ -2261,6 +3092,29 @@ export default function ChatPage() {
   function sendMessage() {
     const trimmed = input.trim()
     if (!trimmed) return
+    const currentFreeMessageCount = Math.max(freeMessageCountRef.current, userMessageCount)
+    if (isInstanceDeleted) {
+      setSendError('Instance deleted. Redeploy OpenClaw or upgrade to continue.')
+      setPaywallModal('deleted')
+      return
+    }
+    if (paywallStatusRef.current === 'not-triggered' && !hasLoadedPaywallState) {
+      setSendError('Loading your trial status... try again in a second.')
+      return
+    }
+    if (paywallStatusRef.current === 'not-triggered' && !historyReady) {
+      setSendError('Loading your chat... try again in a second.')
+      return
+    }
+    if (paywallStatusRef.current === 'not-triggered' && currentFreeMessageCount >= PAYWALL_FREE_MESSAGE_LIMIT) {
+      setPaywallModal('initial')
+      setSendError('Upgrade to keep your OpenClaw running.')
+      return
+    }
+    if (paywallModal === 'initial' || paywallModal === 'discount' || paywallModal === 'later-upgrade') {
+      setSendError('Upgrade to keep your OpenClaw running.')
+      return
+    }
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setSendError('Not connected. Reconnecting...')
       if (tenantId) {
@@ -2290,6 +3144,13 @@ export default function ChatPage() {
     setMessages((prev) => dedupeAndSortMessages([...prev, userMessage]))
     persistMessage(tenantId, currentSessionKey, userMessage)
     touchSessionActivity(tenantId, currentSessionKey)
+    if (paywallStatusRef.current === 'not-triggered') {
+      const nextFreeCount = currentFreeMessageCount + 1
+      setFreeMessageCount(nextFreeCount)
+      if (nextFreeCount >= PAYWALL_FREE_MESSAGE_LIMIT) {
+        setPaywallModal('initial')
+      }
+    }
 
     const currentSession = chatSessions.find((session) => session.key === currentSessionKey)
     const currentLabel = currentSession?.label?.trim() ?? ''
@@ -2531,6 +3392,7 @@ export default function ChatPage() {
               <div className="border-b border-border/60 px-2.5 py-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</p>
               </div>
+              {renderNewSessionAction()}
               <div className={cn(sidebarListClassName, 'max-h-[24svh] p-1.5 lg:min-h-0 lg:flex-1 lg:max-h-none')}>
                 {renderSidebarSessionRows(regularChatSessions, 'No direct sessions yet.')}
               </div>
@@ -2546,8 +3408,11 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <div className={cn(sidebarListClassName, 'mt-2 max-h-[56svh] px-2 pb-2 lg:min-h-0 lg:flex-1 lg:max-h-none')}>
-            {renderSidebarSessionRows(regularChatSessions, 'No sessions yet.')}
+          <div className="mt-2 flex flex-col gap-2 px-2 pb-2 lg:min-h-0 lg:flex-1">
+            {renderNewSessionAction()}
+            <div className={cn(sidebarListClassName, 'max-h-[56svh] lg:min-h-0 lg:flex-1 lg:max-h-none')}>
+              {renderSidebarSessionRows(regularChatSessions, 'No sessions yet.')}
+            </div>
           </div>
         )}
       </CardContent>
@@ -2576,6 +3441,12 @@ export default function ChatPage() {
   const visibleComposerTemplates = showAllComposerTemplates
     ? COMPOSER_PROMPT_TEMPLATES
     : COMPOSER_PROMPT_TEMPLATES.slice(0, COMPOSER_TEMPLATE_COLLAPSED_COUNT)
+  const isCountdownActive = paywallStatus === 'countdown' && typeof paywallRemainingMs === 'number' && paywallRemainingMs > 0
+  const isFinalHourWarning = isCountdownActive && paywallRemainingMs <= PAYWALL_FINAL_HOUR_MS
+  const countdownLabel = isCountdownActive ? formatCountdown(paywallRemainingMs) : '00:00:00'
+  const isInstanceDeleted = paywallStatus === 'deleted'
+  const isComposerDisabled = isInstanceDeleted
+  const shouldShowPaywallOverlay = paywallModal !== 'none'
 
   // ─── Loading state ─────────────────────────────────────────────────
 
@@ -2650,6 +3521,49 @@ export default function ChatPage() {
 
       <div className="relative z-10 flex min-h-[100svh] flex-col">
         <header className="sticky top-0 z-40 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+          {isCountdownActive ? (
+            <div
+              className={cn(
+                'border-b',
+                isFinalHourWarning
+                  ? 'border-destructive/35 bg-destructive/10'
+                  : 'border-amber-200/70 bg-amber-500/10',
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-2 sm:px-6">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-xs font-semibold text-foreground sm:text-sm">
+                    {isFinalHourWarning ? (
+                      <TriangleAlert className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <Clock3 className="h-4 w-4 text-amber-600" />
+                    )}
+                    Your OpenClaw instance deletes in {countdownLabel}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">
+                    We can only keep private instances running with an active plan.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="h-7 px-2.5 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
+                    onClick={() => setPaywallModal('later-upgrade')}
+                  >
+                    Upgrade
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2.5 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
+                    onClick={() => setPaywallModal('why-limit')}
+                  >
+                    Why this timer?
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="flex w-full items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="min-w-0 flex flex-1 items-center gap-2">
               <Toggle
@@ -2691,6 +3605,7 @@ export default function ChatPage() {
                   <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
                     <Link
                       href="/dashboard/channels"
+                      onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/channels')}
                       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-full"
                       title="Open channel settings"
                     >
@@ -2698,6 +3613,7 @@ export default function ChatPage() {
                     </Link>
                     <Link
                       href="/dashboard/channels"
+                      onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/channels')}
                       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-full"
                       title="Open channel settings"
                     >
@@ -2708,6 +3624,14 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 text-xs"
+                onClick={kickStartPaywallTest}
+              >
+                Test paywall
+              </Button>
               <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
                 <SheetTrigger asChild>
                   <button
@@ -2746,10 +3670,20 @@ export default function ChatPage() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/settings">Settings</Link>
+                    <Link
+                      href="/dashboard/settings"
+                      onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/settings')}
+                    >
+                      Settings
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/settings/skills">Skills & Workspace</Link>
+                    <Link
+                      href="/dashboard/settings/skills"
+                      onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/settings/skills')}
+                    >
+                      Skills & Workspace
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={(event) => {
@@ -2880,6 +3814,7 @@ export default function ChatPage() {
 
       <Link
         href="/dashboard/channels"
+        onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/channels')}
         className="group fixed bottom-[5.6rem] right-3 z-40 inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/95 p-1.5 shadow-md shadow-black/5 backdrop-blur transition-colors hover:border-primary/30 hover:bg-muted/40 sm:bottom-4 sm:right-4"
         aria-label="Open channel integrations"
         title="Configure channels"
@@ -2945,9 +3880,10 @@ export default function ChatPage() {
                       value={input}
                       onChange={(event) => setInput(event.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder="Message OpenClaw..."
+                      placeholder={isComposerDisabled ? 'Instance deleted. Redeploy or upgrade to continue.' : 'Message OpenClaw...'}
                       rows={1}
                       className="flex-1 resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 text-[14px] leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50"
+                      disabled={isComposerDisabled}
                       style={{ minHeight: `${INPUT_MIN_HEIGHT}px`, maxHeight: `${INPUT_MAX_HEIGHT}px` }}
                       onInput={(event) => {
                         const target = event.target as HTMLTextAreaElement
@@ -2959,7 +3895,7 @@ export default function ChatPage() {
                       size="icon"
                       className="mb-1 h-9 w-9 shrink-0 rounded-full"
                       onClick={sendMessage}
-                      disabled={!input.trim()}
+                      disabled={isComposerDisabled || !input.trim()}
                       aria-label="Send message"
                     >
                       <ArrowUp className="h-4 w-4" />
@@ -2976,6 +3912,7 @@ export default function ChatPage() {
                       </span>
                       <Link
                         href="/dashboard/channels"
+                        onClick={(event) => handlePaywallNavigationInterception(event, '/dashboard/channels')}
                         className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
                       >
                         {hasChannelSetupInProgress ? 'Finish setup' : 'Connect channel'}
@@ -3038,6 +3975,332 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {shouldShowPaywallOverlay ? (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+          <button
+            type="button"
+            onClick={closePaywallModal}
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full cursor-default"
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
+            {paywallModal !== 'deleted' ? (
+              <div className="mb-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={closePaywallModal}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+
+            {paywallModal === 'initial' ? (
+              <div>
+                <p className="text-xl font-semibold text-foreground">Keep your OpenClaw running</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Your private OpenClaw instance is running in the cloud. Hosting it costs real servers, so continuing requires an upgrade.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaywallPlan('monthly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      selectedPaywallPlan === 'monthly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={selectedPaywallPlan === 'monthly'}
+                  >
+                    <p className={cn('text-xs font-medium uppercase tracking-wide', selectedPaywallPlan === 'monthly' ? 'text-primary' : 'text-muted-foreground')}>
+                      Monthly
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_MONTHLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/mo</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaywallPlan('yearly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      selectedPaywallPlan === 'yearly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={selectedPaywallPlan === 'yearly'}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={cn('text-xs font-medium uppercase tracking-wide', selectedPaywallPlan === 'yearly' ? 'text-primary' : 'text-muted-foreground')}>
+                        Yearly
+                      </p>
+                      <span className="rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Save 20%
+                      </span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_YEARLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/year</p>
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Choose monthly or yearly. Both are under $1/day.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    onClick={() => {
+                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                    }}
+                    disabled={isCheckoutRedirecting}
+                  >
+                    {isCheckoutRedirecting
+                      ? 'Redirecting...'
+                      : `Upgrade (${selectedPaywallPlan === 'yearly' ? 'Yearly' : 'Monthly'})`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedPaywallPlan('monthly')
+                      setPaywallModal('discount')
+                    }}
+                  >
+                    Not now
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {paywallModal === 'discount' ? (
+              <div>
+                <p className="text-xl font-semibold text-foreground">Before you go: 25% off (one-time deal)</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Looks like you&apos;re about to go, and we don&apos;t want to let you go.
+                  Take 25% off from us as a one-time deal on your first month.
+                </p>
+                <div className="mt-4">
+                  <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 sm:p-5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-primary">Monthly (first month)</p>
+                    <div className="mt-2 flex flex-wrap items-end gap-2">
+                      <p
+                        className={cn(
+                          'text-2xl font-semibold transition-colors',
+                          discountAnimationPhase === 'initial'
+                            ? 'text-foreground'
+                            : 'text-muted-foreground line-through',
+                        )}
+                      >
+                        {formatUsd(PAYWALL_MONTHLY_PRICE_USD)}/mo
+                      </p>
+                      {discountAnimationPhase === 'counting' || discountAnimationPhase === 'done' ? (
+                        <>
+                          <p className="pb-0.5 text-xs text-muted-foreground">down to</p>
+                          <p className="text-2xl font-semibold text-foreground">
+                            {formatUsd(discountAnimatedPriceUsd)}
+                          </p>
+                          <p className="pb-0.5 text-sm text-muted-foreground">/mo</p>
+                        </>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {discountAnimationPhase === 'counting'
+                        ? 'Dropping your first-month price...'
+                        : isDiscountAnimating
+                          ? 'Applying one-time 25% off...'
+                          : 'One-time 25% off first month.'}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    onClick={() => {
+                      setSelectedPaywallPlan('monthly')
+                      void activateFrontendUpgrade({ plan: 'monthly', applyDiscount: true })
+                    }}
+                    disabled={isCheckoutRedirecting}
+                  >
+                    {isCheckoutRedirecting ? 'Redirecting...' : 'Claim 25% off'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => startPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })}
+                  >
+                    No thanks, start 15-min timer
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {paywallModal === 'later-upgrade' ? (
+              <div>
+                <p className="text-xl font-semibold text-foreground">Upgrade to keep your OpenClaw running</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Upgrade to keep your private OpenClaw instance online.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaywallPlan('monthly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      selectedPaywallPlan === 'monthly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={selectedPaywallPlan === 'monthly'}
+                  >
+                    <p className={cn('text-xs font-medium uppercase tracking-wide', selectedPaywallPlan === 'monthly' ? 'text-primary' : 'text-muted-foreground')}>
+                      Monthly
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_MONTHLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/mo</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaywallPlan('yearly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      selectedPaywallPlan === 'yearly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={selectedPaywallPlan === 'yearly'}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={cn('text-xs font-medium uppercase tracking-wide', selectedPaywallPlan === 'yearly' ? 'text-primary' : 'text-muted-foreground')}>
+                        Yearly
+                      </p>
+                      <span className="rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Save 20%
+                      </span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_YEARLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/year</p>
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Choose monthly or yearly. Both are under $1/day.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
+                </p>
+                <div className="mt-5">
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                    }}
+                    disabled={isCheckoutRedirecting}
+                  >
+                    {isCheckoutRedirecting
+                      ? 'Redirecting...'
+                      : `Upgrade (${selectedPaywallPlan === 'yearly' ? 'Yearly' : 'Monthly'})`}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {paywallModal === 'why-limit' ? (
+              <div>
+                <p className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                  Quick heads-up
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">This is a 15-minute trial. When the timer ends, we will delete your instance.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
+                </p>
+                {isHeadsUpDiscountEligible ? (
+                  <p className="mt-1 text-xs text-primary">
+                    Your one-time 25% off is still active: {formatUsd(PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD)}/mo for month one.
+                  </p>
+                ) : null}
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      if (isHeadsUpDiscountEligible) {
+                        setSelectedPaywallPlan('monthly')
+                        void activateFrontendUpgrade({ plan: 'monthly', applyDiscount: true })
+                        return
+                      }
+                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                    }}
+                    disabled={isCheckoutRedirecting}
+                  >
+                    {isCheckoutRedirecting
+                      ? 'Redirecting...'
+                      : isHeadsUpDiscountEligible
+                        ? `Keep my instance for ${formatUsd(PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD)}`
+                        : 'Keep my instance running'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setIsHeadsUpDiscountEligible(false)
+                      setPaywallModal('none')
+                    }}
+                  >
+                    No thanks, delete in 15 min
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {paywallModal === 'leave-warning' ? (
+              <div>
+                <p className="text-xl font-semibold text-foreground">Leaving now?</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Your OpenClaw instance will be deleted when the timer ends unless you upgrade.
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPaywallModal('none')
+                      setPendingLeaveHref(null)
+                      router.push('/dashboard')
+                    }}
+                  >
+                    Go to dashboard
+                  </Button>
+                  <Button onClick={continueLeaveNavigation}>Leave</Button>
+                </div>
+              </div>
+            ) : null}
+
+            {paywallModal === 'deleted' ? (
+              <div>
+                <p className="text-xl font-semibold text-foreground">Instance deleted</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Your 15-minute trial ended, so we deleted your OpenClaw instance. Upgrade to launch a new one.
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={() => setPaywallModal('later-upgrade')}>
+                    Redeploy OpenClaw
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                    }}
+                    disabled={isCheckoutRedirecting}
+                  >
+                    {isCheckoutRedirecting ? 'Redirecting...' : 'Upgrade'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -24,12 +24,8 @@ import {
   type ProviderSetupMethod,
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import {
-  deriveTenantIdFromUserId,
-  fetchTenantDaemonStatus,
-  tenantHasProvisionedInstance,
-} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -93,10 +89,9 @@ export default function OpenCloudStepPage() {
           return
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
-        if (tenantHasProvisionedInstance(daemonStatus)) {
-          router.replace('/dashboard/chat')
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (complete) {
+          router.replace('/chat')
           return
         }
 
@@ -152,7 +147,7 @@ export default function OpenCloudStepPage() {
       ...savedSetup,
       [selectedProviderId]: {
         method: 'oauth',
-        oauthConnected: true,
+        oauthConnected: false,
         hasApiKey: false,
         updatedAt: new Date().toISOString(),
       },
@@ -162,7 +157,7 @@ export default function OpenCloudStepPage() {
     setApiKey('')
     setError('')
     if (showStatusMessage) {
-      setStatus('Saved')
+      setStatus('OAuth selected. You will connect after deployment.')
     }
     return true
   }
@@ -209,7 +204,7 @@ export default function OpenCloudStepPage() {
         ? saveOAuthSelection(false)
         : saveApiKeySelection(false)
     if (!didSave) return
-    router.push('/dashboard/skills')
+    router.push('/skills')
   }
 
   if (checkingSession) {
@@ -296,8 +291,11 @@ export default function OpenCloudStepPage() {
 
             {selectedMethod === 'oauth' ? (
               <div className="rounded-lg border border-border/70 bg-card p-4">
+                {providerConfig.oauthHint ? (
+                  <p className="text-sm text-muted-foreground">{providerConfig.oauthHint}</p>
+                ) : null}
                 <Button className="mt-3" onClick={() => saveOAuthSelection(true)}>
-                  Connect
+                  Use OAuth (connect later)
                 </Button>
               </div>
             ) : (

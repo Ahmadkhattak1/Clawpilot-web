@@ -29,9 +29,10 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     apiKeyPlaceholder: 'sk-ant-...',
   },
   openai: {
-    methods: ['api-key'],
+    methods: ['oauth', 'api-key'],
     apiKeyLabel: 'OpenAI API key',
     apiKeyPlaceholder: 'sk-...',
+    oauthHint: 'OpenAI OAuth uses the OpenAI Code (Codex) flow and is completed after deployment.',
   },
   minimax: {
     methods: ['oauth', 'api-key'],

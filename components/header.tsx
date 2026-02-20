@@ -49,7 +49,7 @@ export function Header() {
     }
   }, [])
 
-  const ctaHref = authStatus === "authenticated" ? "/dashboard" : "/signin"
+  const ctaHref = authStatus === "authenticated" ? "/chat" : "/signin"
   const ctaLabel =
     authStatus === "authenticated"
       ? "Dashboard"

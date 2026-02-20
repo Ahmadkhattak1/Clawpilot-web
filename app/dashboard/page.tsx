@@ -5,8 +5,17 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
   AVAILABLE_MODEL_PROVIDER_OPTIONS,
@@ -17,12 +26,8 @@ import {
   type ModelProviderId,
   type ModelProviderOption,
 } from '@/lib/model-providers'
-import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import {
-  deriveTenantIdFromUserId,
-  fetchTenantDaemonStatus,
-  tenantHasProvisionedInstance,
-} from '@/lib/tenant-instance'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
+import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -41,6 +46,29 @@ function getProviderInitials(label: string) {
     .slice(0, 2)
     .map((segment) => segment[0]?.toUpperCase() ?? '')
     .join('')
+}
+
+function buildProfileInitial(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) return 'A'
+
+  const parts = normalized.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    const initials = `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase()
+    if (initials.trim()) {
+      return initials
+    }
+  }
+
+  return normalized[0]?.toUpperCase() ?? 'A'
+}
+
+function buildPfpWebUrl(email: string): string | null {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+  return `https://pfp.web/${encodeURIComponent(normalized)}`
 }
 
 function ProviderLogo({
@@ -83,6 +111,11 @@ export default function DashboardPage() {
   const [selectedProviderId, setSelectedProviderId] = useState<ModelProviderId | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+  const [profileName, setProfileName] = useState('Account')
+  const [profileEmail, setProfileEmail] = useState('')
+  const [profileInitial, setProfileInitial] = useState('A')
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   const selectedProvider = useMemo(
     () => AVAILABLE_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null,
@@ -101,6 +134,25 @@ export default function DashboardPage() {
     router.replace(buildSignInPath(currentPath))
   }
 
+  async function handleSignOut() {
+    if (isSigningOut) {
+      return
+    }
+
+    try {
+      setIsSigningOut(true)
+      const supabase = getSupabaseAuthClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Failed to sign out', error)
+      }
+    } catch (error) {
+      console.error('Failed to sign out', error)
+    } finally {
+      router.replace('/signin')
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
 
@@ -112,11 +164,30 @@ export default function DashboardPage() {
           return
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
-        if (tenantHasProvisionedInstance(daemonStatus)) {
-          router.replace('/dashboard/chat')
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (complete) {
+          router.replace('/chat')
           return
+        }
+
+        const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
+        const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : ''
+        const fallbackName = typeof userMetadata.name === 'string' ? userMetadata.name.trim() : ''
+        const email = session.user.email?.trim() ?? ''
+        const displayName = fullName || fallbackName || email || 'Account'
+        const pfpWebAvatar = buildPfpWebUrl(email)
+        const metadataAvatar =
+          typeof userMetadata.avatar_url === 'string' && userMetadata.avatar_url.trim()
+            ? userMetadata.avatar_url.trim()
+            : typeof userMetadata.picture === 'string' && userMetadata.picture.trim()
+              ? userMetadata.picture.trim()
+              : null
+
+        if (!cancelled) {
+          setProfileName(displayName)
+          setProfileEmail(email)
+          setProfileInitial(buildProfileInitial(displayName || email))
+          setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
         }
 
         const storedProviderId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
@@ -192,6 +263,42 @@ export default function DashboardPage() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
+
+      <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-card transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Open account menu"
+            >
+              <Avatar className="h-9 w-9">
+                {profileImageUrl ? <AvatarImage src={profileImageUrl} alt={profileName} /> : null}
+                <AvatarFallback className="bg-muted text-xs font-medium text-foreground">
+                  {profileInitial}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="py-2">
+              <p className="truncate text-xs font-medium text-foreground">{profileName}</p>
+              {profileEmail ? <p className="truncate text-[11px] text-muted-foreground">{profileEmail}</p> : null}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                void handleSignOut()
+              }}
+              disabled={isSigningOut}
+              className="text-destructive focus:text-destructive"
+            >
+              {isSigningOut ? 'Signing out...' : 'Sign out'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">

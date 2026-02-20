@@ -2,13 +2,20 @@
 
 import Link from 'next/link'
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ClipboardCopy,
   ExternalLink,
+  FilePlus2,
   Info,
   Loader2,
+  RotateCcw,
   RefreshCw,
   Settings2,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
   Wrench,
   XCircle,
 } from 'lucide-react'
@@ -32,7 +39,13 @@ import {
   createRuntimeWorkspaceTemplate,
   deleteRuntimeWorkspaceFile,
   installRuntimeSkill,
+  listRuntimeWorkspaceFileVersions,
+  listRuntimeWorkspaceTrashFiles,
+  purgeRuntimeWorkspaceTrashFile,
   readRuntimeWorkspaceFile,
+  resetRuntimeOpenClawInstance,
+  restoreRuntimeWorkspaceFileVersion,
+  restoreRuntimeWorkspaceTrashFile,
   listRuntimeSkills,
   listRuntimeWorkspaceFiles,
   listRuntimeWorkspaceHealth,
@@ -41,6 +54,8 @@ import {
   upsertRuntimeWorkspaceFile,
   type RuntimeSkillSummary,
   type RuntimeWorkspaceHealthData,
+  type RuntimeWorkspaceTrashFileSummary,
+  type RuntimeWorkspaceFileVersionSummary,
 } from '@/lib/runtime-controls'
 import { getSkillOptionById, type SkillConfigField, type SkillOption } from '@/lib/skill-options'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
@@ -402,26 +417,37 @@ function findOptionFieldForEnvKey(
   if (!option?.configFields?.length) return null
   const normalizedKey = normalizeToken(envKey)
   return option.configFields.find((field) => (
-    normalizeToken(field.id) === normalizedKey || normalizeToken(field.label) === normalizedKey
+    (field.envKeys ?? []).some((key) => normalizeToken(key) === normalizedKey)
+      || normalizeToken(field.id) === normalizedKey
+      || normalizeToken(field.label) === normalizedKey
   )) ?? null
 }
 
 function inferCredentialSourceHint(value: string): string | null {
   const normalized = value.trim().toLowerCase()
   if (normalized.includes('openai')) {
-    return 'Get it from OpenAI dashboard: https://platform.openai.com/api-keys'
+    return 'Create it in OpenAI dashboard -> API keys.'
   }
   if (normalized.includes('gemini') || normalized.includes('google_places') || normalized.includes('googleplaces')) {
-    return 'Create it in Google AI Studio / Google Cloud credentials.'
+    return 'Create it in Google AI Studio or Google Cloud Credentials (based on the skill).'
   }
   if (normalized.includes('github')) {
-    return 'Create a token in GitHub Settings -> Developer settings -> Personal access tokens.'
+    return 'Create it in GitHub Settings -> Developer settings -> Personal access tokens.'
   }
   if (normalized.includes('elevenlabs')) {
-    return 'Create it in ElevenLabs account settings/API section.'
+    return 'Create it in ElevenLabs Settings -> API Keys.'
+  }
+  if (normalized.includes('giphy')) {
+    return 'Create it in GIPHY Developers (create app -> API key).'
   }
   if (normalized.includes('hue') || normalized.includes('bridge_key')) {
     return 'Create a Hue app key from your Hue bridge integration setup.'
+  }
+  if (normalized.includes('spotify')) {
+    return 'Create it in Spotify Developer Dashboard (app credentials).'
+  }
+  if (normalized.includes('app_password')) {
+    return 'Generate an app password in your email provider security settings.'
   }
   if (normalized.includes('clawhub')) {
     return 'Create/retrieve token from your ClawHub account settings.'
@@ -450,44 +476,104 @@ function choosePrimarySensitiveField(
     ?? null
 }
 
-function parseExtraEnvLines(input: string): { env: Record<string, string>; error: string | null } {
-  const env: Record<string, string> = {}
-  const lines = input
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  for (const line of lines) {
-    const separatorIndex = line.indexOf('=')
-    if (separatorIndex <= 0) {
-      return {
-        env: {},
-        error: `Invalid env line: "${line}". Use KEY=value format.`,
-      }
-    }
-    const key = line.slice(0, separatorIndex).trim()
-    const value = line.slice(separatorIndex + 1)
-    if (!key) {
-      return {
-        env: {},
-        error: `Invalid env line: "${line}". Missing key before '='.`,
-      }
-    }
-    env[key] = value
-  }
-
-  return {
-    env,
-    error: null,
-  }
-}
-
 function isValidRelativeMdPath(value: string): boolean {
   const normalized = value.trim()
   if (!normalized) return false
   if (normalized.startsWith('/')) return false
   if (normalized.includes('..')) return false
   return /^[A-Za-z0-9._/-]+\.md$/i.test(normalized)
+}
+
+function affectsWorkspaceHealthSummary(relativePath: string): boolean {
+  const normalized = relativePath.trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized.includes('/')) return false
+  return normalized === 'memory.md' || normalized === 'boot.md' || normalized === 'agents.md'
+}
+
+function getPathFileName(relativePath: string): string {
+  const normalized = relativePath.trim()
+  if (!normalized) return ''
+  const segments = normalized.split('/')
+  return segments[segments.length - 1] ?? normalized
+}
+
+function isCriticalWorkspaceFile(relativePath: string): boolean {
+  const normalized = relativePath.trim().toLowerCase()
+  if (!normalized || normalized.includes('/')) {
+    return false
+  }
+
+  return [
+    'agents.md',
+    'soul.md',
+    'user.md',
+    'identity.md',
+    'tools.md',
+    'heartbeat.md',
+    'boot.md',
+    'bootstrap.md',
+    'memory.md',
+  ].includes(normalized)
+}
+
+function workspaceFileRisk(
+  relativePath: string,
+): {
+  level: 'critical' | 'operational' | 'normal'
+  label: string
+  message: string
+} {
+  if (isCriticalWorkspaceFile(relativePath)) {
+    return {
+      level: 'critical',
+      label: 'Critical',
+      message: 'Changing this file can alter startup behavior, memory, or core assistant behavior.',
+    }
+  }
+
+  const normalized = relativePath.trim().toLowerCase()
+  if (normalized.startsWith('memory/') || normalized.endsWith('/skill.md')) {
+    return {
+      level: 'operational',
+      label: 'Operational',
+      message: 'This file influences memory or skills. Changes can impact assistant quality.',
+    }
+  }
+
+  return {
+    level: 'normal',
+    label: 'Normal',
+    message: 'Standard markdown file.',
+  }
+}
+
+function buildAbsoluteWorkspaceFilePath(workspaceDir: string | null | undefined, relativePath: string): string | null {
+  const base = workspaceDir?.trim()
+  if (!base) return null
+  const rel = relativePath.trim().replace(/^\/+/, '')
+  if (!rel) return null
+  return `${base.replace(/\/+$/, '')}/${rel}`
+}
+
+function formatVersionTimestamp(value: string | null | undefined): string {
+  const raw = value?.trim() ?? ''
+  if (!raw) return 'Unknown'
+
+  const normalized = raw.replace(/\.md$/i, '').replace(/-.*$/, '')
+  if (!/^\d{8}T\d{6}Z$/.test(normalized)) return raw
+
+  const iso = `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}T${normalized.slice(9, 11)}:${normalized.slice(11, 13)}:${normalized.slice(13, 15)}Z`
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return raw
+  return parsed.toLocaleString()
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '-'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function healthRow(label: string, ok: boolean, optional = false) {
@@ -535,17 +621,25 @@ export default function SkillsManagementPage() {
 
   const [newFilePath, setNewFilePath] = useState('notes/new-note.md')
   const [newFileContent, setNewFileContent] = useState('')
+  const [newFileDialogOpen, setNewFileDialogOpen] = useState(false)
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
+  const [fileDialogMode, setFileDialogMode] = useState<'view' | 'edit'>('view')
   const [fileDialogPath, setFileDialogPath] = useState('')
   const [fileDialogContent, setFileDialogContent] = useState('')
   const [fileDialogLoading, setFileDialogLoading] = useState(false)
+  const [fileVersions, setFileVersions] = useState<RuntimeWorkspaceFileVersionSummary[]>([])
+  const [fileVersionsLoading, setFileVersionsLoading] = useState(false)
+  const [trashFiles, setTrashFiles] = useState<RuntimeWorkspaceTrashFileSummary[]>([])
+  const [trashRetentionDays, setTrashRetentionDays] = useState(30)
+  const [copiedValue, setCopiedValue] = useState('')
+  const [resetMode, setResetMode] = useState<'workspace' | 'factory'>('workspace')
+  const [trashDialogOpen, setTrashDialogOpen] = useState(false)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
 
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [configSkill, setConfigSkill] = useState<RuntimeSkillSummary | null>(null)
   const [configApiKey, setConfigApiKey] = useState('')
   const [configRequiredEnvValues, setConfigRequiredEnvValues] = useState<Record<string, string>>({})
-  const [configSuggestedValues, setConfigSuggestedValues] = useState<Record<string, string>>({})
-  const [configExtraEnvLines, setConfigExtraEnvLines] = useState('')
   const [configError, setConfigError] = useState('')
 
   const redirectToSignIn = useCallback(() => {
@@ -555,25 +649,63 @@ export default function SkillsManagementPage() {
     router.replace(buildSignInPath(currentPath))
   }, [router])
 
+  const refreshSkills = useCallback(async (nextTenantId: string, syncRuntime = false) => {
+    const nextSkills = await listRuntimeSkills(nextTenantId, {
+      syncRuntime,
+    })
+    setSkills(nextSkills.skills)
+  }, [])
+
+  const refreshWorkspaceHealth = useCallback(async (nextTenantId: string, syncRuntime = false) => {
+    const nextHealth = await listRuntimeWorkspaceHealth(nextTenantId, {
+      syncRuntime,
+    })
+    setHealth(nextHealth)
+  }, [])
+
+  const refreshWorkspaceFiles = useCallback(async (nextTenantId: string, syncRuntime = false) => {
+    const filesData = await listRuntimeWorkspaceFiles(nextTenantId, {
+      includeHidden: true,
+      syncRuntime,
+    })
+    setMarkdownFiles(filesData.files)
+  }, [])
+
+  const refreshWorkspaceTrash = useCallback(async (nextTenantId: string, retentionDays = 30) => {
+    const trashData = await listRuntimeWorkspaceTrashFiles(nextTenantId, {
+      retentionDays,
+    })
+    setTrashFiles(trashData.files)
+  }, [])
+
+  const refreshWorkspaceAfterFileMutation = useCallback(async (nextTenantId: string, relativePath: string) => {
+    if (affectsWorkspaceHealthSummary(relativePath)) {
+      await Promise.all([
+        refreshWorkspaceFiles(nextTenantId),
+        refreshWorkspaceHealth(nextTenantId),
+      ])
+      return
+    }
+    await refreshWorkspaceFiles(nextTenantId)
+  }, [refreshWorkspaceFiles, refreshWorkspaceHealth])
+
   const refreshAll = useCallback(async (nextTenantId: string) => {
     setLoading(true)
     setError('')
     try {
-      const [nextSkills, nextHealth, filesData] = await Promise.all([
-        listRuntimeSkills(nextTenantId),
-        listRuntimeWorkspaceHealth(nextTenantId),
-        listRuntimeWorkspaceFiles(nextTenantId, { includeHidden: true }),
+      await Promise.all([
+        refreshSkills(nextTenantId, false),
+        refreshWorkspaceHealth(nextTenantId),
+        refreshWorkspaceFiles(nextTenantId),
+        refreshWorkspaceTrash(nextTenantId, trashRetentionDays),
       ])
-      setSkills(nextSkills.skills)
-      setHealth(nextHealth)
-      setMarkdownFiles(filesData.files)
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load skills and workspace data.'
       setError(message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshSkills, refreshWorkspaceFiles, refreshWorkspaceHealth, refreshWorkspaceTrash, trashRetentionDays])
 
   useEffect(() => {
     let cancelled = false
@@ -613,6 +745,15 @@ export default function SkillsManagementPage() {
     })
   }, [search, skills])
 
+  const filteredMarkdownFiles = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return markdownFiles
+    return markdownFiles.filter((relativePath) => (
+      relativePath.toLowerCase().includes(query) ||
+      getPathFileName(relativePath).toLowerCase().includes(query)
+    ))
+  }, [markdownFiles, search])
+
   const clawhubSkill = useMemo(() => {
     return skills.find((skill) => {
       const tokens = new Set(skillIdentityTokens(skill))
@@ -639,16 +780,24 @@ export default function SkillsManagementPage() {
     return Boolean(configPrimarySensitiveField) && !hasSensitiveRequiredEnv
   }, [configPrimarySensitiveField, configRequiredEnvKeys])
 
-  const configSuggestedFields = useMemo(() => {
-    if (!configSkillOption?.configFields?.length) return []
-    const requiredEnvKeySet = new Set(configRequiredEnvKeys.map((key) => normalizeToken(key)))
-    return configSkillOption.configFields.filter((field) => !requiredEnvKeySet.has(normalizeToken(field.id)))
-  }, [configRequiredEnvKeys, configSkillOption])
-
   const handleRefresh = useCallback(async () => {
     if (!tenantId) return
-    await refreshAll(tenantId)
-  }, [refreshAll, tenantId])
+    setLoading(true)
+    setError('')
+    try {
+      await Promise.all([
+        refreshSkills(tenantId, true),
+        refreshWorkspaceHealth(tenantId, true),
+        refreshWorkspaceFiles(tenantId, true),
+        refreshWorkspaceTrash(tenantId, trashRetentionDays),
+      ])
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : 'Failed to load skills and workspace data.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [refreshSkills, refreshWorkspaceFiles, refreshWorkspaceHealth, refreshWorkspaceTrash, tenantId, trashRetentionDays])
 
   const waitForSkillInstall = useCallback(async (
     nextTenantId: string,
@@ -663,9 +812,16 @@ export default function SkillsManagementPage() {
     let latestSkills: RuntimeSkillSummary[] = []
     let latestMatchedSkill: RuntimeSkillSummary | null = null
 
+    const pollIntervalsMs = [1_500, 2_500, 3_500, 5_000, 5_000, 7_000, 7_000]
+    let pollIndex = 0
+    let pollAttempts = 0
+
     while (Date.now() - startedAt < timeoutMs) {
       try {
-        const next = await listRuntimeSkills(nextTenantId)
+        const shouldSyncRuntime = pollAttempts === 0 || pollAttempts % 3 === 0
+        const next = await listRuntimeSkills(nextTenantId, {
+          syncRuntime: shouldSyncRuntime,
+        })
         latestSkills = next.skills
         latestMatchedSkill = findMatchingSkill(next.skills, targetSkill)
         if (latestMatchedSkill && isSkillInstalled(latestMatchedSkill)) {
@@ -678,7 +834,10 @@ export default function SkillsManagementPage() {
       } catch {
         // Ignore transient polling failures and keep waiting for install status.
       }
-      await delay(2_500)
+      pollAttempts += 1
+      const waitMs = pollIntervalsMs[Math.min(pollIndex, pollIntervalsMs.length - 1)]
+      pollIndex += 1
+      await delay(waitMs)
     }
 
     return {
@@ -711,7 +870,10 @@ export default function SkillsManagementPage() {
       if (verification.skills.length > 0) {
         setSkills(verification.skills)
       }
-      await refreshAll(tenantId)
+      await Promise.all([
+        refreshSkills(tenantId),
+        refreshWorkspaceHealth(tenantId),
+      ])
 
       if (!verification.installed) {
         const missingSummary = verification.matchedSkill
@@ -731,7 +893,7 @@ export default function SkillsManagementPage() {
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshAll, tenantId, waitForSkillInstall])
+  }, [refreshSkills, refreshWorkspaceHealth, tenantId, waitForSkillInstall])
 
   const handleToggle = useCallback(async (skill: RuntimeSkillSummary, enabled: boolean) => {
     if (!tenantId) return
@@ -744,14 +906,14 @@ export default function SkillsManagementPage() {
         skillKey: resolveSkillCanonicalKey(skill),
         enabled,
       })
-      await refreshAll(tenantId)
+      await refreshSkills(tenantId, false)
       setStatus(`${skill.name} ${enabled ? 'enabled' : 'disabled'}.`)
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : `Failed to update ${skill.name}.`)
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshAll, tenantId])
+  }, [refreshSkills, tenantId])
 
   const openConfigureDialog = useCallback((skill: RuntimeSkillSummary) => {
     setConfigSkill(skill)
@@ -761,7 +923,6 @@ export default function SkillsManagementPage() {
       envDefaults[key] = ''
     }
     setConfigRequiredEnvValues(envDefaults)
-    setConfigExtraEnvLines('')
     setConfigError('')
     setConfigDialogOpen(true)
   }, [])
@@ -795,16 +956,6 @@ export default function SkillsManagementPage() {
       env[key] = value
     }
 
-    const parsedExtra = parseExtraEnvLines(configExtraEnvLines)
-    if (parsedExtra.error) {
-      setConfigError(parsedExtra.error)
-      return
-    }
-
-    for (const [key, value] of Object.entries(parsedExtra.env)) {
-      env[key] = value
-    }
-
     if (Object.keys(env).length > 0) {
       payload.env = env
     }
@@ -819,7 +970,7 @@ export default function SkillsManagementPage() {
     try {
       await updateRuntimeSkill(tenantId, payload)
       setConfigDialogOpen(false)
-      await refreshAll(tenantId)
+      await refreshSkills(tenantId, false)
       setStatus(`${configSkill.name} config updated.`)
     } catch (saveError) {
       setConfigError(saveError instanceof Error ? saveError.message : 'Failed to save skill config.')
@@ -828,11 +979,10 @@ export default function SkillsManagementPage() {
     }
   }, [
     configApiKey,
-    configExtraEnvLines,
     configRequiredEnvKeys,
     configRequiredEnvValues,
     configSkill,
-    refreshAll,
+    refreshSkills,
     tenantId,
   ])
 
@@ -845,14 +995,17 @@ export default function SkillsManagementPage() {
     try {
       const repaired = await repairRuntimeWorkspaceEssentials(tenantId)
       setHealth(repaired)
-      await refreshAll(tenantId)
+      await Promise.all([
+        refreshWorkspaceHealth(tenantId),
+        refreshWorkspaceFiles(tenantId),
+      ])
       setStatus('Workspace essentials repaired.')
     } catch (repairError) {
       setError(repairError instanceof Error ? repairError.message : 'Failed to repair workspace essentials.')
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshAll, tenantId])
+  }, [refreshWorkspaceFiles, refreshWorkspaceHealth, tenantId])
 
   const handleCreateTemplate = useCallback(async (template: 'memory-md' | 'boot-md' | 'daily-memory') => {
     if (!tenantId) return
@@ -862,14 +1015,64 @@ export default function SkillsManagementPage() {
     setStatus('')
     try {
       await createRuntimeWorkspaceTemplate(tenantId, { template })
-      await refreshAll(tenantId)
+      await Promise.all([
+        refreshWorkspaceHealth(tenantId),
+        refreshWorkspaceFiles(tenantId),
+      ])
       setStatus(`Template created: ${template}.`)
     } catch (templateError) {
       setError(templateError instanceof Error ? templateError.message : 'Failed to create template.')
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshAll, tenantId])
+  }, [refreshWorkspaceFiles, refreshWorkspaceHealth, tenantId])
+
+  const applyNewFileTemplate = useCallback((kind: 'note' | 'skill' | 'memory') => {
+    if (kind === 'skill') {
+      setNewFilePath('skills/new-skill/SKILL.md')
+      setNewFileContent([
+        '# Skill Name',
+        '',
+        '## Purpose',
+        '-',
+        '',
+        '## Usage',
+        '-',
+        '',
+      ].join('\n'))
+      return
+    }
+
+    if (kind === 'memory') {
+      const date = new Date().toISOString().slice(0, 10)
+      setNewFilePath(`memory/${date}.md`)
+      setNewFileContent('# Session Memory\n\n- Context:\n- Decisions:\n- Next steps:\n')
+      return
+    }
+
+    setNewFilePath('notes/new-note.md')
+    setNewFileContent('# New note\n')
+  }, [])
+
+  const handleCopyValue = useCallback(async (value: string, label: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(trimmed)
+      } else {
+        throw new Error('Clipboard API unavailable')
+      }
+      setCopiedValue(trimmed)
+      setStatus(`${label} copied.`)
+      setTimeout(() => {
+        setCopiedValue((current) => (current === trimmed ? '' : current))
+      }, 1800)
+    } catch {
+      setError(`Unable to copy ${label.toLowerCase()}.`)
+    }
+  }, [])
 
   const handleCreateMarkdownFile = useCallback(async () => {
     if (!tenantId) return
@@ -889,8 +1092,9 @@ export default function SkillsManagementPage() {
         content: newFileContent,
         overwrite: true,
       })
-      await refreshAll(tenantId)
+      await refreshWorkspaceAfterFileMutation(tenantId, normalizedPath)
       setStatus(`${normalizedPath} saved.`)
+      setNewFileDialogOpen(false)
       setNewFilePath('notes/new-note.md')
       setNewFileContent('')
     } catch (upsertError) {
@@ -898,15 +1102,18 @@ export default function SkillsManagementPage() {
     } finally {
       setActionPendingKey('')
     }
-  }, [newFileContent, newFilePath, refreshAll, tenantId])
+  }, [newFileContent, newFilePath, refreshWorkspaceAfterFileMutation, tenantId])
 
   const handleOpenMarkdownFile = useCallback(async (relativePath: string) => {
     if (!tenantId) return
     setActionPendingKey(`view:${relativePath}`)
     setError('')
     setStatus('')
+    setFileDialogMode('view')
     setFileDialogPath(relativePath)
     setFileDialogLoading(true)
+    setFileVersions([])
+    setFileVersionsLoading(isCriticalWorkspaceFile(relativePath))
     setFileDialogOpen(true)
 
     try {
@@ -918,11 +1125,23 @@ export default function SkillsManagementPage() {
       }
       setFileDialogPath(fileData.relativePath || relativePath)
       setFileDialogContent(fileData.content)
+      const filePath = fileData.relativePath || relativePath
+      if (isCriticalWorkspaceFile(filePath)) {
+        try {
+          const versionsData = await listRuntimeWorkspaceFileVersions(tenantId, filePath, {
+            limit: 20,
+          })
+          setFileVersions(versionsData.versions)
+        } catch {
+          // Non-fatal: keep file open even if versions fail to load.
+        }
+      }
     } catch (readError) {
       setFileDialogOpen(false)
       setError(readError instanceof Error ? readError.message : `Failed to read ${relativePath}.`)
     } finally {
       setFileDialogLoading(false)
+      setFileVersionsLoading(false)
       setActionPendingKey('')
     }
   }, [tenantId])
@@ -935,6 +1154,13 @@ export default function SkillsManagementPage() {
       return
     }
 
+    if (isCriticalWorkspaceFile(normalizedPath)) {
+      const confirmed = window.confirm(
+        `Save changes to critical file "${normalizedPath}"? This may affect OpenClaw startup and behavior.`,
+      )
+      if (!confirmed) return
+    }
+
     const actionKey = `save-opened:${normalizedPath}`
     setActionPendingKey(actionKey)
     setError('')
@@ -945,35 +1171,228 @@ export default function SkillsManagementPage() {
         content: fileDialogContent,
         overwrite: true,
       })
-      await refreshAll(tenantId)
+      await refreshWorkspaceAfterFileMutation(tenantId, normalizedPath)
       setStatus(`${normalizedPath} saved.`)
-      setFileDialogOpen(false)
+      setFileDialogMode('view')
+      if (isCriticalWorkspaceFile(normalizedPath)) {
+        setFileVersionsLoading(true)
+        try {
+          const versionsData = await listRuntimeWorkspaceFileVersions(tenantId, normalizedPath, {
+            limit: 20,
+          })
+          setFileVersions(versionsData.versions)
+        } catch {
+          // keep dialog open without blocking on history refresh
+        } finally {
+          setFileVersionsLoading(false)
+        }
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : `Failed to save ${normalizedPath}.`)
     } finally {
       setActionPendingKey('')
     }
-  }, [fileDialogContent, fileDialogPath, refreshAll, tenantId])
+  }, [fileDialogContent, fileDialogPath, refreshWorkspaceAfterFileMutation, tenantId])
 
   const handleDeleteMarkdownFile = useCallback(async (relativePath: string) => {
     if (!tenantId) return
-    const confirmed = window.confirm(`Delete ${relativePath}?`)
-    if (!confirmed) return
+    const risk = workspaceFileRisk(relativePath)
+    if (risk.level === 'critical') {
+      const confirmation = window.prompt(
+        `Delete critical file "${relativePath}"? This can break OpenClaw behavior.\n\nType the exact path to confirm.`,
+      )
+      if (confirmation?.trim() !== relativePath) return
+    } else {
+      const confirmed = window.confirm(`Move ${relativePath} to trash?`)
+      if (!confirmed) return
+    }
 
     const actionKey = `delete:${relativePath}`
     setActionPendingKey(actionKey)
     setError('')
     setStatus('')
     try {
-      await deleteRuntimeWorkspaceFile(tenantId, { relativePath })
-      await refreshAll(tenantId)
-      setStatus(`${relativePath} deleted.`)
+      await deleteRuntimeWorkspaceFile(tenantId, {
+        relativePath,
+        permanent: false,
+      })
+      await Promise.all([
+        refreshWorkspaceAfterFileMutation(tenantId, relativePath),
+        refreshWorkspaceTrash(tenantId, trashRetentionDays),
+      ])
+      setStatus(`${relativePath} moved to trash.`)
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : `Failed to delete ${relativePath}.`)
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshAll, tenantId])
+  }, [refreshWorkspaceAfterFileMutation, refreshWorkspaceTrash, tenantId, trashRetentionDays])
+
+  const handleRestoreFileVersion = useCallback(async (version: RuntimeWorkspaceFileVersionSummary) => {
+    if (!tenantId || !fileDialogPath) return
+    const normalizedPath = fileDialogPath.trim()
+    if (!normalizedPath) return
+
+    const confirmed = window.confirm(
+      `Restore version ${version.versionId} for ${normalizedPath}? Current file content will be replaced.`,
+    )
+    if (!confirmed) return
+
+    const actionKey = `version-restore:${version.versionId}`
+    setActionPendingKey(actionKey)
+    setError('')
+    setStatus('')
+    try {
+      await restoreRuntimeWorkspaceFileVersion(tenantId, {
+        relativePath: normalizedPath,
+        versionId: version.versionId,
+      })
+
+      const [fileData, versionsData] = await Promise.all([
+        readRuntimeWorkspaceFile(tenantId, normalizedPath),
+        listRuntimeWorkspaceFileVersions(tenantId, normalizedPath, { limit: 20 }),
+      ])
+      if (fileData.exists) {
+        setFileDialogContent(fileData.content)
+      }
+      setFileVersions(versionsData.versions)
+      setFileDialogMode('view')
+      await refreshWorkspaceAfterFileMutation(tenantId, normalizedPath)
+      setStatus(`Restored ${normalizedPath} from version ${version.versionId}.`)
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : `Failed to restore version ${version.versionId}.`)
+    } finally {
+      setActionPendingKey('')
+    }
+  }, [fileDialogPath, refreshWorkspaceAfterFileMutation, tenantId])
+
+  const handleRestoreTrashedFile = useCallback(async (trashFile: RuntimeWorkspaceTrashFileSummary) => {
+    if (!tenantId) return
+    const actionKey = `restore:${trashFile.trashPath}`
+    setActionPendingKey(actionKey)
+    setError('')
+    setStatus('')
+    try {
+      await restoreRuntimeWorkspaceTrashFile(tenantId, {
+        trashPath: trashFile.trashPath,
+        overwrite: false,
+      })
+      await Promise.all([
+        refreshWorkspaceFiles(tenantId),
+        refreshWorkspaceTrash(tenantId, trashRetentionDays),
+        refreshWorkspaceHealth(tenantId),
+      ])
+      setStatus(`${trashFile.relativePath} restored from trash.`)
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : `Failed to restore ${trashFile.relativePath}.`)
+    } finally {
+      setActionPendingKey('')
+    }
+  }, [refreshWorkspaceFiles, refreshWorkspaceHealth, refreshWorkspaceTrash, tenantId, trashRetentionDays])
+
+  const handlePurgeTrash = useCallback(async (trashFile?: RuntimeWorkspaceTrashFileSummary) => {
+    if (!tenantId) return
+    const actionKey = trashFile ? `purge:${trashFile.trashPath}` : 'purge:all'
+    const confirmed = window.confirm(
+      trashFile
+        ? `Permanently delete ${trashFile.relativePath} from trash?`
+        : 'Permanently empty the trash?',
+    )
+    if (!confirmed) return
+
+    setActionPendingKey(actionKey)
+    setError('')
+    setStatus('')
+    try {
+      await purgeRuntimeWorkspaceTrashFile(tenantId, trashFile ? { trashPath: trashFile.trashPath } : {})
+      await refreshWorkspaceTrash(tenantId, trashRetentionDays)
+      setStatus(trashFile ? `${trashFile.relativePath} permanently deleted.` : 'Trash emptied.')
+    } catch (purgeError) {
+      setError(purgeError instanceof Error ? purgeError.message : 'Failed to purge trash.')
+    } finally {
+      setActionPendingKey('')
+    }
+  }, [refreshWorkspaceTrash, tenantId, trashRetentionDays])
+
+  const handleResetOpenClaw = useCallback(async () => {
+    if (!tenantId) return
+    const actionKey = 'reset:openclaw'
+    if (resetMode === 'workspace') {
+      const confirmed = window.confirm(
+        'Reset workspace only? This moves Markdown files to trash and rebuilds essentials while keeping API/config values.',
+      )
+      if (!confirmed) return
+
+      setActionPendingKey(actionKey)
+      setError('')
+      setStatus('')
+      try {
+        const filesToReset = [...markdownFiles]
+        for (const relativePath of filesToReset) {
+          await deleteRuntimeWorkspaceFile(tenantId, {
+            relativePath,
+            permanent: false,
+          })
+        }
+
+        const repaired = await repairRuntimeWorkspaceEssentials(tenantId)
+        setHealth(repaired)
+        await Promise.all([
+          refreshWorkspaceHealth(tenantId),
+          refreshWorkspaceFiles(tenantId),
+          refreshWorkspaceTrash(tenantId, trashRetentionDays),
+        ])
+
+        const movedCount = filesToReset.length
+        setStatus(
+          movedCount > 0
+            ? `Workspace reset completed. ${movedCount} file${movedCount === 1 ? '' : 's'} moved to trash. API/config values were not changed.`
+            : 'Workspace reset completed. Workspace essentials were rebuilt and API/config values were not changed.',
+        )
+        setResetDialogOpen(false)
+      } catch (resetError) {
+        setError(resetError instanceof Error ? resetError.message : 'Failed to reset workspace.')
+      } finally {
+        setActionPendingKey('')
+      }
+      return
+    }
+
+    const confirmed = window.confirm('Run full OpenClaw factory reset? This wipes workspace and runtime state.')
+    if (!confirmed) return
+
+    const typed = window.prompt('Type RESET to confirm factory reset.')
+    if (typed?.trim().toUpperCase() !== 'RESET') return
+
+    setActionPendingKey(actionKey)
+    setError('')
+    setStatus('')
+    try {
+      await resetRuntimeOpenClawInstance(tenantId, {
+        scope: 'full',
+      })
+
+      setStatus('Factory reset executed. Redirecting to onboarding...')
+      setResetDialogOpen(false)
+      window.setTimeout(() => {
+        router.push('/dashboard/open-cloud')
+      }, 900)
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Failed to reset OpenClaw.')
+    } finally {
+      setActionPendingKey('')
+    }
+  }, [
+    markdownFiles,
+    refreshWorkspaceFiles,
+    refreshWorkspaceHealth,
+    refreshWorkspaceTrash,
+    resetMode,
+    router,
+    setResetDialogOpen,
+    tenantId,
+    trashRetentionDays,
+  ])
 
   if (checkingSession) {
     return (
@@ -1026,11 +1445,11 @@ export default function SkillsManagementPage() {
         <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
           <Card className="border-border/70">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-base">Skills</CardTitle>
+              <CardTitle className="text-base">Skills & Files Explorer</CardTitle>
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search skills by name"
+                placeholder="Search skills, file names, or paths"
                 className="h-9"
               />
             </CardHeader>
@@ -1137,10 +1556,120 @@ export default function SkillsManagementPage() {
                   No skills matched your search.
                 </p>
               ) : null}
+
+              <div className="pt-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">Markdown Files</p>
+                  <p className="text-xs text-muted-foreground">Click a row to open in read-only mode</p>
+                </div>
+
+                <div className="max-h-72 space-y-2 overflow-auto rounded-lg border border-border/70 p-3">
+                  {filteredMarkdownFiles.length > 0 ? filteredMarkdownFiles.map((relativePath) => {
+                    const fileRisk = workspaceFileRisk(relativePath)
+                    const absolutePath = buildAbsoluteWorkspaceFilePath(health?.workspaceDir, relativePath)
+                    const fileName = getPathFileName(relativePath)
+                    return (
+                      <div
+                        key={relativePath}
+                        className="w-full rounded-md border border-border/70 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void handleOpenMarkdownFile(relativePath)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            void handleOpenMarkdownFile(relativePath)
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium" title={fileName}>{fileName}</p>
+                            <p className="truncate text-xs text-muted-foreground" title={relativePath}>{relativePath}</p>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${
+                              fileRisk.level === 'critical'
+                                ? 'bg-destructive/15 text-destructive'
+                                : fileRisk.level === 'operational'
+                                  ? 'bg-amber-500/15 text-amber-700'
+                                  : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {fileRisk.label}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void handleCopyValue(relativePath, 'Relative path')
+                            }}
+                          >
+                            <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
+                            {copiedValue === relativePath ? 'Copied' : 'Copy path'}
+                          </Button>
+                          {absolutePath ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                void handleCopyValue(absolutePath, 'Absolute path')
+                              }}
+                            >
+                              <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
+                              {copiedValue === absolutePath ? 'Copied' : 'Copy full path'}
+                            </Button>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void handleDeleteMarkdownFile(relativePath)
+                            }}
+                            disabled={actionPendingKey === `delete:${relativePath}`}
+                          >
+                            {actionPendingKey === `delete:${relativePath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  }) : (
+                    <p className="text-xs text-muted-foreground">No markdown files matched your search.</p>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
           <div className="space-y-6">
+            <Card className="border-border/70">
+              <CardHeader>
+                <CardTitle className="text-base">Markdown File Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Create new Markdown files.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setNewFileDialogOpen(true)}
+                >
+                  <FilePlus2 className="mr-2 h-3.5 w-3.5" />
+                  Add Markdown File
+                </Button>
+              </CardContent>
+            </Card>
+
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="text-base">ClawHub</CardTitle>
@@ -1192,6 +1721,7 @@ export default function SkillsManagementPage() {
                 {healthRow('Hook: boot-md', Boolean(health?.hooks.bootMdEnabled))}
                 {healthRow('Hook: command-logger', Boolean(health?.hooks.commandLoggerEnabled))}
                 {healthRow('Hook: session-memory', Boolean(health?.hooks.sessionMemoryEnabled))}
+                {healthRow('AGENTS.md', Boolean(health?.files.agentsMdExists))}
                 {healthRow('MEMORY.md (optional)', Boolean(health?.files.memoryMdExists), true)}
                 {healthRow('BOOT.md (optional)', Boolean(health?.files.bootMdExists), true)}
 
@@ -1238,74 +1768,269 @@ export default function SkillsManagementPage() {
 
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="text-base">Markdown Files</CardTitle>
+                <CardTitle className="text-base">Maintenance Actions</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Create, update, or delete any Markdown file in workspace.
-                </p>
-
-                <div className="space-y-2 rounded-lg border border-border/70 p-3">
-                  <Label htmlFor="new-md-path">File path (.md)</Label>
-                  <Input
-                    id="new-md-path"
-                    value={newFilePath}
-                    onChange={(event) => setNewFilePath(event.target.value)}
-                    placeholder="notes/new-note.md"
-                  />
-                  <Label htmlFor="new-md-content">Content</Label>
-                  <Textarea
-                    id="new-md-content"
-                    value={newFileContent}
-                    onChange={(event) => setNewFileContent(event.target.value)}
-                    className="min-h-28"
-                    placeholder="# New note"
-                  />
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void handleCreateMarkdownFile()}
-                    disabled={actionPendingKey === `upsert:${newFilePath.trim()}`}
+                    onClick={() => setTrashDialogOpen(true)}
                   >
-                    {actionPendingKey === `upsert:${newFilePath.trim()}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                    Save file
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Manage Trash ({trashFiles.length})
                   </Button>
-                </div>
-
-                <div className="max-h-64 space-y-2 overflow-auto rounded-lg border border-border/70 p-3">
-                  {markdownFiles.length > 0 ? markdownFiles.map((relativePath) => (
-                    <div key={relativePath} className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2">
-                      <span className="truncate text-xs" title={relativePath}>{relativePath}</span>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void handleOpenMarkdownFile(relativePath)}
-                          disabled={actionPendingKey === `view:${relativePath}`}
-                        >
-                          {actionPendingKey === `view:${relativePath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                          View
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void handleDeleteMarkdownFile(relativePath)}
-                          disabled={actionPendingKey === `delete:${relativePath}`}
-                        >
-                          {actionPendingKey === `delete:${relativePath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  )) : (
-                    <p className="text-xs text-muted-foreground">No markdown files found yet.</p>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setResetDialogOpen(true)}
+                  >
+                    <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />
+                    Reset OpenClaw
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      <Dialog open={newFileDialogOpen} onOpenChange={setNewFileDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Markdown file</DialogTitle>
+            <DialogDescription>
+              Create notes, memory files, or SKILL.md templates in one focused flow.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => applyNewFileTemplate('note')}
+              >
+                Note template
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => applyNewFileTemplate('skill')}
+              >
+                New SKILL.md
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => applyNewFileTemplate('memory')}
+              >
+                Daily memory
+              </Button>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="new-md-path">File path (.md)</Label>
+              <Input
+                id="new-md-path"
+                value={newFilePath}
+                onChange={(event) => setNewFilePath(event.target.value)}
+                placeholder="notes/new-note.md"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="new-md-content">Content</Label>
+              <Textarea
+                id="new-md-content"
+                value={newFileContent}
+                onChange={(event) => setNewFileContent(event.target.value)}
+                className="min-h-44"
+                placeholder="# New note"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewFileDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleCreateMarkdownFile()}
+              disabled={actionPendingKey === `upsert:${newFilePath.trim()}`}
+            >
+              {actionPendingKey === `upsert:${newFilePath.trim()}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save file
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={trashDialogOpen} onOpenChange={setTrashDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Manage Trash</DialogTitle>
+            <DialogDescription>
+              Deleted Markdown files stay in trash until restored or purged.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="trash-retention-days" className="text-xs text-muted-foreground">
+                Auto-purge days
+              </Label>
+              <Input
+                id="trash-retention-days"
+                type="number"
+                min={1}
+                max={90}
+                value={trashRetentionDays}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value)
+                  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 90) {
+                    setTrashRetentionDays(parsed)
+                  }
+                }}
+                className="h-8 w-24"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!tenantId) return
+                  void refreshWorkspaceTrash(tenantId, trashRetentionDays)
+                }}
+                disabled={!tenantId}
+              >
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handlePurgeTrash()}
+                disabled={actionPendingKey === 'purge:all' || trashFiles.length === 0}
+              >
+                {actionPendingKey === 'purge:all' ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                Empty trash
+              </Button>
+            </div>
+
+            <div className="max-h-64 space-y-2 overflow-auto rounded-lg border border-border/70 p-3">
+              {trashFiles.length > 0 ? trashFiles.map((trashFile) => (
+                <div key={trashFile.trashPath} className="rounded-md border border-border/70 px-3 py-2">
+                  <p className="truncate text-xs font-medium" title={trashFile.relativePath}>
+                    {trashFile.relativePath}
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground" title={trashFile.deletedAt ?? ''}>
+                    Deleted: {trashFile.deletedAt ?? 'Unknown'}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleRestoreTrashedFile(trashFile)}
+                      disabled={actionPendingKey === `restore:${trashFile.trashPath}`}
+                    >
+                      {actionPendingKey === `restore:${trashFile.trashPath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+                      Restore
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handlePurgeTrash(trashFile)}
+                      disabled={actionPendingKey === `purge:${trashFile.trashPath}`}
+                    >
+                      {actionPendingKey === `purge:${trashFile.trashPath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                      Purge
+                    </Button>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-xs text-muted-foreground">Trash is empty.</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrashDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset OpenClaw</DialogTitle>
+            <DialogDescription>Choose how you want to reset your instance.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <p className="flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                High impact action
+              </p>
+              <p className="mt-1">
+                Factory reset wipes runtime state and workspace. Re-onboarding is required after full reset.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reset mode</Label>
+              <label className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2 text-xs">
+                <input
+                  type="radio"
+                  name="openclaw-reset-mode"
+                  value="workspace"
+                  checked={resetMode === 'workspace'}
+                  onChange={() => setResetMode('workspace')}
+                />
+                <span>
+                  <span className="block font-medium text-foreground">Workspace reset (keep API/config)</span>
+                  <span className="block text-muted-foreground">
+                    Moves workspace Markdown files to trash and rebuilds essentials.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2 text-xs">
+                <input
+                  type="radio"
+                  name="openclaw-reset-mode"
+                  value="factory"
+                  checked={resetMode === 'factory'}
+                  onChange={() => setResetMode('factory')}
+                />
+                <span>
+                  <span className="block font-medium text-foreground">Factory reset (full OpenClaw)</span>
+                  <span className="block text-muted-foreground">
+                    Wipes runtime state and workspace, then sends you to onboarding.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleResetOpenClaw()}
+              disabled={actionPendingKey === 'reset:openclaw'}
+            >
+              {actionPendingKey === 'reset:openclaw' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />}
+              {resetMode === 'workspace'
+                ? 'Reset Workspace (Keep API/Config)'
+                : 'Factory Reset OpenClaw'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
@@ -1355,7 +2080,9 @@ export default function SkillsManagementPage() {
                 />
                 {configPrimarySensitiveField ? (
                   <p className="text-xs text-muted-foreground">
-                    {inferCredentialSourceHint(configPrimarySensitiveField.id) ?? 'Check the skill docs link above for where to generate this credential.'}
+                    {configPrimarySensitiveField.howToGet
+                      ?? inferCredentialSourceHint(configPrimarySensitiveField.id)
+                      ?? 'Check the skill docs link above for where to generate this credential.'}
                   </p>
                 ) : null}
               </div>
@@ -1371,7 +2098,7 @@ export default function SkillsManagementPage() {
                 {configRequiredEnvKeys.map((key) => {
                   const matchedField = findOptionFieldForEnvKey(configSkillOption, key)
                   const label = matchedField?.label ?? key
-                  const hint = inferCredentialSourceHint(`${key} ${label}`)
+                  const hint = matchedField?.howToGet ?? inferCredentialSourceHint(`${key} ${label}`)
                   const isSensitive = looksSensitiveCredentialKey(key) || Boolean(matchedField && isSensitiveConfigField(matchedField))
                   return (
                     <div key={key} className="space-y-1.5">
@@ -1398,17 +2125,6 @@ export default function SkillsManagementPage() {
                 })}
               </div>
             ) : null}
-
-            <div className="space-y-1.5">
-              <Label htmlFor="skill-extra-env-lines">Additional env variables (advanced)</Label>
-              <Textarea
-                id="skill-extra-env-lines"
-                value={configExtraEnvLines}
-                onChange={(event) => setConfigExtraEnvLines(event.target.value)}
-                className="min-h-24 font-mono text-xs"
-                placeholder={'OPENAI_API_BASE=https://api.example.com\nFEATURE_FLAG=true'}
-              />
-            </div>
 
             {configError ? (
               <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -1437,41 +2153,133 @@ export default function SkillsManagementPage() {
           <DialogHeader>
             <DialogTitle>View Markdown file</DialogTitle>
             <DialogDescription>
-              Read and edit existing markdown content in your runtime workspace.
+              Read file contents safely. Switch to edit mode only when you want to change this file.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
             <Label htmlFor="open-md-path">File path</Label>
-            <Input
-              id="open-md-path"
-              value={fileDialogPath}
-              onChange={(event) => setFileDialogPath(event.target.value)}
-              disabled={fileDialogLoading}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="open-md-path"
+                value={fileDialogPath}
+                disabled
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void handleCopyValue(fileDialogPath, 'File path')
+                }}
+              >
+                <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
+                {copiedValue === fileDialogPath ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+
+            {workspaceFileRisk(fileDialogPath).level === 'critical' ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Critical file
+                </p>
+                <p className="mt-1">
+                  Editing this file can break startup behavior or the overall OpenClaw instance.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                <p className="flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {workspaceFileRisk(fileDialogPath).message}
+                </p>
+              </div>
+            )}
+
             <Label htmlFor="open-md-content">Content</Label>
-            <Textarea
-              id="open-md-content"
-              value={fileDialogContent}
-              onChange={(event) => setFileDialogContent(event.target.value)}
-              className="min-h-72 font-mono text-xs"
-              disabled={fileDialogLoading}
-            />
+            {fileDialogMode === 'view' ? (
+              <pre
+                id="open-md-content"
+                className="min-h-72 overflow-auto rounded-md border border-border/70 bg-muted/20 p-3 font-mono text-xs whitespace-pre-wrap"
+              >
+                {fileDialogContent || '(empty file)'}
+              </pre>
+            ) : (
+              <Textarea
+                id="open-md-content"
+                value={fileDialogContent}
+                onChange={(event) => setFileDialogContent(event.target.value)}
+                className="min-h-72 font-mono text-xs"
+                disabled={fileDialogLoading}
+              />
+            )}
+
+            {isCriticalWorkspaceFile(fileDialogPath) ? (
+              <div className="space-y-2 rounded-md border border-border/70 p-3">
+                <p className="text-xs font-medium text-foreground">Version history (auto snapshots)</p>
+                {fileVersionsLoading ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading versions...
+                  </p>
+                ) : fileVersions.length > 0 ? (
+                  <div className="max-h-40 space-y-2 overflow-auto">
+                    {fileVersions.map((version) => (
+                      <div key={version.versionId} className="flex items-center justify-between gap-2 rounded border border-border/70 px-2 py-1.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-medium">{version.versionId}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {formatVersionTimestamp(version.createdAt)} · {formatBytes(version.sizeBytes)}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleRestoreFileVersion(version)}
+                          disabled={actionPendingKey === `version-restore:${version.versionId}`}
+                        >
+                          {actionPendingKey === `version-restore:${version.versionId}` ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                          )}
+                          Restore
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No snapshots yet. A snapshot is created before each save on critical files.
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setFileDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={() => void handleSaveOpenedMarkdownFile()}
-              disabled={fileDialogLoading || actionPendingKey === `save-opened:${fileDialogPath.trim()}`}
-            >
-              {fileDialogLoading || actionPendingKey === `save-opened:${fileDialogPath.trim()}` ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Save
-            </Button>
+            {fileDialogMode === 'view' ? (
+              <Button
+                variant="outline"
+                onClick={() => setFileDialogMode('edit')}
+                disabled={fileDialogLoading}
+              >
+                Edit
+              </Button>
+            ) : (
+              <Button
+                onClick={() => void handleSaveOpenedMarkdownFile()}
+                disabled={fileDialogLoading || actionPendingKey === `save-opened:${fileDialogPath.trim()}`}
+              >
+                {fileDialogLoading || actionPendingKey === `save-opened:${fileDialogPath.trim()}` ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Save
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

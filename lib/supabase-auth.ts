@@ -36,7 +36,7 @@ export function getSupabaseAuthClient() {
   return supabaseAuthClient
 }
 
-export function getSafeNextPath(value: string | null | undefined, fallback = '/dashboard') {
+export function getSafeNextPath(value: string | null | undefined, fallback = '/chat') {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback
   return value
 }

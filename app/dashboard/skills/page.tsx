@@ -21,12 +21,8 @@ import {
   filterSelectableSkillIds,
   getSkillOptionById,
 } from '@/lib/skill-options'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import {
-  deriveTenantIdFromUserId,
-  fetchTenantDaemonStatus,
-  tenantHasProvisionedInstance,
-} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 export default function SkillsPage() {
@@ -37,7 +33,7 @@ export default function SkillsPage() {
 
   function redirectToSignIn() {
     const currentPath = typeof window === 'undefined'
-      ? '/dashboard/skills'
+      ? '/skills'
       : `${window.location.pathname}${window.location.search}`
     router.replace(buildSignInPath(currentPath))
   }
@@ -58,10 +54,9 @@ export default function SkillsPage() {
           return
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
-        if (tenantHasProvisionedInstance(daemonStatus)) {
-          router.replace('/dashboard/chat')
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (complete) {
+          router.replace('/chat')
           return
         }
 
@@ -107,12 +102,12 @@ export default function SkillsPage() {
   function onSkip() {
     persistSelectedSkills([], true)
     setSelectedSkillIds([])
-    router.push('/dashboard/skills/setup')
+    router.push('/skills/setup')
   }
 
   function onNext() {
     persistSelectedSkills(selectedSkillIds, false)
-    router.push('/dashboard/skills/setup')
+    router.push('/skills/setup')
   }
 
   if (checkingSession) {
@@ -227,13 +222,43 @@ export default function SkillsPage() {
               <div>
                 <p className="text-sm font-medium">Next</p>
                 {infoSkill.configFields?.length ? (
-                  <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
-                    {infoSkill.configFields.map((field) => (
-                      <li key={field.id}>{`${field.label}${field.required ? ' (required)' : ' (optional)'}`}</li>
-                    ))}
-                  </ul>
+                  <div className="mt-1 space-y-3">
+                    {infoSkill.configFields.some((field) => field.required) ? (
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Required</p>
+                        <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
+                          {infoSkill.configFields
+                            .filter((field) => field.required)
+                            .map((field) => (
+                              <li key={field.id}>
+                                <span>{field.label}</span>
+                                {field.description ? <span>{`: ${field.description}`}</span> : null}
+                                {field.howToGet ? <span>{` How to get it: ${field.howToGet}`}</span> : null}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {infoSkill.configFields.some((field) => !field.required) ? (
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Optional</p>
+                        <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
+                          {infoSkill.configFields
+                            .filter((field) => !field.required)
+                            .map((field) => (
+                              <li key={field.id}>
+                                <span>{field.label}</span>
+                                {field.description ? <span>{`: ${field.description}`}</span> : null}
+                                {field.howToGet ? <span>{` How to get it: ${field.howToGet}`}</span> : null}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">No extra fields.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">No setup values required.</p>
                 )}
               </div>
 

@@ -77,6 +77,31 @@ export interface RuntimeModelUpdatePayload {
   persist?: boolean
 }
 
+export interface RuntimeOpenAICodexOAuthStartPayload {
+  modelId?: string
+}
+
+export interface RuntimeOpenAICodexOAuthStartData {
+  sessionId: string
+  authUrl: string
+  expiresAt: string | null
+  raw: unknown
+}
+
+export interface RuntimeOpenAICodexOAuthCompletePayload {
+  sessionId: string
+  callback: string
+  modelId?: string
+}
+
+export interface RuntimeOpenAICodexOAuthCompleteData {
+  providerId: string | null
+  profileId: string | null
+  modelId: string | null
+  oauthConnected: boolean
+  raw: unknown
+}
+
 export interface RuntimeSkillUpdatePayload {
   skillKey: string
   enabled?: boolean
@@ -139,6 +164,51 @@ export interface RuntimeWorkspaceFileUpsertPayload {
 
 export interface RuntimeWorkspaceDeleteFilePayload {
   relativePath: string
+  permanent?: boolean
+}
+
+export interface RuntimeWorkspaceTrashFileSummary {
+  trashPath: string
+  relativePath: string
+  absolutePath: string | null
+  deletedAt: string | null
+  raw: Record<string, unknown>
+}
+
+export interface RuntimeWorkspaceTrashData {
+  trashDir: string | null
+  files: RuntimeWorkspaceTrashFileSummary[]
+  raw: unknown
+}
+
+export interface RuntimeWorkspaceTrashRestorePayload {
+  trashPath: string
+  overwrite?: boolean
+}
+
+export interface RuntimeOpenClawResetPayload {
+  scope: 'config' | 'config+creds+sessions' | 'full'
+  dryRun?: boolean
+}
+
+export interface RuntimeWorkspaceFileVersionSummary {
+  versionId: string
+  createdAt: string | null
+  path: string | null
+  sizeBytes: number | null
+  raw: Record<string, unknown>
+}
+
+export interface RuntimeWorkspaceFileVersionsData {
+  relativePath: string
+  versionsDir: string | null
+  versions: RuntimeWorkspaceFileVersionSummary[]
+  raw: unknown
+}
+
+export interface RuntimeWorkspaceFileVersionRestorePayload {
+  relativePath: string
+  versionId: string
 }
 
 export interface RuntimeChannelSessionMapping {
@@ -646,6 +716,56 @@ function parseWorkspaceFile(result: unknown): RuntimeWorkspaceFileData {
   }
 }
 
+function parseWorkspaceTrash(result: unknown): RuntimeWorkspaceTrashData {
+  const root = toObject(result)
+  const files = Array.isArray(root?.files)
+    ? root.files
+      .map((item) => toObject(item))
+      .filter((item): item is Record<string, unknown> => Boolean(item))
+      .map((record) => ({
+        trashPath: readString(record, ['trashPath', 'path']) ?? '',
+        relativePath: readString(record, ['relativePath']) ?? '',
+        absolutePath: readString(record, ['absolutePath']) ?? null,
+        deletedAt: readString(record, ['deletedAt']) ?? null,
+        raw: record,
+      }))
+      .filter((item) => item.trashPath.length > 0 && item.relativePath.length > 0)
+    : []
+
+  return {
+    trashDir: typeof root?.trashDir === 'string' ? root.trashDir : null,
+    files,
+    raw: result,
+  }
+}
+
+function parseWorkspaceFileVersions(result: unknown): RuntimeWorkspaceFileVersionsData {
+  const root = toObject(result)
+  const versions = Array.isArray(root?.versions)
+    ? root.versions
+      .map((item) => toObject(item))
+      .filter((item): item is Record<string, unknown> => Boolean(item))
+      .map((record) => {
+        const sizeValue = record.sizeBytes
+        return {
+          versionId: readString(record, ['versionId']) ?? '',
+          createdAt: readString(record, ['createdAt']) ?? null,
+          path: readString(record, ['path']) ?? null,
+          sizeBytes: typeof sizeValue === 'number' ? sizeValue : null,
+          raw: record,
+        }
+      })
+      .filter((item) => item.versionId.length > 0)
+    : []
+
+  return {
+    relativePath: readString(root ?? {}, ['relativePath']) ?? '',
+    versionsDir: readString(root ?? {}, ['versionsDir']) ?? null,
+    versions,
+    raw: result,
+  }
+}
+
 function parseWhatsAppLogin(result: unknown): RuntimeWhatsAppLoginData {
   const record = toObject(result)
   const connectedValue = record?.connected
@@ -703,33 +823,64 @@ class RuntimeRequestError extends Error {
   }
 }
 
+const runtimeRequestInFlight = new Map<string, Promise<unknown>>()
+
+function buildRuntimeRequestKey(
+  tenantId: string,
+  path: string,
+  init: RequestInit,
+): string {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const body = typeof init.body === 'string'
+    ? init.body
+    : init.body
+      ? '[non-string-body]'
+      : ''
+  return `${tenantId}|${method}|${path}|${body}`
+}
+
 async function runtimeRequest<T>(
   tenantId: string,
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const requestKey = buildRuntimeRequestKey(tenantId, path, init)
+  const existing = runtimeRequestInFlight.get(requestKey)
+  if (existing) {
+    return existing as Promise<T>
+  }
+
   const backendUrl = getBackendUrl()
-  const response = await fetch(`${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      'x-tenant-id': tenantId,
-      ...(init.headers ?? {}),
-    },
-  })
+  const requestPromise = (async () => {
+    const response = await fetch(`${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        'x-tenant-id': tenantId,
+        ...(init.headers ?? {}),
+      },
+    })
 
-  let payload: unknown = null
+    let payload: unknown = null
+    try {
+      payload = await response.json()
+    } catch {
+      payload = null
+    }
+
+    if (!response.ok) {
+      throw new RuntimeRequestError(response.status, payload)
+    }
+
+    return payload as T
+  })()
+
+  runtimeRequestInFlight.set(requestKey, requestPromise as Promise<unknown>)
   try {
-    payload = await response.json()
-  } catch {
-    payload = null
+    return await requestPromise
+  } finally {
+    runtimeRequestInFlight.delete(requestKey)
   }
-
-  if (!response.ok) {
-    throw new RuntimeRequestError(response.status, payload)
-  }
-
-  return payload as T
 }
 
 export async function listRuntimeSessions(
@@ -752,6 +903,20 @@ export async function listRuntimeSessions(
     : '/runtime/sessions'
   const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
   return parseSessions(payload.result)
+}
+
+export async function terminateManagedDaemon(tenantId: string): Promise<{ terminated: boolean }> {
+  try {
+    await runtimeRequest<RuntimeEnvelope>(tenantId, '', {
+      method: 'DELETE',
+    })
+    return { terminated: true }
+  } catch (error) {
+    if (error instanceof RuntimeRequestError && error.status === 404) {
+      return { terminated: false }
+    }
+    throw error
+  }
 }
 
 export async function listRuntimeChatHistory(
@@ -838,8 +1003,67 @@ export async function updateRuntimeCurrentModel(
   })
 }
 
-export async function listRuntimeSkills(tenantId: string): Promise<RuntimeSkillsData> {
-  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/skills')
+export async function startRuntimeOpenAICodexOAuth(
+  tenantId: string,
+  payload: RuntimeOpenAICodexOAuthStartPayload = {},
+): Promise<RuntimeOpenAICodexOAuthStartData> {
+  const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models/openai-codex/oauth/start', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  const record = toObject(response.result)
+  const sessionId = readString(record ?? {}, ['sessionId']) ?? ''
+  const authUrl = readString(record ?? {}, ['authUrl']) ?? ''
+  const expiresAt = readString(record ?? {}, ['expiresAt'])
+
+  if (!sessionId || !authUrl) {
+    throw new Error('OAuth start response did not include sessionId/authUrl.')
+  }
+
+  return {
+    sessionId,
+    authUrl,
+    expiresAt,
+    raw: response.result,
+  }
+}
+
+export async function completeRuntimeOpenAICodexOAuth(
+  tenantId: string,
+  payload: RuntimeOpenAICodexOAuthCompletePayload,
+): Promise<RuntimeOpenAICodexOAuthCompleteData> {
+  const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models/openai-codex/oauth/complete', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  const record = toObject(response.result)
+
+  return {
+    providerId: readString(record ?? {}, ['providerId']),
+    profileId: readString(record ?? {}, ['profileId']),
+    modelId: readString(record ?? {}, ['modelId']),
+    oauthConnected: readBoolean(record ?? {}, ['oauthConnected']) ?? false,
+    raw: response.result,
+  }
+}
+
+export async function listRuntimeSkills(
+  tenantId: string,
+  options?: {
+    agentId?: string
+    syncRuntime?: boolean
+  },
+): Promise<RuntimeSkillsData> {
+  const query = new URLSearchParams()
+  if (options?.agentId) query.set('agentId', options.agentId)
+  if (options?.syncRuntime !== undefined) query.set('syncRuntime', String(options.syncRuntime))
+  const queryString = query.toString()
+  const path = queryString
+    ? `/runtime/skills?${queryString}`
+    : '/runtime/skills'
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
   return parseSkills(payload.result)
 }
 
@@ -943,8 +1167,19 @@ export async function updateRuntimeSkill(
   })
 }
 
-export async function listRuntimeWorkspaceHealth(tenantId: string): Promise<RuntimeWorkspaceHealthData> {
-  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/workspace/health')
+export async function listRuntimeWorkspaceHealth(
+  tenantId: string,
+  options?: {
+    syncRuntime?: boolean
+  },
+): Promise<RuntimeWorkspaceHealthData> {
+  const query = new URLSearchParams()
+  if (options?.syncRuntime !== undefined) query.set('syncRuntime', String(options.syncRuntime))
+  const queryString = query.toString()
+  const path = queryString
+    ? `/runtime/workspace/health?${queryString}`
+    : '/runtime/workspace/health'
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
   return parseWorkspaceHealth(payload.result)
 }
 
@@ -952,10 +1187,12 @@ export async function listRuntimeWorkspaceFiles(
   tenantId: string,
   options?: {
     includeHidden?: boolean
+    syncRuntime?: boolean
   },
 ): Promise<RuntimeWorkspaceFilesData> {
   const query = new URLSearchParams()
   if (options?.includeHidden !== undefined) query.set('includeHidden', String(options.includeHidden))
+  if (options?.syncRuntime !== undefined) query.set('syncRuntime', String(options.syncRuntime))
   const queryString = query.toString()
   const path = queryString
     ? `/runtime/workspace/files?${queryString}`
@@ -964,13 +1201,46 @@ export async function listRuntimeWorkspaceFiles(
   return parseWorkspaceFiles(payload.result)
 }
 
+export async function listRuntimeWorkspaceTrashFiles(
+  tenantId: string,
+  options?: {
+    retentionDays?: number
+  },
+): Promise<RuntimeWorkspaceTrashData> {
+  const query = new URLSearchParams()
+  if (options?.retentionDays !== undefined) query.set('retentionDays', String(options.retentionDays))
+  const queryString = query.toString()
+  const path = queryString
+    ? `/runtime/workspace/trash?${queryString}`
+    : '/runtime/workspace/trash'
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
+  return parseWorkspaceTrash(payload.result)
+}
+
 export async function readRuntimeWorkspaceFile(
   tenantId: string,
   relativePath: string,
+  options?: {
+    syncRuntime?: boolean
+  },
 ): Promise<RuntimeWorkspaceFileData> {
   const query = new URLSearchParams({ relativePath })
+  if (options?.syncRuntime !== undefined) query.set('syncRuntime', String(options.syncRuntime))
   const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, `/runtime/workspace/file?${query.toString()}`)
   return parseWorkspaceFile(payload.result)
+}
+
+export async function listRuntimeWorkspaceFileVersions(
+  tenantId: string,
+  relativePath: string,
+  options?: {
+    limit?: number
+  },
+): Promise<RuntimeWorkspaceFileVersionsData> {
+  const query = new URLSearchParams({ relativePath })
+  if (options?.limit !== undefined) query.set('limit', String(options.limit))
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, `/runtime/workspace/file-versions?${query.toString()}`)
+  return parseWorkspaceFileVersions(payload.result)
 }
 
 export async function repairRuntimeWorkspaceEssentials(tenantId: string): Promise<RuntimeWorkspaceHealthData> {
@@ -1006,6 +1276,48 @@ export async function deleteRuntimeWorkspaceFile(
 ): Promise<RuntimeEnvelope> {
   return runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/workspace/files', {
     method: 'DELETE',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function restoreRuntimeWorkspaceTrashFile(
+  tenantId: string,
+  payload: RuntimeWorkspaceTrashRestorePayload,
+): Promise<RuntimeEnvelope> {
+  return runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/workspace/trash/restore', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function purgeRuntimeWorkspaceTrashFile(
+  tenantId: string,
+  payload?: {
+    trashPath?: string
+  },
+): Promise<RuntimeEnvelope> {
+  return runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/workspace/trash', {
+    method: 'DELETE',
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export async function resetRuntimeOpenClawInstance(
+  tenantId: string,
+  payload: RuntimeOpenClawResetPayload,
+): Promise<RuntimeEnvelope> {
+  return runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/openclaw/reset', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function restoreRuntimeWorkspaceFileVersion(
+  tenantId: string,
+  payload: RuntimeWorkspaceFileVersionRestorePayload,
+): Promise<RuntimeEnvelope> {
+  return runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/workspace/file-versions/restore', {
+    method: 'POST',
     body: JSON.stringify(payload),
   })
 }

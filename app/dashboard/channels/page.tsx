@@ -18,6 +18,7 @@ import {
   waitRuntimeWhatsAppLogin,
   type RuntimeChannelsStatusData,
 } from '@/lib/runtime-controls'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
@@ -146,7 +147,7 @@ export default function ChannelsPage() {
 
   const redirectToSignIn = useCallback(() => {
     const currentPath = typeof window === 'undefined'
-      ? '/dashboard/channels'
+      ? '/channels'
       : `${window.location.pathname}${window.location.search}`
     router.replace(buildSignInPath(currentPath))
   }, [router])
@@ -171,6 +172,11 @@ export default function ChannelsPage() {
       try {
         const session = await getRecoveredSupabaseSession()
         if (!session) { redirectToSignIn(); return }
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (!complete) {
+          router.replace('/dashboard')
+          return
+        }
         const nextTenantId = deriveTenantIdFromUserId(session.user.id)
         if (cancelled) return
         setTenantId(nextTenantId)
@@ -409,7 +415,7 @@ export default function ChannelsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/settings">
+            <Link href="/settings">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Settings
             </Link>

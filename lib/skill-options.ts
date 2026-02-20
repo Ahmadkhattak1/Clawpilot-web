@@ -6,6 +6,9 @@ export interface SkillConfigField {
   placeholder?: string
   required?: boolean
   inputType?: SkillConfigInputType
+  description?: string
+  howToGet?: string
+  envKeys?: readonly string[]
 }
 
 export interface SkillOption {
@@ -46,9 +49,18 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     requiredByDefault: true,
     requiredFromUser: [
       'ClawHub CLI is installed by default during onboarding.',
-      'Sign in only if you need private skills or publishing.',
+      'Run `clawhub auth login` only if you need private skills or publishing.',
     ],
-    configFields: [{ id: 'clawhub_token', label: 'ClawHub token (optional)', placeholder: 'ch_...', inputType: 'password' }],
+    configFields: [
+      {
+        id: 'clawhub_token',
+        label: 'ClawHub token',
+        placeholder: 'ch_...',
+        inputType: 'password',
+        description: 'Optional. Use only for private skills or non-interactive installs.',
+        howToGet: 'Create a token in your ClawHub account settings, or use `clawhub auth login`.',
+      },
+    ],
   },
   {
     id: '1password',
@@ -57,10 +69,10 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary:
       'Set up and use 1Password CLI (op). Use when installing the CLI, enabling desktop app integration, signing in (single or multi-account), or reading/injecting/running secrets via op.',
     docsUrl: docsUrl('1password'),
-    requiredFromUser: ['1Password app + op CLI installed and signed in.', 'Access to target vaults/items.'],
-    configFields: [
-      { id: 'account', label: 'Account shorthand', placeholder: 'my.1password.com' },
-      { id: 'default_vault', label: 'Default vault', placeholder: 'Engineering' },
+    requiredFromUser: [
+      '1Password desktop app and `op` CLI installed.',
+      'Run `op signin` once in terminal to authorize this machine.',
+      'Access to target vaults/items.',
     ],
   },
   {
@@ -69,10 +81,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '📰',
     summary: 'Monitor blogs and RSS/Atom feeds for updates using the blogwatcher CLI.',
     docsUrl: docsUrl('blogwatcher'),
-    requiredFromUser: ['blogwatcher CLI installed.', 'At least one RSS/Atom feed URL.'],
-    configFields: [
-      { id: 'feed_urls', label: 'Feed URLs', placeholder: 'https://site.com/rss, https://blog.com/feed', required: true },
-      { id: 'poll_minutes', label: 'Polling interval (minutes)', placeholder: '30' },
+    requiredFromUser: [
+      'blogwatcher CLI installed.',
+      'Add feeds with `blogwatcher add "<name>" <feed-url>`.',
     ],
   },
   {
@@ -81,10 +92,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '🫐',
     summary: 'BluOS CLI (blu) for discovery, playback, grouping, and volume.',
     docsUrl: docsUrl('blucli'),
-    requiredFromUser: ['blucli installed.', 'BluOS device reachable on local network.'],
-    configFields: [
-      { id: 'player_host', label: 'Player host/IP', placeholder: '192.168.1.20', required: true },
-      { id: 'zone', label: 'Default zone', placeholder: 'Living Room' },
+    requiredFromUser: [
+      'blu CLI installed.',
+      'BluOS device reachable on local network.',
     ],
   },
   {
@@ -93,11 +103,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '📸',
     summary: 'Capture frames or clips from RTSP/ONVIF cameras.',
     docsUrl: docsUrl('camsnap'),
-    requiredFromUser: ['camsnap + ffmpeg installed.', 'Camera stream URL and credentials (if protected).'],
-    configFields: [
-      { id: 'camera_url', label: 'RTSP/ONVIF URL', placeholder: 'rtsp://camera.local/stream', required: true, inputType: 'url' },
-      { id: 'camera_username', label: 'Camera username', placeholder: 'admin' },
-      { id: 'camera_password', label: 'Camera password', placeholder: 'Password', inputType: 'password' },
+    requiredFromUser: [
+      'camsnap installed (and `ffmpeg` available on PATH).',
+      'Run `camsnap add ...` once to store camera credentials in local config.',
     ],
   },
   {
@@ -108,8 +116,24 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('eightctl'),
     requiredFromUser: ['eightctl installed.', 'Eight Sleep account credentials/session.'],
     configFields: [
-      { id: 'email', label: 'Eight Sleep email', placeholder: 'you@example.com', required: true },
-      { id: 'password', label: 'Eight Sleep password', placeholder: 'Password', required: true, inputType: 'password' },
+      {
+        id: 'email',
+        label: 'Eight Sleep email',
+        placeholder: 'you@example.com',
+        required: true,
+        description: 'Account email used by eightctl authentication.',
+        envKeys: ['EIGHTCTL_EMAIL'],
+      },
+      {
+        id: 'password',
+        label: 'Eight Sleep password',
+        placeholder: 'Account password',
+        required: true,
+        inputType: 'password',
+        description: 'Account password used by eightctl authentication.',
+        howToGet: 'Use your normal Eight Sleep app credentials.',
+        envKeys: ['EIGHTCTL_PASSWORD'],
+      },
     ],
   },
   {
@@ -118,8 +142,10 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '♊️',
     summary: 'Gemini CLI for one-shot Q&A, summaries, and generation.',
     docsUrl: docsUrl('gemini'),
-    requiredFromUser: ['Gemini CLI installed.', 'Gemini API access token/key.'],
-    configFields: [{ id: 'gemini_api_key', label: 'Gemini API key', placeholder: 'AIza...', required: true, inputType: 'password' }],
+    requiredFromUser: [
+      'Gemini CLI installed.',
+      'Run `gemini` once interactively and complete the login flow when prompted.',
+    ],
   },
   {
     id: 'gifgrep',
@@ -129,8 +155,30 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('gifgrep'),
     requiredFromUser: ['gifgrep installed.', 'Optional provider key for higher limits.'],
     configFields: [
-      { id: 'provider', label: 'GIF provider', placeholder: 'giphy | tenor' },
-      { id: 'provider_api_key', label: 'Provider API key (optional)', placeholder: 'API key', inputType: 'password' },
+      {
+        id: 'default_provider',
+        label: 'Default provider',
+        placeholder: 'auto | tenor | giphy',
+        description: 'Optional. Leave empty to use auto mode.',
+      },
+      {
+        id: 'giphy_api_key',
+        label: 'GIPHY API key',
+        placeholder: 'giphy_...',
+        inputType: 'password',
+        description: 'Required only when you force `--source giphy`.',
+        howToGet: 'Create an app in GIPHY Developers and copy its API key.',
+        envKeys: ['GIPHY_API_KEY'],
+      },
+      {
+        id: 'tenor_api_key',
+        label: 'Tenor API key',
+        placeholder: 'tenor_...',
+        inputType: 'password',
+        description: 'Optional. Tenor demo key is used when unset.',
+        howToGet: 'Request a Tenor API key from Google/Tenor developer access.',
+        envKeys: ['TENOR_API_KEY'],
+      },
     ],
   },
   {
@@ -140,10 +188,26 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary:
       'Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries.',
     docsUrl: docsUrl('github'),
-    requiredFromUser: ['gh CLI installed.', 'GitHub authentication token/session.'],
+    requiredFromUser: [
+      'gh CLI installed.',
+      'Authenticate with `gh auth login` (token is optional for non-interactive usage).',
+    ],
     configFields: [
-      { id: 'github_token', label: 'GitHub token', placeholder: 'ghp_...', required: true, inputType: 'password' },
-      { id: 'github_host', label: 'GitHub host (optional)', placeholder: 'github.com' },
+      {
+        id: 'github_token',
+        label: 'GitHub token',
+        placeholder: 'ghp_...',
+        inputType: 'password',
+        description: 'Optional. Useful for CI/headless setups instead of `gh auth login`.',
+        howToGet: 'GitHub -> Settings -> Developer settings -> Personal access tokens.',
+        envKeys: ['GITHUB_TOKEN'],
+      },
+      {
+        id: 'github_host',
+        label: 'GitHub host',
+        placeholder: 'github.com',
+        description: 'Optional. Only set for GitHub Enterprise Server.',
+      },
     ],
   },
   {
@@ -152,11 +216,18 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '🎮',
     summary: 'Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.',
     docsUrl: docsUrl('gog'),
-    requiredFromUser: ['gog CLI installed.', 'Google OAuth client credentials and refresh token.'],
+    requiredFromUser: [
+      'gog CLI installed.',
+      'Run `gog auth credentials <client_secret.json>` and `gog auth add <email>` once.',
+    ],
     configFields: [
-      { id: 'client_id', label: 'Google client ID', placeholder: '...apps.googleusercontent.com', required: true },
-      { id: 'client_secret', label: 'Google client secret', placeholder: 'Secret', required: true, inputType: 'password' },
-      { id: 'refresh_token', label: 'Google refresh token', placeholder: '1//0...', required: true, inputType: 'password' },
+      {
+        id: 'gog_account',
+        label: 'Default Google account',
+        placeholder: 'you@example.com',
+        description: 'Optional. Sets default account (same as `GOG_ACCOUNT`).',
+        envKeys: ['GOG_ACCOUNT'],
+      },
     ],
   },
   {
@@ -167,7 +238,18 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
       'Query Google Places API (New) via the goplaces CLI for text search, place details, resolve, and reviews. Use for human-friendly place lookup or JSON output for scripts.',
     docsUrl: docsUrl('goplaces'),
     requiredFromUser: ['goplaces CLI installed.', 'Google Places API key with Places API enabled.'],
-    configFields: [{ id: 'google_places_api_key', label: 'Google Places API key', placeholder: 'AIza...', required: true, inputType: 'password' }],
+    configFields: [
+      {
+        id: 'google_places_api_key',
+        label: 'Google Places API key',
+        placeholder: 'AIza...',
+        required: true,
+        inputType: 'password',
+        description: 'Required by goplaces for all API calls.',
+        howToGet: 'Google Cloud Console -> APIs & Services -> Credentials -> Create API key, then enable Places API (New).',
+        envKeys: ['GOOGLE_PLACES_API_KEY'],
+      },
+    ],
   },
   {
     id: 'himalaya',
@@ -178,10 +260,36 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('himalaya'),
     requiredFromUser: ['himalaya CLI installed.', 'Mailbox IMAP/SMTP settings and credentials.'],
     configFields: [
-      { id: 'email', label: 'Email address', placeholder: 'you@example.com', required: true },
-      { id: 'imap_host', label: 'IMAP host', placeholder: 'imap.example.com', required: true },
-      { id: 'smtp_host', label: 'SMTP host', placeholder: 'smtp.example.com', required: true },
-      { id: 'app_password', label: 'App password', placeholder: 'App password', required: true, inputType: 'password' },
+      {
+        id: 'email',
+        label: 'Email address',
+        placeholder: 'you@example.com',
+        required: true,
+        description: 'Mailbox identity for Himalaya account config.',
+      },
+      {
+        id: 'imap_host',
+        label: 'IMAP host',
+        placeholder: 'imap.example.com',
+        required: true,
+        description: 'Incoming mail host from your email provider settings.',
+      },
+      {
+        id: 'smtp_host',
+        label: 'SMTP host',
+        placeholder: 'smtp.example.com',
+        required: true,
+        description: 'Outgoing mail host from your email provider settings.',
+      },
+      {
+        id: 'app_password',
+        label: 'App password',
+        placeholder: 'App password',
+        required: true,
+        inputType: 'password',
+        description: 'Mailbox password/app-password used by IMAP+SMTP.',
+        howToGet: 'Generate an app password in your mail provider security settings (for example Gmail App Passwords).',
+      },
     ],
   },
   {
@@ -191,10 +299,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary:
       'Use the mcporter CLI to list, configure, auth, and call MCP servers/tools directly (HTTP or stdio), including ad-hoc servers, config edits, and CLI/type generation.',
     docsUrl: docsUrl('mcporter'),
-    requiredFromUser: ['mcporter CLI installed.', 'At least one MCP server endpoint or local config path.'],
-    configFields: [
-      { id: 'default_server_url', label: 'Default MCP server URL', placeholder: 'https://mcp.example.com', inputType: 'url' },
-      { id: 'server_token', label: 'MCP server token (optional)', placeholder: 'Token', inputType: 'password' },
+    requiredFromUser: [
+      'mcporter CLI installed.',
+      'Configure server auth/endpoints with `mcporter config ...` or `mcporter auth ...`.',
     ],
   },
   {
@@ -206,8 +313,16 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('nano-banana-pro'),
     requiredFromUser: ['Nano Banana Pro dependencies installed.', 'Gemini image API key/access.'],
     configFields: [
-      { id: 'gemini_api_key', label: 'Gemini API key', placeholder: 'AIza...', required: true, inputType: 'password' },
-      { id: 'default_size', label: 'Default image size', placeholder: '1024x1024' },
+      {
+        id: 'gemini_api_key',
+        label: 'Gemini API key',
+        placeholder: 'AIza...',
+        required: true,
+        inputType: 'password',
+        description: 'Required unless you pass `--api-key` at runtime.',
+        howToGet: 'Google AI Studio -> Get API key.',
+        envKeys: ['GEMINI_API_KEY'],
+      },
     ],
   },
   {
@@ -217,7 +332,6 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Edit PDFs with natural-language instructions using the nano-pdf CLI.',
     docsUrl: docsUrl('nano-pdf'),
     requiredFromUser: ['nano-pdf CLI installed.', 'Local PDF file access.'],
-    configFields: [{ id: 'output_dir', label: 'Default output folder', placeholder: '/path/to/output' }],
   },
   {
     id: 'obsidian',
@@ -226,7 +340,14 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Work with Obsidian vaults and automate via obsidian-cli.',
     docsUrl: docsUrl('obsidian'),
     requiredFromUser: ['obsidian-cli installed.', 'Vault path available on this machine.'],
-    configFields: [{ id: 'vault_path', label: 'Vault path', placeholder: '/Users/name/Obsidian/Vault', required: true }],
+    configFields: [
+      {
+        id: 'vault_path',
+        label: 'Vault path',
+        placeholder: '/Users/name/Obsidian/Vault',
+        description: 'Optional if you already set a default via `obsidian-cli set-default`.',
+      },
+    ],
   },
   {
     id: 'openai-image-gen',
@@ -236,8 +357,22 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('openai-image-gen'),
     requiredFromUser: ['OpenAI Images API enabled.', 'OpenAI API key.'],
     configFields: [
-      { id: 'openai_api_key', label: 'OpenAI API key', placeholder: 'sk-...', required: true, inputType: 'password' },
-      { id: 'model', label: 'Image model', placeholder: 'gpt-image-1' },
+      {
+        id: 'openai_api_key',
+        label: 'OpenAI API key',
+        placeholder: 'sk-...',
+        required: true,
+        inputType: 'password',
+        description: 'Required by openai-image-gen skill.',
+        howToGet: 'OpenAI dashboard -> API keys.',
+        envKeys: ['OPENAI_API_KEY'],
+      },
+      {
+        id: 'model',
+        label: 'Image model',
+        placeholder: 'gpt-image-1',
+        description: 'Optional model override.',
+      },
     ],
   },
   {
@@ -247,7 +382,6 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Local speech-to-text with the Whisper CLI (no API key).',
     docsUrl: docsUrl('openai-whisper'),
     requiredFromUser: ['Whisper CLI installed locally.', 'Audio input files available.'],
-    configFields: [{ id: 'model_size', label: 'Whisper model size', placeholder: 'base | small | medium | large' }],
   },
   {
     id: 'openhue',
@@ -255,10 +389,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '💡',
     summary: 'Control Philips Hue lights/scenes via the OpenHue CLI.',
     docsUrl: docsUrl('openhue'),
-    requiredFromUser: ['OpenHue CLI installed.', 'Hue bridge IP and app key/token.'],
-    configFields: [
-      { id: 'bridge_ip', label: 'Hue bridge IP', placeholder: '192.168.1.40', required: true },
-      { id: 'bridge_key', label: 'Hue bridge key', placeholder: 'Bridge key', required: true, inputType: 'password' },
+    requiredFromUser: [
+      'OpenHue CLI installed.',
+      'Run `openhue setup` and press the Hue bridge button when prompted.',
     ],
   },
   {
@@ -268,10 +401,20 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary:
       'Use the @steipete/oracle CLI to bundle a prompt plus the right files and get a second-model review (API or browser) for debugging, refactors, design checks, or cross-validation.',
     docsUrl: docsUrl('oracle'),
-    requiredFromUser: ['oracle CLI installed.', 'Provider credentials for whichever model backend you use.'],
+    requiredFromUser: [
+      'Node.js + npx available to run Oracle.',
+      'Browser mode works without API keys; API mode needs provider API keys.',
+    ],
     configFields: [
-      { id: 'provider', label: 'Oracle provider', placeholder: 'openai | anthropic | gemini', required: true },
-      { id: 'provider_api_key', label: 'Provider API key', placeholder: 'API key', required: true, inputType: 'password' },
+      {
+        id: 'openai_api_key',
+        label: 'OpenAI API key',
+        placeholder: 'sk-...',
+        inputType: 'password',
+        description: 'Optional. Needed only when using `oracle --engine api` with OpenAI.',
+        howToGet: 'OpenAI dashboard -> API keys.',
+        envKeys: ['OPENAI_API_KEY'],
+      },
     ],
   },
   {
@@ -280,10 +423,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '🛵',
     summary: 'Foodora-only CLI for checking past orders and active order status.',
     docsUrl: docsUrl('ordercli'),
-    requiredFromUser: ['ordercli installed.', 'Foodora account access.'],
-    configFields: [
-      { id: 'email', label: 'Foodora email', placeholder: 'you@example.com', required: true },
-      { id: 'session_token', label: 'Session token (optional)', placeholder: 'Token', inputType: 'password' },
+    requiredFromUser: [
+      'ordercli installed.',
+      'Run `ordercli foodora login ...` once to create an authenticated session.',
     ],
   },
   {
@@ -294,8 +436,24 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('sag'),
     requiredFromUser: ['sag installed.', 'ElevenLabs API key and optional voice ID.'],
     configFields: [
-      { id: 'elevenlabs_api_key', label: 'ElevenLabs API key', placeholder: 'API key', required: true, inputType: 'password' },
-      { id: 'voice_id', label: 'Voice ID (optional)', placeholder: '21m00Tcm4TlvDq8ikWAM' },
+      {
+        id: 'elevenlabs_api_key',
+        label: 'ElevenLabs API key',
+        placeholder: 'API key',
+        required: true,
+        inputType: 'password',
+        description: 'Required for all sag TTS calls.',
+        howToGet: 'ElevenLabs dashboard -> Profile/Settings -> API Keys.',
+        envKeys: ['ELEVENLABS_API_KEY', 'SAG_API_KEY'],
+      },
+      {
+        id: 'voice_id',
+        label: 'Default voice ID',
+        placeholder: '21m00Tcm4TlvDq8ikWAM',
+        description: 'Optional. Leave empty to use CLI default voice.',
+        howToGet: 'Open the voice in ElevenLabs and copy its Voice ID.',
+        envKeys: ['ELEVENLABS_VOICE_ID', 'SAG_VOICE_ID'],
+      },
     ],
   },
   {
@@ -305,7 +463,6 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Generate spectrograms and feature-panel visualizations from audio with the songsee CLI.',
     docsUrl: docsUrl('songsee'),
     requiredFromUser: ['songsee CLI installed.', 'Audio files available for analysis.'],
-    configFields: [{ id: 'sample_rate', label: 'Default sample rate (optional)', placeholder: '44100' }],
   },
   {
     id: 'sonoscli',
@@ -314,7 +471,31 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Control Sonos speakers (discover/status/play/volume/group).',
     docsUrl: docsUrl('sonoscli'),
     requiredFromUser: ['sonoscli installed.', 'Sonos speakers discoverable on local network.'],
-    configFields: [{ id: 'speaker_ip', label: 'Preferred speaker IP (optional)', placeholder: '192.168.1.55' }],
+    configFields: [
+      {
+        id: 'speaker_ip',
+        label: 'Preferred speaker IP',
+        placeholder: '192.168.1.55',
+        description: 'Optional. Only needed if SSDP discovery is unreliable.',
+      },
+      {
+        id: 'spotify_client_id',
+        label: 'Spotify client ID',
+        placeholder: 'spotify-client-id',
+        description: 'Optional. Needed only for Spotify Web API search features.',
+        howToGet: 'Spotify Developer Dashboard -> create app -> copy Client ID.',
+        envKeys: ['SPOTIFY_CLIENT_ID'],
+      },
+      {
+        id: 'spotify_client_secret',
+        label: 'Spotify client secret',
+        placeholder: 'spotify-client-secret',
+        inputType: 'password',
+        description: 'Optional. Needed only for Spotify Web API search features.',
+        howToGet: 'Spotify Developer Dashboard -> create app -> copy Client Secret.',
+        envKeys: ['SPOTIFY_CLIENT_SECRET'],
+      },
+    ],
   },
   {
     id: 'summarize',
@@ -324,8 +505,20 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     docsUrl: docsUrl('summarize'),
     requiredFromUser: ['summarize CLI installed.', 'Optional API key if using hosted model providers.'],
     configFields: [
-      { id: 'provider', label: 'Default provider (optional)', placeholder: 'openai | anthropic | local' },
-      { id: 'provider_api_key', label: 'Provider API key (optional)', placeholder: 'API key', inputType: 'password' },
+      {
+        id: 'provider',
+        label: 'Default provider',
+        placeholder: 'google | openai | anthropic | xai',
+        description: 'Optional. Leave empty to use summarize CLI defaults.',
+      },
+      {
+        id: 'provider_api_key',
+        label: 'Provider API key',
+        placeholder: 'API key',
+        inputType: 'password',
+        description: 'Optional. Needed only when your selected provider requires a key.',
+        howToGet: 'Use the provider dashboard for your chosen model (for example OpenAI, Anthropic, xAI, or Google Gemini).',
+      },
     ],
   },
   {
@@ -335,7 +528,6 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     summary: 'Extract frames or short clips from videos using ffmpeg.',
     docsUrl: docsUrl('video-frames'),
     requiredFromUser: ['ffmpeg installed.', 'Local video files available.'],
-    configFields: [{ id: 'ffmpeg_path', label: 'ffmpeg path (optional)', placeholder: '/usr/local/bin/ffmpeg' }],
   },
   {
     id: 'wacli',
@@ -343,10 +535,9 @@ export const SKILL_OPTIONS: readonly SkillOption[] = [
     emoji: '📱',
     summary: 'Send WhatsApp messages to other people or search/sync WhatsApp history via the wacli CLI (not for normal user chats).',
     docsUrl: docsUrl('wacli'),
-    requiredFromUser: ['wacli installed.', 'Linked WhatsApp device/session for CLI usage.'],
-    configFields: [
-      { id: 'device_name', label: 'Device name (optional)', placeholder: 'primary-phone' },
-      { id: 'data_dir', label: 'Session data directory (optional)', placeholder: '/path/to/wacli-data' },
+    requiredFromUser: [
+      'wacli installed.',
+      'Linked WhatsApp device/session set up locally before using this skill.',
     ],
   },
 ] as const

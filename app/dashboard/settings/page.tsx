@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -17,9 +17,6 @@ import {
   toOpenClawProviderId,
 } from '@/lib/model-providers'
 import {
-  DEFAULT_CHAT_SESSION_KEY,
-  listRuntimeModels,
-  listRuntimeSessions,
   updateRuntimeCurrentModel,
 } from '@/lib/runtime-controls'
 import {
@@ -27,6 +24,7 @@ import {
   upsertPersistedRuntimeProfile,
   type PersistedRuntimeProfile,
 } from '@/lib/runtime-persistence'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
@@ -75,29 +73,6 @@ function buildModelLabel(modelId: string) {
     .find((model) => model.id === normalized)
   if (fromKnownProviders) return fromKnownProviders.label
   return shortModelLabel(normalized)
-}
-
-function resolveCurrentModelFromSessions(sessions: Array<{ key: string; modelId: string | null }>): string | null {
-  const mainSession = sessions.find(
-    (session) => session.key.trim() === DEFAULT_CHAT_SESSION_KEY && session.modelId?.trim(),
-  )
-  if (mainSession?.modelId?.trim()) {
-    return mainSession.modelId.trim()
-  }
-
-  const mainAgentSession = sessions.find(
-    (session) => session.key.trim().startsWith('agent:main:') && session.modelId?.trim(),
-  )
-  if (mainAgentSession?.modelId?.trim()) {
-    return mainAgentSession.modelId.trim()
-  }
-
-  const anyModeledSession = sessions.find((session) => session.modelId?.trim())
-  if (anyModeledSession?.modelId?.trim()) {
-    return anyModeledSession.modelId.trim()
-  }
-
-  return null
 }
 
 export default function SettingsPage() {
@@ -196,60 +171,20 @@ export default function SettingsPage() {
     }
   }, [applyPersistedProfile])
 
-  const refreshRuntimeData = useCallback(async (
+  const refreshSettingsData = useCallback(async (
     targetTenantId: string,
     targetUserId?: string,
-    options?: {
-      fallbackModelId?: string | null
-    },
   ) => {
     setLoadingRuntime(true)
     setRuntimeError('')
     try {
-      const [runtime, sessionsResult] = await Promise.all([
-        listRuntimeModels(targetTenantId),
-        listRuntimeSessions(targetTenantId, {
-          includeGlobal: true,
-          includeUnknown: false,
-          agentId: 'main',
-          limit: 200,
-        }).catch(() => null),
-      ])
-
-      const sessionModel = sessionsResult
-        ? resolveCurrentModelFromSessions(sessionsResult.sessions)
-        : null
-      const fallbackModel = options?.fallbackModelId?.trim() || null
-      const currentModel = sessionModel || runtime.currentModelId?.trim() || fallbackModel || ''
-
-      setRuntimeCurrentModelId(currentModel)
-      if (currentModel) {
-        const inferredProvider = inferProviderFromModelId(currentModel)
-        if (isSupportedProviderId(inferredProvider)) setSelectedProviderId(inferredProvider)
-        setSelectedModelId(currentModel)
-        if (targetUserId) {
-          await upsertPersistedRuntimeProfile({
-            userId: targetUserId,
-            tenantId: targetTenantId,
-            modelProviderId: inferredProvider,
-            modelId: currentModel,
-          })
-        }
-      } else {
-        setSelectedModelId((previous) => previous.trim())
+      if (!targetUserId) return
+      const persisted = await loadPersistedProfile(targetUserId, targetTenantId)
+      if (!persisted) {
+        setRuntimeCurrentModelId('')
       }
     } catch (error) {
-      const fallbackMessage = normalizeErrorMessage(error, 'Failed to load model settings.')
-      if (targetUserId) {
-        const persisted = await loadPersistedProfile(targetUserId, targetTenantId)
-        if (persisted) {
-          setRuntimeError('Could not reach runtime. Showing last saved settings.')
-        } else {
-          setRuntimeError(fallbackMessage)
-        }
-      } else {
-        setRuntimeError(fallbackMessage)
-      }
+      setRuntimeError(normalizeErrorMessage(error, 'Failed to load saved settings.'))
     } finally {
       setLoadingRuntime(false)
     }
@@ -268,20 +203,22 @@ export default function SettingsPage() {
       try {
         const session = await getRecoveredSupabaseSession()
         if (!session) { redirectToSignIn(); return }
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (!complete) {
+          router.replace('/dashboard')
+          return
+        }
         const nextTenantId = deriveTenantIdFromUserId(session.user.id)
         if (cancelled) return
         setUserId(session.user.id)
         setTenantId(nextTenantId)
-        const persisted = await loadPersistedProfile(session.user.id, nextTenantId)
-        await refreshRuntimeData(nextTenantId, session.user.id, {
-          fallbackModelId: persisted?.modelId ?? null,
-        })
+        await refreshSettingsData(nextTenantId, session.user.id)
         if (!cancelled) setCheckingSession(false)
       } catch { redirectToSignIn() }
     }
     void loadSession()
     return () => { cancelled = true }
-  }, [loadPersistedProfile, redirectToSignIn, refreshRuntimeData])
+  }, [redirectToSignIn, refreshSettingsData])
 
   async function handleSaveModel() {
     if (!tenantId || !userId) return
@@ -306,7 +243,20 @@ export default function SettingsPage() {
     setModelStatus('')
     try {
       const normalizedProviderId = toOpenClawProviderId(selectedProviderId) ?? selectedProviderId
-      let runtimeApplyError = ''
+      await upsertPersistedRuntimeProfile({
+        userId,
+        tenantId,
+        modelProviderId: normalizedProviderId,
+        modelId: normalizedModelId,
+        authMethod,
+        oauthConnected,
+      })
+      setRuntimeCurrentModelId(normalizedModelId)
+      setAuthApiKey('')
+      setModelStatus(`Saved ${buildModelLabel(normalizedModelId)} settings.`)
+      setModelStatusType('success')
+      setRuntimeError('')
+
       try {
         await updateRuntimeCurrentModel(tenantId, {
           modelId: normalizedModelId,
@@ -316,32 +266,14 @@ export default function SettingsPage() {
           modelOauthConnected: authMethod === 'oauth' ? oauthConnected : undefined,
           persist: true,
         })
-        setRuntimeError('')
       } catch (error) {
-        runtimeApplyError = normalizeErrorMessage(error, 'Failed to update model settings.')
-      }
-      try {
-        await upsertPersistedRuntimeProfile({
-          userId,
-          tenantId,
-          modelProviderId: normalizedProviderId,
-          modelId: normalizedModelId,
-          authMethod,
-          oauthConnected,
-        })
-      } catch (error) {
-        console.error('Failed to persist runtime profile', error)
-      }
-      setRuntimeCurrentModelId(normalizedModelId)
-      setAuthApiKey('')
-      if (!runtimeApplyError) {
-        setModelStatus(`Switched to ${buildModelLabel(normalizedModelId)}.`)
-        setModelStatusType('success')
-        await refreshRuntimeData(tenantId, userId)
-      } else {
-        setModelStatus(`Saved preference. Runtime: ${runtimeApplyError}`)
+        const runtimeApplyError = normalizeErrorMessage(error, 'Failed to update model settings.')
+        setModelStatus(`Saved locally. OpenClaw sync pending: ${runtimeApplyError}`)
         setModelStatusType('error')
       }
+    } catch (error) {
+      setModelStatus(normalizeErrorMessage(error, 'Failed to save model settings.'))
+      setModelStatusType('error')
     } finally {
       setSavingModel(false)
     }
@@ -369,7 +301,7 @@ export default function SettingsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/chat">
+            <Link href="/chat">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to chat
             </Link>
@@ -377,11 +309,11 @@ export default function SettingsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { if (tenantId) void refreshRuntimeData(tenantId, userId) }}
+            onClick={() => { if (tenantId) void refreshSettingsData(tenantId, userId) }}
             disabled={loadingRuntime}
           >
             {loadingRuntime ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Refresh
+            Reload saved
           </Button>
         </div>
 
@@ -614,7 +546,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <Link
-              href="/dashboard/channels"
+              href="/channels"
               className="flex items-center gap-4 rounded-lg border border-border/70 px-4 py-3 transition-colors hover:border-primary/30 hover:bg-muted/30"
             >
               <div className="flex -space-x-2">
@@ -633,7 +565,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <Link
-              href="/dashboard/settings/skills"
+              href="/settings/skills"
               className="flex items-center gap-4 rounded-lg border border-border/70 px-4 py-3 transition-colors hover:border-primary/30 hover:bg-muted/30"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-sm font-semibold">

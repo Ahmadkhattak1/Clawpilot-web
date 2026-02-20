@@ -17,12 +17,8 @@ import {
   type SkillConfigStorage,
   type SkillOption,
 } from '@/lib/skill-options'
+import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import {
-  deriveTenantIdFromUserId,
-  fetchTenantDaemonStatus,
-  tenantHasProvisionedInstance,
-} from '@/lib/tenant-instance'
 
 function getStoredSkillIds() {
   if (typeof window === 'undefined') return []
@@ -64,7 +60,7 @@ export default function SkillsSetupPage() {
 
   function redirectToSignIn() {
     const currentPath = typeof window === 'undefined'
-      ? '/dashboard/skills/setup'
+      ? '/skills/setup'
       : `${window.location.pathname}${window.location.search}`
     router.replace(buildSignInPath(currentPath))
   }
@@ -82,10 +78,9 @@ export default function SkillsSetupPage() {
           return
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const daemonStatus = await fetchTenantDaemonStatus(tenantId)
-        if (tenantHasProvisionedInstance(daemonStatus)) {
-          router.replace('/dashboard/chat')
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (complete) {
+          router.replace('/chat')
           return
         }
 
@@ -96,7 +91,7 @@ export default function SkillsSetupPage() {
           .filter((skill): skill is SkillOption => Boolean(skill))
 
         if (!resolvedSkills.length) {
-          router.replace('/dashboard/skills')
+          router.replace('/skills')
           return
         }
 
@@ -195,7 +190,7 @@ export default function SkillsSetupPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/skills">
+            <Link href="/skills">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>
@@ -207,6 +202,7 @@ export default function SkillsSetupPage() {
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
           <div className="space-y-7">
             <p className="text-sm text-muted-foreground">{`${selectedCount} skill${selectedCount > 1 ? 's' : ''}`}</p>
+            <p className="text-xs text-muted-foreground">Only fields marked with * are required.</p>
 
             {selectedSkills.map((skill) => (
               <section key={skill.id} className="rounded-xl border border-border/70 bg-card p-4">
@@ -240,11 +236,17 @@ export default function SkillsSetupPage() {
                           type={field.inputType ?? 'text'}
                           autoComplete="off"
                         />
+                        {field.description ? (
+                          <p className="text-xs text-muted-foreground">{field.description}</p>
+                        ) : null}
+                        {field.howToGet ? (
+                          <p className="text-xs text-muted-foreground">{`How to get it: ${field.howToGet}`}</p>
+                        ) : null}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-muted-foreground">No fields.</p>
+                  <p className="mt-3 text-xs text-muted-foreground">No setup values required for this skill.</p>
                 )}
               </section>
             ))}

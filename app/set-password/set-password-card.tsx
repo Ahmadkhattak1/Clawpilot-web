@@ -68,7 +68,7 @@ export function SetPasswordCard({ initialEmail }: SetPasswordCardProps) {
       if (updateError) throw updateError
 
       setStatus('Password set successfully. Redirecting...')
-      router.replace('/dashboard')
+      router.replace('/chat')
     } catch (submitError) {
       setError(getErrorMessage(submitError))
     } finally {

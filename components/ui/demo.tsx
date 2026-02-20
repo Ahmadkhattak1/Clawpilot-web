@@ -67,7 +67,7 @@ export function Hero() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: buildAuthCallbackUrl("/dashboard"),
+          redirectTo: buildAuthCallbackUrl("/chat"),
         },
       })
 
@@ -134,7 +134,7 @@ export function Hero() {
         <div className="mt-6 flex flex-col items-center gap-3">
           {authStatus === "authenticated" ? (
             <Link
-              href="/dashboard"
+              href="/chat"
               className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               Open dashboard

@@ -270,8 +270,12 @@ export interface RuntimeTelegramConnectPayload {
 
 export const DEFAULT_CHAT_SESSION_KEY = 'agent:main:main'
 
-function getBackendUrl() {
-  return process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+export function getBackendUrl() {
+  const raw = process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+  if (raw && !/^https?:\/\//i.test(raw)) {
+    return `https://${raw}`
+  }
+  return raw
 }
 
 function toObject(value: unknown): Record<string, unknown> | null {

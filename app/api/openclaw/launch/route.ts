@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+import { getBackendUrl } from '@/lib/runtime-controls'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
 export const dynamic = 'force-dynamic'
@@ -101,10 +102,8 @@ export async function POST(request: Request) {
   }
 
   const tenantId = deriveTenantIdFromUserId(userData.user.id)
-  const backendApiUrl =
-    process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
-  const backendPublicApiUrl =
-    process.env.NEXT_PUBLIC_BACKEND_API_URL ?? process.env.BACKEND_PUBLIC_API_URL ?? backendApiUrl
+  const backendApiUrl = getBackendUrl()
+  const backendPublicApiUrl = getBackendUrl()
   const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN
   if (!internalToken) {
     return NextResponse.json(

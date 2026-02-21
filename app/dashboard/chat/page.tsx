@@ -39,6 +39,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Toggle } from '@/components/ui/toggle'
 import {
   DEFAULT_CHAT_SESSION_KEY,
+  getBackendUrl,
   listRuntimeChannelEvents,
   listRuntimeChannelsStatus,
   listRuntimeChatHistory,
@@ -98,7 +99,6 @@ const PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD =
 const PAYWALL_DISCOUNT_STRIKE_DELAY_MS = 500
 const PAYWALL_DISCOUNT_NEW_PRICE_DELAY_MS = 300
 const PAYWALL_DISCOUNT_ANIMATION_MS = 2300
-const DEFAULT_BACKEND_URL = 'http://localhost:4000'
 type PaywallStatus = 'not-triggered' | 'countdown' | 'deleted' | 'upgraded'
 type PaywallPlan = 'monthly' | 'yearly'
 type BillingPlan = 'FREE' | 'PRO_MONTHLY' | 'PRO_YEARLY'
@@ -1468,7 +1468,7 @@ export default function ChatPage() {
 
       const selectedPlan = options?.plan ?? selectedPaywallPlan
       const applyDiscount = Boolean(options?.applyDiscount && selectedPlan === 'monthly')
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      const backendUrl = getBackendUrl()
 
       const successUrl =
         typeof window !== 'undefined'
@@ -1635,7 +1635,7 @@ export default function ChatPage() {
       if (!normalizedTenantId) {
         return null
       }
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      const backendUrl = getBackendUrl()
       try {
         const headers = await buildTenantRequestHeaders(normalizedTenantId)
         const response = await fetch(`${backendUrl}/api/v1/subscription`, {
@@ -1719,7 +1719,7 @@ export default function ChatPage() {
         }
       }
 
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      const backendUrl = getBackendUrl()
       try {
         const headers = await buildTenantRequestHeaders(normalizedTenantId, {
           'content-type': 'application/json',
@@ -1843,7 +1843,7 @@ export default function ChatPage() {
         return
       }
 
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      const backendUrl = getBackendUrl()
       try {
         const headers = await buildTenantRequestHeaders(normalizedTenantId, {
           'content-type': 'application/json',
@@ -2766,7 +2766,7 @@ export default function ChatPage() {
     if (paywallDeletionHandledRef.current || paywallDeletionSyncRef.current) return
 
     paywallDeletionSyncRef.current = (async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+      const backendUrl = getBackendUrl()
       try {
         const headers = await buildTenantRequestHeaders(tenantId, {
           'content-type': 'application/json',
@@ -2869,7 +2869,7 @@ export default function ChatPage() {
       resetConnectionStability()
       resetTypingState()
 
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
+      const backendUrl = getBackendUrl()
       const query = new URLSearchParams({ tenantId: tid })
       const preferred = preferredSessionKey?.trim() || activeSessionKeyRef.current?.trim() || null
       const sessionKey = preferred && !isPendingSessionKey(preferred) ? preferred : null
@@ -3155,7 +3155,7 @@ export default function ChatPage() {
   // Poll instance status and progress through setup phases
   const startSetupPolling = useCallback(
     (tid: string) => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
+      const backendUrl = getBackendUrl()
       setSetupPhase('checking')
       setSetupStartedAt(Date.now())
       setSetupTimedOut(false)
@@ -3439,7 +3439,7 @@ export default function ChatPage() {
           setCheckingSession(false)
 
           // Check if instance exists and what state it's in
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
+          const backendUrl = getBackendUrl()
           try {
             const headers = await buildTenantRequestHeaders(tid)
             const res = await fetch(`${backendUrl}/api/v1/daemons/${tid}/status`, {

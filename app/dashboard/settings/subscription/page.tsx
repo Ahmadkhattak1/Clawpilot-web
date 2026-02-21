@@ -18,11 +18,11 @@ import {
 } from '@/components/ui/dialog'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildTenantAuthHeaders } from '@/lib/backend-auth'
+import { getBackendUrl } from '@/lib/runtime-controls'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
-const DEFAULT_BACKEND_URL = 'http://localhost:4000'
 const PLAN_MONTHLY_PRICE_USD = 25
 const PLAN_YEARLY_PRICE_USD = 240
 
@@ -177,7 +177,7 @@ export default function SettingsSubscriptionPage() {
       return null
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     setLoadingSnapshot(true)
     setSnapshotError('')
 
@@ -234,7 +234,7 @@ export default function SettingsSubscriptionPage() {
       return false
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     try {
       const headers = await buildTenantAuthHeaders(normalizedTenantId, {
         'content-type': 'application/json',
@@ -360,7 +360,7 @@ export default function SettingsSubscriptionPage() {
       return
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     const successUrl =
       typeof window !== 'undefined'
         ? `${window.location.origin}${pathname}?checkout=success&session_id={CHECKOUT_SESSION_ID}`
@@ -415,7 +415,7 @@ export default function SettingsSubscriptionPage() {
       return
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     setCancelLoadingMode(mode)
     setStatusMessage('')
     setActionError('')

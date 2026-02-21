@@ -1,13 +1,13 @@
 export const faqItems = [
   {
-    question: "Do I need to buy hardware or run a server?",
+    question: "Is this an easy OpenClaw setup without hardware?",
     answer:
-      "No. We handle the hosting and reliability.",
+      "Yes. ClawPilot hosts OpenClaw for you, so you do not need to buy hardware or run your own server.",
   },
   {
-    question: "Do I need to install anything?",
+    question: "Do I need to install anything for easy open claw setup?",
     answer:
-      "No. You create an account and connect your chat.",
+      "No. You create an account, connect chat, and start using OpenClaw immediately.",
   },
   {
     question: "Is it always available?",

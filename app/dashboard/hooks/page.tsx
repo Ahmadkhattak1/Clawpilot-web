@@ -149,47 +149,20 @@ function toIsoTimestampMs(value: unknown): number | null {
   return parsed
 }
 
-const OAUTH_EXPIRY_LOCAL_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-  timeZoneName: 'short',
-})
-
-const OAUTH_EXPIRY_UTC_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: 'short',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-  timeZone: 'UTC',
-  timeZoneName: 'short',
-})
-
-function formatOAuthExpiryLabel(expiresAt: string): string {
+function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
   const expiresAtMs = Date.parse(expiresAt)
   if (!Number.isFinite(expiresAtMs)) {
-    return expiresAt
+    return 'Unknown'
   }
 
-  const remainingMs = expiresAtMs - Date.now()
+  const remainingMs = expiresAtMs - nowMs
   const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000))
   const remainingMinutes = Math.floor(remainingSeconds / 60)
   const secondsPart = remainingSeconds % 60
-  const remainingLabel = remainingMs > 0
-    ? `in ${remainingMinutes}m ${secondsPart}s`
-    : 'expired'
-
-  const date = new Date(expiresAtMs)
-  const localLabel = OAUTH_EXPIRY_LOCAL_FORMATTER.format(date)
-  const utcLabel = OAUTH_EXPIRY_UTC_FORMATTER.format(date)
-  return `${remainingLabel} · ${localLabel} (${utcLabel})`
+  if (remainingMs <= 0) {
+    return 'Expired'
+  }
+  return `${remainingMinutes}m ${secondsPart}s`
 }
 
 interface TerminalLine {
@@ -342,6 +315,7 @@ export default function HooksPage() {
   const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
   const [oauthCallback, setOauthCallback] = useState('')
   const [oauthSubmitting, setOauthSubmitting] = useState(false)
+  const [oauthCountdownNowMs, setOauthCountdownNowMs] = useState(() => Date.now())
   const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [upgradeCheckoutLoading, setUpgradeCheckoutLoading] = useState(false)
   const [postCheckoutSuccess, setPostCheckoutSuccess] = useState(false)
@@ -468,6 +442,15 @@ export default function HooksPage() {
   }, [])
 
   useEffect(() => {
+    if (!oauthExpiresAt) return
+    setOauthCountdownNowMs(Date.now())
+    const timer = setInterval(() => {
+      setOauthCountdownNowMs(Date.now())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [oauthExpiresAt])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -555,9 +538,7 @@ export default function HooksPage() {
           payload = null
         }
 
-        const plan = readString(payload?.plan)
-        const isPaidPlan =
-          payload?.isPaidPlan === true || plan === 'PRO_MONTHLY' || plan === 'PRO_YEARLY'
+        const isPaidPlan = payload?.isPaidPlan === true
         if (isPaidPlan) {
           setUpgradeRequired(false)
           setPostCheckoutSuccess(false)
@@ -871,10 +852,20 @@ export default function HooksPage() {
     setOauthCallback('')
 
     try {
+      const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
+      const accessToken = session?.access_token?.trim() ?? ''
+      if (!accessToken) {
+        setError('Session expired. Please sign in again.')
+        setStatus('')
+        setDeployStageIndex(0)
+        return
+      }
+
       const response = await fetch('/api/onboarding/install', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           tenantId,
@@ -1127,9 +1118,14 @@ export default function HooksPage() {
                       <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                       OpenAI OAuth
                     </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Open the OAuth URL in a new tab, complete sign-in, then paste the full localhost callback URL.
-                    </p>
+                    {oauthAuthUrl ? (
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                        <li>Click <span className="font-medium text-foreground">Open URL</span> and sign in to your OpenAI account.</li>
+                        <li>On the OpenAI page, click <span className="font-medium text-foreground">Continue</span> to authorize.</li>
+                        <li>After redirect, copy the full browser URL that starts with <span className="font-mono text-foreground">http://localhost:1455/auth/callback</span>.</li>
+                        <li>Paste the full URL below and click <span className="font-medium text-foreground">Complete OAuth</span>.</li>
+                      </ol>
+                    ) : null}
 
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
@@ -1162,7 +1158,7 @@ export default function HooksPage() {
 
                     {oauthExpiresAt ? (
                       <p className="mt-2 text-[11px] text-muted-foreground">
-                        Expires: {formatOAuthExpiryLabel(oauthExpiresAt)}
+                        Expires in: {formatOAuthExpiryCountdown(oauthExpiresAt, oauthCountdownNowMs)}
                       </p>
                     ) : null}
 

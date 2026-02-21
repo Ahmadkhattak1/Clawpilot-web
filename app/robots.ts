@@ -1,16 +1,43 @@
 import type { MetadataRoute } from "next"
-
-const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://clawpilot.app"
-const siteUrl = baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`
+import { siteUrl } from "@/lib/site"
 
 export default function robots(): MetadataRoute.Robots {
+  const publicPaths = ["/", "/openclaw-easy-setup", "/llms.txt", "/llms-full.txt"]
+
   return {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: publicPaths,
+        disallow: [
+          "/api/",
+          "/dashboard/",
+          "/chat",
+          "/channels",
+          "/skills",
+          "/settings",
+          "/signin",
+          "/signup",
+          "/sign-in",
+          "/sign-up",
+          "/confirm-email",
+          "/set-password",
+        ],
+      },
+      {
+        userAgent: [
+          "GPTBot",
+          "ChatGPT-User",
+          "Google-Extended",
+          "anthropic-ai",
+          "ClaudeBot",
+          "PerplexityBot",
+          "CCBot",
+        ],
+        allow: publicPaths,
       },
     ],
+    host: siteUrl,
     sitemap: `${siteUrl}/sitemap.xml`,
   }
 }

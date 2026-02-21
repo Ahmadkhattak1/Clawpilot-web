@@ -4,12 +4,14 @@ import Link from 'next/link'
 import {
   AlertTriangle,
   ArrowLeft,
+  ChevronDown,
   CheckCircle2,
   ClipboardCopy,
   ExternalLink,
   FilePlus2,
   Info,
   Loader2,
+  MessageSquare,
   RotateCcw,
   RefreshCw,
   Settings2,
@@ -32,6 +34,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -66,10 +74,23 @@ interface InstallOption {
   label: string
 }
 
+const SYSTEM_AUTO_INSTALL_ID = 'system-auto'
+
+const SYSTEM_AUTO_PACKAGE_BY_BIN: Record<string, string> = {
+  gh: 'gh',
+  rg: 'ripgrep',
+  jq: 'jq',
+  git: 'git',
+  curl: 'curl',
+  ffmpeg: 'ffmpeg',
+  op: '1password-cli',
+}
+
 interface MissingStatus {
   bins: string[]
   env: string[]
   config: string[]
+  os: string[]
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -210,6 +231,76 @@ function installOptionTokens(option: InstallOption): string {
   return `${option.id} ${option.label}`.trim().toLowerCase()
 }
 
+function isBrewInstallOption(option: InstallOption): boolean {
+  const tokens = installOptionTokens(option)
+  return tokens.includes('brew')
+}
+
+function resolveSystemAutoPackageForBin(bin: string): string | null {
+  const normalized = bin.trim().toLowerCase()
+  if (!normalized) return null
+  return SYSTEM_AUTO_PACKAGE_BY_BIN[normalized] ?? null
+}
+
+function canAutoInstallMissingBins(missing: MissingStatus): boolean {
+  if (missing.os.length > 0 || missing.bins.length === 0) {
+    return false
+  }
+  return missing.bins.every((bin) => Boolean(resolveSystemAutoPackageForBin(bin)))
+}
+
+function looksLikeMissingBrewInstallError(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return (
+    normalized.includes('brew not installed') ||
+    normalized.includes('homebrew is not installed') ||
+    normalized.includes('install it from https://brew.sh')
+  )
+}
+
+function extractManualPackageNameFromInstallError(message: string): string | null {
+  const match = message.match(/install\s+"([^"]+)"\s+manually/i)
+  const candidate = match?.[1]?.trim() ?? ''
+  return candidate || null
+}
+
+function normalizeInstallFailureMessage(
+  rawMessage: string,
+  installOption: InstallOption,
+  workspaceDir: string | null | undefined,
+): string {
+  const normalized = rawMessage.trim().toUpperCase()
+  if (normalized.includes('SKILL_UNSUPPORTED_ON_RUNTIME')) {
+    return 'This skill is not supported on the current runtime OS.'
+  }
+
+  if (normalized.includes('SYSTEM_PACKAGE_MAPPING_MISSING')) {
+    return `Automatic dependency install is not mapped yet for this skill. ${rawMessage}`
+  }
+
+  if (
+    normalized.includes('SYSTEM_PACKAGE_INSTALL_FAILED')
+    || normalized.includes('SYSTEM_PACKAGE_INSTALL_INCOMPLETE')
+  ) {
+    return `Automatic dependency install failed on the runtime host. ${rawMessage}`
+  }
+
+  if (
+    detectWorkspacePlatform(workspaceDir) === 'linux' &&
+    isBrewInstallOption(installOption) &&
+    looksLikeMissingBrewInstallError(rawMessage)
+  ) {
+    const packageName = extractManualPackageNameFromInstallError(rawMessage)
+    if (packageName) {
+      return `Automatic install could not complete because brew is unavailable. Backend fallback for "${packageName}" did not finish. Retry Install, then check backend logs if it keeps failing.`
+    }
+
+    return 'Automatic install could not complete because brew is unavailable and backend fallback did not finish. Retry Install, then check backend logs if it keeps failing.'
+  }
+
+  return rawMessage
+}
+
 function scoreInstallOption(
   option: InstallOption,
   platform: 'linux' | 'mac' | 'windows' | 'unknown',
@@ -258,6 +349,7 @@ function pickPreferredInstallOption(
 
 function extractInstallOptions(skill: RuntimeSkillSummary): InstallOption[] {
   const record = toRecord(skill.raw)
+  const missing = extractMissingStatus(skill)
   const options: InstallOption[] = []
 
   const install = record?.install
@@ -297,6 +389,10 @@ function extractInstallOptions(skill: RuntimeSkillSummary): InstallOption[] {
     return [{ id: 'node', label: 'Install clawhub (npm)' }]
   }
 
+  if (dedupedOptions.length === 0 && canAutoInstallMissingBins(missing)) {
+    return [{ id: SYSTEM_AUTO_INSTALL_ID, label: 'Install dependencies (auto)' }]
+  }
+
   return dedupedOptions
 }
 
@@ -307,6 +403,7 @@ function extractMissingStatus(skill: RuntimeSkillSummary): MissingStatus {
     bins: readStringArray(missing, 'bins'),
     env: readStringArray(missing, 'env'),
     config: readStringArray(missing, 'config'),
+    os: readStringArray(missing, 'os'),
   }
 }
 
@@ -337,10 +434,17 @@ function isSkillInstalled(skill: RuntimeSkillSummary): boolean {
 
 function summarizeMissing(missing: MissingStatus): string {
   const parts: string[] = []
+  if (missing.os.length > 0) {
+    parts.push(`os: ${missing.os.join(', ')}`)
+  }
   if (missing.bins.length > 0) parts.push(`bins: ${missing.bins.join(', ')}`)
   if (missing.env.length > 0) parts.push(`env: ${missing.env.join(', ')}`)
   if (missing.config.length > 0) parts.push(`config: ${missing.config.join(', ')}`)
   return parts.join(' | ')
+}
+
+function requiresInstallOrRuntimeSetupBeforeConfig(missing: MissingStatus): boolean {
+  return missing.os.length > 0 || missing.bins.length > 0 || missing.config.length > 0
 }
 
 function findMatchingSkill(
@@ -496,6 +600,11 @@ function getPathFileName(relativePath: string): string {
   if (!normalized) return ''
   const segments = normalized.split('/')
   return segments[segments.length - 1] ?? normalized
+}
+
+function resolveWorkspaceMarkdownPath(markdownFiles: string[], canonicalRelativePath: string): string {
+  const normalized = canonicalRelativePath.trim().toLowerCase()
+  return markdownFiles.find((path) => path.trim().toLowerCase() === normalized) ?? canonicalRelativePath
 }
 
 function isCriticalWorkspaceFile(relativePath: string): boolean {
@@ -654,6 +763,7 @@ export default function SkillsManagementPage() {
       syncRuntime,
     })
     setSkills(nextSkills.skills)
+    return nextSkills
   }, [])
 
   const refreshWorkspaceHealth = useCallback(async (nextTenantId: string, syncRuntime = false) => {
@@ -661,6 +771,7 @@ export default function SkillsManagementPage() {
       syncRuntime,
     })
     setHealth(nextHealth)
+    return nextHealth
   }, [])
 
   const refreshWorkspaceFiles = useCallback(async (nextTenantId: string, syncRuntime = false) => {
@@ -669,6 +780,7 @@ export default function SkillsManagementPage() {
       syncRuntime,
     })
     setMarkdownFiles(filesData.files)
+    return filesData
   }, [])
 
   const refreshWorkspaceTrash = useCallback(async (nextTenantId: string, retentionDays = 30) => {
@@ -693,15 +805,26 @@ export default function SkillsManagementPage() {
     setLoading(true)
     setError('')
     try {
-      await Promise.all([
-        refreshSkills(nextTenantId, false),
-        refreshWorkspaceHealth(nextTenantId),
-        refreshWorkspaceFiles(nextTenantId),
+      const [nextSkills, nextHealth, nextFiles] = await Promise.all([
+        // Force fresh runtime reads on initial load so the page does not
+        // silently render stale/empty snapshot state.
+        refreshSkills(nextTenantId, true),
+        refreshWorkspaceHealth(nextTenantId, true),
+        refreshWorkspaceFiles(nextTenantId, true),
         refreshWorkspaceTrash(nextTenantId, trashRetentionDays),
       ])
+      if (nextSkills.skills.length === 0 && !nextHealth.workspaceDir && nextFiles.files.length === 0) {
+        setStatus('Runtime returned no skills/files yet. Verify daemon/runtime is reachable, then click Refresh.')
+      }
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load skills and workspace data.'
+      console.error('[skills-page] initial refresh failed', {
+        tenantId: nextTenantId,
+        message,
+        error: loadError,
+      })
       setError(message)
+      setStatus('')
     } finally {
       setLoading(false)
     }
@@ -754,6 +877,46 @@ export default function SkillsManagementPage() {
     ))
   }, [markdownFiles, search])
 
+  const workspaceHealthMarkdownFiles = useMemo(() => {
+    const resolvePath = (canonicalRelativePath: string) => resolveWorkspaceMarkdownPath(markdownFiles, canonicalRelativePath)
+    return [
+      {
+        key: 'agents',
+        label: 'AGENTS.md',
+        relativePath: resolvePath('agents.md'),
+        exists: Boolean(health?.files.agentsMdExists),
+        optional: false,
+        template: undefined as 'memory-md' | 'boot-md' | undefined,
+      },
+      {
+        key: 'memory',
+        label: 'MEMORY.md',
+        relativePath: resolvePath('memory.md'),
+        exists: Boolean(health?.files.memoryMdExists),
+        optional: true,
+        template: 'memory-md' as const,
+      },
+      {
+        key: 'boot',
+        label: 'BOOT.md',
+        relativePath: resolvePath('boot.md'),
+        exists: Boolean(health?.files.bootMdExists),
+        optional: true,
+        template: 'boot-md' as const,
+      },
+    ]
+  }, [health?.files.agentsMdExists, health?.files.bootMdExists, health?.files.memoryMdExists, markdownFiles])
+
+  const latestMemoryNotePath = useMemo(() => {
+    const memoryNotes = markdownFiles
+      .filter((relativePath) => {
+        const normalized = relativePath.trim().toLowerCase()
+        return normalized.startsWith('memory/') && normalized.endsWith('.md')
+      })
+      .sort((left, right) => right.localeCompare(left))
+    return memoryNotes[0] ?? null
+  }, [markdownFiles])
+
   const clawhubSkill = useMemo(() => {
     return skills.find((skill) => {
       const tokens = new Set(skillIdentityTokens(skill))
@@ -780,20 +943,51 @@ export default function SkillsManagementPage() {
     return Boolean(configPrimarySensitiveField) && !hasSensitiveRequiredEnv
   }, [configPrimarySensitiveField, configRequiredEnvKeys])
 
+  const configNeedsUserInput = useMemo(() => {
+    return shouldShowConfigApiKeyInput || configRequiredEnvKeys.length > 0
+  }, [configRequiredEnvKeys.length, shouldShowConfigApiKeyInput])
+
+  const configRuntimeSetupHint = useMemo(() => {
+    if (!configSkill) return null
+    const missing = extractMissingStatus(configSkill)
+    if (missing.os.length > 0) {
+      return `This skill is not supported on the current runtime OS. Required OS: ${missing.os.join(', ')}.`
+    }
+    const parts: string[] = []
+    if (missing.bins.length > 0) {
+      parts.push(`missing binaries: ${missing.bins.join(', ')}`)
+    }
+    if (missing.config.length > 0) {
+      parts.push(`missing runtime config: ${missing.config.join(', ')}`)
+    }
+    return parts.length > 0
+      ? `No API/env values are required. Remaining setup: ${parts.join(' | ')}.`
+      : 'No API/env values are required for this skill.'
+  }, [configSkill])
+
   const handleRefresh = useCallback(async () => {
     if (!tenantId) return
     setLoading(true)
     setError('')
     try {
-      await Promise.all([
+      const [nextSkills, nextHealth, nextFiles] = await Promise.all([
         refreshSkills(tenantId, true),
         refreshWorkspaceHealth(tenantId, true),
         refreshWorkspaceFiles(tenantId, true),
         refreshWorkspaceTrash(tenantId, trashRetentionDays),
       ])
+      if (nextSkills.skills.length === 0 && !nextHealth.workspaceDir && nextFiles.files.length === 0) {
+        setStatus('Runtime returned no skills/files yet. Verify daemon/runtime is reachable, then click Refresh.')
+      }
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load skills and workspace data.'
+      console.error('[skills-page] manual refresh failed', {
+        tenantId,
+        message,
+        error: loadError,
+      })
       setError(message)
+      setStatus('')
     } finally {
       setLoading(false)
     }
@@ -854,17 +1048,22 @@ export default function SkillsManagementPage() {
     setError('')
     setStatus('')
     try {
-      setStatus(`Installing ${skill.name} using ${installOption.id}...`)
+      if (installOption.id === SYSTEM_AUTO_INSTALL_ID) {
+        setStatus(`Installing ${skill.name} dependencies automatically...`)
+      } else {
+        setStatus(`Installing ${skill.name} using ${installOption.id}...`)
+      }
       const installPayload = await installRuntimeSkill(tenantId, {
         name: resolveSkillInstallName(skill),
         installId: installOption.id,
       })
-      const installProblem = extractInstallResultProblem(
-        toRecord(installPayload)?.result ?? installPayload,
-      )
+      const installResult = toRecord(installPayload)?.result ?? installPayload
+      const installProblem = extractInstallResultProblem(installResult)
       if (installProblem) {
         throw new Error(installProblem)
       }
+      const installResultRecord = toRecord(installResult)
+      const usedFallback = readBoolean(installResultRecord, 'fallbackUsed') === true
 
       const verification = await waitForSkillInstall(tenantId, skill)
       if (verification.skills.length > 0) {
@@ -886,14 +1085,21 @@ export default function SkillsManagementPage() {
         )
       }
 
-      setStatus(`${skill.name} installed successfully (via ${installOption.id}).`)
+      if (usedFallback) {
+        setStatus(`${skill.name} installed successfully. Dependency setup was handled automatically in the backend.`)
+      } else if (installOption.id === SYSTEM_AUTO_INSTALL_ID) {
+        setStatus(`${skill.name} dependencies installed automatically.`)
+      } else {
+        setStatus(`${skill.name} installed successfully (via ${installOption.id}).`)
+      }
     } catch (installError) {
       setStatus('')
-      setError(installError instanceof Error ? installError.message : `Failed to install ${skill.name}.`)
+      const rawMessage = installError instanceof Error ? installError.message : `Failed to install ${skill.name}.`
+      setError(normalizeInstallFailureMessage(rawMessage, installOption, health?.workspaceDir))
     } finally {
       setActionPendingKey('')
     }
-  }, [refreshSkills, refreshWorkspaceHealth, tenantId, waitForSkillInstall])
+  }, [health?.workspaceDir, refreshSkills, refreshWorkspaceHealth, tenantId, waitForSkillInstall])
 
   const handleToggle = useCallback(async (skill: RuntimeSkillSummary, enabled: boolean) => {
     if (!tenantId) return
@@ -916,10 +1122,27 @@ export default function SkillsManagementPage() {
   }, [refreshSkills, tenantId])
 
   const openConfigureDialog = useCallback((skill: RuntimeSkillSummary) => {
+    const missing = extractMissingStatus(skill)
+    if (requiresInstallOrRuntimeSetupBeforeConfig(missing)) {
+      const blockers: string[] = []
+      if (missing.os.length > 0) {
+        blockers.push(`unsupported runtime OS (requires: ${missing.os.join(', ')})`)
+      }
+      if (missing.bins.length > 0) {
+        blockers.push(`missing binaries: ${missing.bins.join(', ')}`)
+      }
+      if (missing.config.length > 0) {
+        blockers.push(`missing runtime config: ${missing.config.join(', ')}`)
+      }
+      const suffix = blockers.length > 0 ? ` (${blockers.join(' | ')})` : ''
+      setStatus(`${skill.name}: install/setup required before configuration${suffix}.`)
+      return
+    }
+
     setConfigSkill(skill)
     setConfigApiKey('')
     const envDefaults: Record<string, string> = {}
-    for (const key of extractMissingStatus(skill).env) {
+    for (const key of missing.env) {
       envDefaults[key] = ''
     }
     setConfigRequiredEnvValues(envDefaults)
@@ -961,7 +1184,25 @@ export default function SkillsManagementPage() {
     }
 
     if (!payload.apiKey && !payload.env) {
-      setConfigError('This skill currently has no required API/env values from runtime.')
+      setConfigDialogOpen(false)
+      if (configSkill) {
+        const missing = extractMissingStatus(configSkill)
+        const setupParts: string[] = []
+        if (missing.os.length > 0) {
+          setupParts.push(`required OS: ${missing.os.join(', ')}`)
+        }
+        if (missing.bins.length > 0) {
+          setupParts.push(`bins: ${missing.bins.join(', ')}`)
+        }
+        if (missing.config.length > 0) {
+          setupParts.push(`runtime config: ${missing.config.join(', ')}`)
+        }
+        if (setupParts.length > 0) {
+          setStatus(`${configSkill.name}: no API/env values required. Remaining setup: ${setupParts.join(' | ')}.`)
+        } else {
+          setStatus(`${configSkill.name}: no API/env values required.`)
+        }
+      }
       return
     }
 
@@ -1145,6 +1386,35 @@ export default function SkillsManagementPage() {
       setActionPendingKey('')
     }
   }, [tenantId])
+
+  const openBootReferenceFromHealth = useCallback(() => {
+    const bootFile = workspaceHealthMarkdownFiles.find((file) => file.key === 'boot')
+    if (bootFile?.exists) {
+      void handleOpenMarkdownFile(bootFile.relativePath)
+      return
+    }
+    setStatus('BOOT.md is missing. Create BOOT.md template to manage boot hook behavior.')
+  }, [handleOpenMarkdownFile, workspaceHealthMarkdownFiles])
+
+  const openMemoryReferenceFromHealth = useCallback((source: 'memory-dir' | 'command-logger' | 'session-memory') => {
+    if (latestMemoryNotePath) {
+      void handleOpenMarkdownFile(latestMemoryNotePath)
+      return
+    }
+
+    const memoryFile = workspaceHealthMarkdownFiles.find((file) => file.key === 'memory')
+    if (memoryFile?.exists) {
+      void handleOpenMarkdownFile(memoryFile.relativePath)
+      return
+    }
+
+    if (source === 'memory-dir') {
+      setStatus('No memory markdown note exists yet. Add one from "Add Markdown File" or create MEMORY.md.')
+      return
+    }
+
+    setStatus('No memory markdown file exists yet. Create MEMORY.md template to configure memory-related hooks.')
+  }, [handleOpenMarkdownFile, latestMemoryNotePath, workspaceHealthMarkdownFiles])
 
   const handleSaveOpenedMarkdownFile = useCallback(async () => {
     if (!tenantId || !fileDialogPath) return
@@ -1418,10 +1688,18 @@ export default function SkillsManagementPage() {
             </Link>
           </Button>
 
-          <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={loading}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/chat">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Chat
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Refresh
+            </Button>
+          </div>
         </div>
 
         <div>
@@ -1445,7 +1723,7 @@ export default function SkillsManagementPage() {
         <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
           <Card className="border-border/70">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-base">Skills & Files Explorer</CardTitle>
+              <CardTitle className="text-base">Skills Explorer</CardTitle>
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -1463,6 +1741,12 @@ export default function SkillsManagementPage() {
                   : []
                 const eligible = isSkillEligible(skill)
                 const installed = isSkillInstalled(skill)
+                const unsupportedOnRuntime = missing.os.length > 0
+                const requiresInstallFirst = requiresInstallOrRuntimeSetupBeforeConfig(missing)
+                const canConfigure = !requiresInstallFirst
+                const primaryInstallLabel = preferredInstallOption?.id === SYSTEM_AUTO_INSTALL_ID
+                  ? (installed ? 'Reinstall deps (auto)' : 'Install deps (auto)')
+                  : `${installed ? 'Reinstall' : 'Install'}${preferredInstallOption ? ` (${preferredInstallOption.id})` : ''}`
                 const toggleActionKey = `toggle:${skill.key}`
                 const installActionKey = `install:${skill.key}`
                 const configActionKey = `config:${skill.key}`
@@ -1491,9 +1775,21 @@ export default function SkillsManagementPage() {
                     {summarizeMissing(missing) ? (
                       <p className="mt-2 text-xs text-muted-foreground">{summarizeMissing(missing)}</p>
                     ) : null}
+                    {unsupportedOnRuntime ? (
+                      <p className="mt-2 text-xs text-amber-700">
+                        This skill is not supported on this runtime OS. Required OS: {missing.os.join(', ')}.
+                      </p>
+                    ) : null}
+                    {!unsupportedOnRuntime && requiresInstallFirst && installOptions.length === 0 ? (
+                      <p className="mt-2 text-xs text-amber-700">
+                        {missing.bins.length > 0
+                          ? `Install/setup is required before configuration. No automatic installer mapping is available yet for required binaries: ${missing.bins.join(', ')}.`
+                          : `Runtime setup is required before configuration: ${missing.config.join(', ')}.`}
+                      </p>
+                    ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {installOptions.length > 0 ? (
+                      {!unsupportedOnRuntime && installOptions.length > 0 ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -1506,12 +1802,11 @@ export default function SkillsManagementPage() {
                           {actionPendingKey === installActionKey ? (
                             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                           ) : null}
-                          {installed ? 'Reinstall' : 'Install'}
-                          {preferredInstallOption ? ` (${preferredInstallOption.id})` : ''}
+                          {primaryInstallLabel}
                         </Button>
                       ) : null}
 
-                      {alternativeInstallOptions.slice(0, 2).map((option) => (
+                      {!unsupportedOnRuntime && alternativeInstallOptions.slice(0, 2).map((option) => (
                         <Button
                           key={`${skill.key}-installer-${option.id}`}
                           size="sm"
@@ -1519,7 +1814,7 @@ export default function SkillsManagementPage() {
                           onClick={() => void handleInstall(skill, option)}
                           disabled={actionPendingKey === installActionKey}
                         >
-                          Use {option.id}
+                          Use {option.id === SYSTEM_AUTO_INSTALL_ID ? 'auto deps' : option.id}
                         </Button>
                       ))}
 
@@ -1537,15 +1832,17 @@ export default function SkillsManagementPage() {
                         </Button>
                       ) : null}
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openConfigureDialog(skill)}
-                        disabled={actionPendingKey === configActionKey}
-                      >
-                        <Settings2 className="mr-2 h-3.5 w-3.5" />
-                        Configure
-                      </Button>
+                      {canConfigure ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openConfigureDialog(skill)}
+                          disabled={actionPendingKey === configActionKey}
+                        >
+                          <Settings2 className="mr-2 h-3.5 w-3.5" />
+                          Configure
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 )
@@ -1556,120 +1853,10 @@ export default function SkillsManagementPage() {
                   No skills matched your search.
                 </p>
               ) : null}
-
-              <div className="pt-2">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">Markdown Files</p>
-                  <p className="text-xs text-muted-foreground">Click a row to open in read-only mode</p>
-                </div>
-
-                <div className="max-h-72 space-y-2 overflow-auto rounded-lg border border-border/70 p-3">
-                  {filteredMarkdownFiles.length > 0 ? filteredMarkdownFiles.map((relativePath) => {
-                    const fileRisk = workspaceFileRisk(relativePath)
-                    const absolutePath = buildAbsoluteWorkspaceFilePath(health?.workspaceDir, relativePath)
-                    const fileName = getPathFileName(relativePath)
-                    return (
-                      <div
-                        key={relativePath}
-                        className="w-full rounded-md border border-border/70 px-3 py-2 text-left transition-colors hover:bg-muted/30"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => void handleOpenMarkdownFile(relativePath)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            void handleOpenMarkdownFile(relativePath)
-                          }
-                        }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium" title={fileName}>{fileName}</p>
-                            <p className="truncate text-xs text-muted-foreground" title={relativePath}>{relativePath}</p>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${
-                              fileRisk.level === 'critical'
-                                ? 'bg-destructive/15 text-destructive'
-                                : fileRisk.level === 'operational'
-                                  ? 'bg-amber-500/15 text-amber-700'
-                                  : 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            {fileRisk.label}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              void handleCopyValue(relativePath, 'Relative path')
-                            }}
-                          >
-                            <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
-                            {copiedValue === relativePath ? 'Copied' : 'Copy path'}
-                          </Button>
-                          {absolutePath ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(event) => {
-                                event.preventDefault()
-                                event.stopPropagation()
-                                void handleCopyValue(absolutePath, 'Absolute path')
-                              }}
-                            >
-                              <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
-                              {copiedValue === absolutePath ? 'Copied' : 'Copy full path'}
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              void handleDeleteMarkdownFile(relativePath)
-                            }}
-                            disabled={actionPendingKey === `delete:${relativePath}`}
-                          >
-                            {actionPendingKey === `delete:${relativePath}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  }) : (
-                    <p className="text-xs text-muted-foreground">No markdown files matched your search.</p>
-                  )}
-                </div>
-              </div>
             </CardContent>
           </Card>
 
           <div className="space-y-6">
-            <Card className="border-border/70">
-              <CardHeader>
-                <CardTitle className="text-base">Markdown File Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Create new Markdown files.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setNewFileDialogOpen(true)}
-                >
-                  <FilePlus2 className="mr-2 h-3.5 w-3.5" />
-                  Add Markdown File
-                </Button>
-              </CardContent>
-            </Card>
-
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="text-base">ClawHub</CardTitle>
@@ -1717,51 +1904,425 @@ export default function SkillsManagementPage() {
                 <p className="text-xs text-muted-foreground break-all">
                   Workspace: {health?.workspaceDir ?? 'Unavailable'}
                 </p>
-                {healthRow('memory/ directory', Boolean(health?.memoryDirExists))}
-                {healthRow('Hook: boot-md', Boolean(health?.hooks.bootMdEnabled))}
-                {healthRow('Hook: command-logger', Boolean(health?.hooks.commandLoggerEnabled))}
-                {healthRow('Hook: session-memory', Boolean(health?.hooks.sessionMemoryEnabled))}
-                {healthRow('AGENTS.md', Boolean(health?.files.agentsMdExists))}
-                {healthRow('MEMORY.md (optional)', Boolean(health?.files.memoryMdExists), true)}
-                {healthRow('BOOT.md (optional)', Boolean(health?.files.bootMdExists), true)}
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleRepair()}
-                    disabled={actionPendingKey === 'repair:workspace'}
-                  >
-                    {actionPendingKey === 'repair:workspace' ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Wrench className="mr-2 h-3.5 w-3.5" />}
-                    Repair essentials
-                  </Button>
+                <div
+                  className="group flex cursor-pointer items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2 transition-colors hover:bg-muted/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    openMemoryReferenceFromHealth('memory-dir')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openMemoryReferenceFromHealth('memory-dir')
+                    }
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm">memory/ directory</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Opens latest memory note when available.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      Open
+                    </span>
+                    {Boolean(health?.memoryDirExists) ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        OK
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <XCircle className="h-3.5 w-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div
+                  className="group flex cursor-pointer items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2 transition-colors hover:bg-muted/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    openBootReferenceFromHealth()
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openBootReferenceFromHealth()
+                    }
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm">Hook: boot-md</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Opens BOOT.md.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      Open
+                    </span>
+                    {Boolean(health?.hooks.bootMdEnabled) ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        OK
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <XCircle className="h-3.5 w-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="group flex cursor-pointer items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2 transition-colors hover:bg-muted/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    openMemoryReferenceFromHealth('command-logger')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openMemoryReferenceFromHealth('command-logger')
+                    }
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm">Hook: command-logger</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Opens memory file used by logging flow.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      Open
+                    </span>
+                    {Boolean(health?.hooks.commandLoggerEnabled) ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        OK
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <XCircle className="h-3.5 w-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="group flex cursor-pointer items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2 transition-colors hover:bg-muted/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    openMemoryReferenceFromHealth('session-memory')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openMemoryReferenceFromHealth('session-memory')
+                    }
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm">Hook: session-memory</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Opens memory file used by session snapshots.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      Open
+                    </span>
+                    {Boolean(health?.hooks.sessionMemoryEnabled) ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        OK
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <XCircle className="h-3.5 w-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm">Hook: bootstrap-extra-files</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Injects additional bootstrap markdown files via agent bootstrap.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {Boolean(health?.hooks.bootstrapExtraFilesEnabled) ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        OK
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <XCircle className="h-3.5 w-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {workspaceHealthMarkdownFiles.map((file) => {
+                  const deleteActionKey = `delete:${file.relativePath}`
+                  const deletePending = actionPendingKey === deleteActionKey
+                  const deleteButtonClass = deletePending
+                    ? 'h-7 px-2 text-destructive opacity-100'
+                    : 'h-7 px-2 text-destructive opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'
+
+                  return (
+                    <div
+                      key={file.key}
+                      className={`group flex items-center justify-between rounded-md border border-border/70 bg-card/60 px-3 py-2 ${file.exists ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                      role={file.exists ? 'button' : undefined}
+                      tabIndex={file.exists ? 0 : -1}
+                      onClick={() => {
+                        if (!file.exists) return
+                        void handleOpenMarkdownFile(file.relativePath)
+                      }}
+                      onKeyDown={(event) => {
+                        if (!file.exists) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          void handleOpenMarkdownFile(file.relativePath)
+                        }
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm">{file.optional ? `${file.label} (optional)` : file.label}</p>
+                        <p className="truncate text-[11px] text-muted-foreground" title={file.relativePath}>
+                          {file.relativePath}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {file.exists ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={deleteButtonClass}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void handleDeleteMarkdownFile(file.relativePath)
+                            }}
+                            disabled={deletePending}
+                          >
+                            {deletePending ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Delete
+                          </Button>
+                        ) : file.optional && file.template ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-muted-foreground"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              if (!file.template) return
+                              void handleCreateTemplate(file.template)
+                            }}
+                            disabled={actionPendingKey === `template:${file.template}`}
+                          >
+                            {actionPendingKey === `template:${file.template}` ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <FilePlus2 className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Create
+                          </Button>
+                        ) : null}
+
+                        {file.exists ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            OK
+                          </span>
+                        ) : file.optional ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                            Optional
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                            <XCircle className="h-3.5 w-3.5" />
+                            Missing
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                <div className="pt-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-8">
+                        Workspace actions
+                        <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-60">
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          void handleRepair()
+                        }}
+                        disabled={actionPendingKey === 'repair:workspace'}
+                      >
+                        {actionPendingKey === 'repair:workspace'
+                          ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          : <Wrench className="mr-2 h-3.5 w-3.5" />}
+                        Repair essentials
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          void handleCreateTemplate('memory-md')
+                        }}
+                        disabled={actionPendingKey === 'template:memory-md'}
+                      >
+                        {actionPendingKey === 'template:memory-md'
+                          ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          : <FilePlus2 className="mr-2 h-3.5 w-3.5" />}
+                        Create MEMORY.md template
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          void handleCreateTemplate('boot-md')
+                        }}
+                        disabled={actionPendingKey === 'template:boot-md'}
+                      >
+                        {actionPendingKey === 'template:boot-md'
+                          ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          : <FilePlus2 className="mr-2 h-3.5 w-3.5" />}
+                        Create BOOT.md template
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          void handleCreateTemplate('daily-memory')
+                        }}
+                        disabled={actionPendingKey === 'template:daily-memory'}
+                      >
+                        {actionPendingKey === 'template:daily-memory'
+                          ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          : <FilePlus2 className="mr-2 h-3.5 w-3.5" />}
+                        Add daily memory note
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/70">
+              <CardHeader className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">Markdown Files</CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void handleCreateTemplate('memory-md')}
-                    disabled={actionPendingKey === 'template:memory-md'}
+                    className="h-8 px-2.5"
+                    onClick={() => setNewFileDialogOpen(true)}
                   >
-                    Create MEMORY.md template
+                    <FilePlus2 className="mr-1.5 h-3.5 w-3.5" />
+                    Add
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleCreateTemplate('boot-md')}
-                    disabled={actionPendingKey === 'template:boot-md'}
-                  >
-                    Create BOOT.md template
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleCreateTemplate('daily-memory')}
-                    disabled={actionPendingKey === 'template:daily-memory'}
-                  >
-                    Add daily memory note
-                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Click a file row to open it. Hover to reveal quick actions.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-80 space-y-1.5 overflow-auto rounded-lg border border-border/70 p-2">
+                  {filteredMarkdownFiles.length > 0 ? filteredMarkdownFiles.map((relativePath) => {
+                    const fileRisk = workspaceFileRisk(relativePath)
+                    const fileName = getPathFileName(relativePath)
+                    const deletePending = actionPendingKey === `delete:${relativePath}`
+                    return (
+                      <div
+                        key={relativePath}
+                        className="group flex w-full cursor-pointer items-center justify-between rounded-md border border-transparent px-2 py-2 text-left transition-colors hover:border-border/70 hover:bg-muted/35 focus-within:border-border/70 focus-within:bg-muted/35"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void handleOpenMarkdownFile(relativePath)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            void handleOpenMarkdownFile(relativePath)
+                          }
+                        }}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <p className="truncate text-xs font-medium" title={fileName}>{fileName}</p>
+                          <p className="truncate text-[11px] text-muted-foreground" title={relativePath}>{relativePath}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                              fileRisk.level === 'critical'
+                                ? 'bg-destructive/15 text-destructive'
+                                : fileRisk.level === 'operational'
+                                  ? 'bg-amber-500/15 text-amber-700'
+                                  : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {fileRisk.label}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void handleCopyValue(relativePath, 'Relative path')
+                            }}
+                          >
+                            <ClipboardCopy className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={deletePending
+                              ? 'h-7 w-7 p-0 text-destructive'
+                              : 'h-7 w-7 p-0 text-destructive opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void handleDeleteMarkdownFile(relativePath)
+                            }}
+                            disabled={deletePending}
+                          >
+                            {deletePending
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Trash2 className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  }) : (
+                    <p className="px-1 py-2 text-xs text-muted-foreground">No markdown files matched your search.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -2086,11 +2647,17 @@ export default function SkillsManagementPage() {
                   </p>
                 ) : null}
               </div>
-            ) : (
+            ) : configRequiredEnvKeys.length > 0 ? (
               <p className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 This skill does not appear to require a direct API key field.
               </p>
-            )}
+            ) : null}
+
+            {!configNeedsUserInput ? (
+              <p className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                {configRuntimeSetupHint ?? 'No API/env values are required for this skill.'}
+              </p>
+            ) : null}
 
             {configRequiredEnvKeys.length > 0 ? (
               <div className="space-y-2 rounded-lg border border-border/70 p-3">
@@ -2142,7 +2709,7 @@ export default function SkillsManagementPage() {
               disabled={actionPendingKey === `config:${configSkill?.key ?? ''}`}
             >
               {actionPendingKey === `config:${configSkill?.key ?? ''}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save
+              {configNeedsUserInput ? 'Save' : 'Done'}
             </Button>
           </DialogFooter>
         </DialogContent>

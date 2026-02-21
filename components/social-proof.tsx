@@ -93,13 +93,13 @@ export function SocialProof() {
           </p>
         </div>
 
-        <div ref={containerRef} className="columns-1 md:columns-2 lg:columns-3 gap-4">
+        <div ref={containerRef} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {visibleTweets.map((tweet, index) => {
             const id = getTweetId(tweet.url)
             return (
               <div
                 key={`${tweet.url}-${index}`}
-                className="break-inside-avoid rounded-xl border border-border/50 bg-secondary/40 p-3 overflow-hidden mb-4"
+                className="rounded-xl border border-border/50 bg-secondary/40 p-3 overflow-hidden"
               >
                 <div id={`tweet-${id}`} />
                 {!loadedIds[id] && (

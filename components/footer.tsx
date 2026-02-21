@@ -22,6 +22,12 @@ export function Footer() {
         {/* Links */}
         <div className="flex items-center gap-6 text-muted-foreground">
           <Link
+            href="/openclaw-easy-setup"
+            className="type-nav transition-colors hover:text-foreground"
+          >
+            Easy setup
+          </Link>
+          <Link
             href="#faq"
             className="type-nav transition-colors hover:text-foreground"
           >

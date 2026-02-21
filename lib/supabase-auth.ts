@@ -77,7 +77,7 @@ export async function getRecoveredSupabaseSession(
 
   return new Promise<Session | null>((resolve) => {
     let settled = false
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let timeoutId: number | null = null
     let unsubscribe = () => {}
 
     const settle = (session: Session | null) => {

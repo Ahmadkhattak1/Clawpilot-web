@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="100%" height="100%">
+    <defs>
+        <linearGradient id="gradPilotEnv" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1E293B" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#0F172A" stop-opacity="0.9"/>
+        </linearGradient>
+        <linearGradient id="gradPilotBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#8B5CF6"/>
+            <stop offset="100%" stop-color="#3B82F6"/>
+        </linearGradient>
+        <linearGradient id="gradClaw" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10B981" stop-opacity="0.2"/>
+            <stop offset="100%" stop-color="#059669" stop-opacity="0.4"/>
+        </linearGradient>
+        <linearGradient id="gradService" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1E293B"/>
+            <stop offset="100%" stop-color="#0F172A"/>
+        </linearGradient>
+
+        <filter id="glowParticle" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="glowPilot" x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+
+        <path id="path-user-pilot" d="M 110 300 L 320 300" />
+        <path id="path-claw-s1" d="M 680 300 C 730 300 750 100 800 100" />
+        <path id="path-claw-s2" d="M 680 300 C 730 300 750 190 800 190" />
+        <path id="path-claw-s3" d="M 680 300 C 730 300 750 280 800 280" />
+        <path id="path-claw-s4" d="M 680 300 C 730 300 750 370 800 370" />
+        <path id="path-claw-s5" d="M 680 300 C 730 300 750 460 800 460" />
+    </defs>
+
+    <style>
+        text { font-family: system-ui, -apple-system, sans-serif; pointer-events: none; fill: #F8FAFC; }
+        .subtext { fill: #94A3B8; font-size: 13px; }
+        
+        /* Node Pulses */
+        @keyframes pulse-border {
+            0%, 100% { stroke-width: 2; filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4)); }
+            50% { stroke-width: 3; filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.8)); }
+        }
+        @keyframes float-openclaw {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        .pilot-boundary { animation: pulse-border 4s infinite; }
+        .openclaw-core { animation: float-openclaw 4s infinite ease-in-out; }
+        .service-node { transition: transform 0.2s; cursor: pointer; }
+        .service-node:hover { transform: translateX(5px); }
+    </style>
+
+    <g stroke="#334155" stroke-width="3" fill="none">
+        <use href="#path-user-pilot" />
+        <use href="#path-claw-s1" />
+        <use href="#path-claw-s2" />
+        <use href="#path-claw-s3" />
+        <use href="#path-claw-s4" />
+        <use href="#path-claw-s5" />
+    </g>
+
+    <g filter="url(#glowParticle)">
+        <circle r="4" fill="#60A5FA"><animateMotion dur="1.5s" repeatCount="indefinite"><mpath href="#path-user-pilot"/></animateMotion></circle>
+        <circle r="4" fill="#60A5FA"><animateMotion dur="1.5s" begin="0.75s" repeatCount="indefinite"><mpath href="#path-user-pilot"/></animateMotion></circle>
+
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#path-claw-s1"/></animateMotion></circle>
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" begin="1s" repeatCount="indefinite"><mpath href="#path-claw-s1"/></animateMotion></circle>
+        
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#path-claw-s2"/></animateMotion></circle>
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" begin="1s" repeatCount="indefinite"><mpath href="#path-claw-s2"/></animateMotion></circle>
+
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#path-claw-s3"/></animateMotion></circle>
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" begin="1s" repeatCount="indefinite"><mpath href="#path-claw-s3"/></animateMotion></circle>
+
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#path-claw-s4"/></animateMotion></circle>
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" begin="1s" repeatCount="indefinite"><mpath href="#path-claw-s4"/></animateMotion></circle>
+
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" repeatCount="indefinite"><mpath href="#path-claw-s5"/></animateMotion></circle>
+        <circle r="3" fill="#34D399"><animateMotion dur="2s" begin="1s" repeatCount="indefinite"><mpath href="#path-claw-s5"/></animateMotion></circle>
+    </g>
+
+    <g transform="translate(50, 260)">
+        <circle cx="30" cy="40" r="35" fill="#1E293B" stroke="#475569" stroke-width="2"/>
+        <circle cx="30" cy="30" r="10" fill="#94A3B8"/>
+        <path d="M 12 55 C 12 40 48 40 48 55" fill="#94A3B8"/>
+        <text x="30" y="95" text-anchor="middle" font-size="14" font-weight="600">User</text>
+    </g>
+
+    <g filter="url(#glowPilot)">
+        <rect class="pilot-boundary" x="320" y="140" width="360" height="320" rx="24" fill="url(#gradPilotEnv)" stroke="url(#gradPilotBorder)" stroke-width="2"/>
+        
+        <image href="logo.png" x="340" y="160" width="40" height="40"/>
+        <text x="390" y="185" font-size="22" font-weight="bold" fill="#FFFFFF">ClawPilot</text>
+        <text x="390" y="205" class="subtext">Managed Hosting, Scaling &amp; UI Layer</text>
+
+        <path d="M 340 230 L 660 230" stroke="#334155" stroke-width="1" stroke-dasharray="5,5"/>
+        <text x="500" y="250" class="subtext" text-anchor="middle" font-size="11" letter-spacing="1">SECURE RUNTIME ENVIRONMENT</text>
+
+        <g class="openclaw-core" transform="translate(410, 270)">
+            <rect x="0" y="0" width="180" height="110" rx="16" fill="url(#gradClaw)" stroke="#10B981" stroke-width="2"/>
+            <image href="image_8a0f05.png" x="65" y="15" width="50" height="50"/>
+            <text x="90" y="85" text-anchor="middle" font-size="16" font-weight="bold" fill="#34D399">Openclaw</text>
+            <text x="90" y="102" class="subtext" text-anchor="middle" font-size="11">Core AI Engine</text>
+        </g>
+    </g>
+
+    <g class="service-node">
+        <rect x="800" y="75" width="170" height="50" rx="8" fill="url(#gradService)" stroke="#334155" stroke-width="2"/>
+        <image href="image_8a0f61.png" x="812" y="88" width="24" height="24"/>
+        <text x="845" y="105" font-size="14" font-weight="600">WhatsApp</text>
+    </g>
+
+    <g class="service-node">
+        <rect x="800" y="165" width="170" height="50" rx="8" fill="url(#gradService)" stroke="#334155" stroke-width="2"/>
+        <image href="image_8a0fa2.png" x="812" y="178" width="24" height="24"/>
+        <text x="845" y="195" font-size="14" font-weight="600">Telegram</text>
+    </g>
+
+    <g class="service-node">
+        <rect x="800" y="255" width="170" height="50" rx="8" fill="url(#gradService)" stroke="#334155" stroke-width="2"/>
+        <image href="image_8a0c1a.png" x="812" y="268" width="24" height="24"/>
+        <text x="845" y="285" font-size="14" font-weight="600">Gmail</text>
+    </g>
+
+    <g class="service-node">
+        <rect x="800" y="345" width="170" height="50" rx="8" fill="url(#gradService)" stroke="#334155" stroke-width="2"/>
+        <path d="M 812 358 h 24 v 16 h -24 z M 810 376 h 28 v 2 h -28 z" fill="#8B5CF6"/>
+        <text x="845" y="375" font-size="14" font-weight="600">Local System</text>
+    </g>
+
+    <g class="service-node">
+        <rect x="800" y="435" width="170" height="50" rx="8" fill="url(#gradService)" stroke="#334155" stroke-width="2"/>
+        <path d="M 824 443 a 7 7 0 1 0 0 14 a 7 7 0 1 0 0 -14 m 0 2 a 5 5 0 1 1 0 10 a 5 5 0 1 1 0 -10 M 824 445 v 5 h 4" stroke="#06B6D4" stroke-width="2" fill="none"/>
+        <text x="845" y="465" font-size="14" font-weight="600">Cron &amp; Scripts</text>
+    </g>
+</svg>

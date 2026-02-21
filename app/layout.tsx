@@ -4,6 +4,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics as GAAnalytics } from "@/components/analytics"
 import { ThemeProvider } from "@/components/theme-provider"
+import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
 import './globals.css'
 
@@ -12,51 +13,46 @@ const inter = Inter({
   variable: '--font-inter',
 })
 
-const rawSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
-const siteUrl = rawSiteUrl.startsWith("http") ? rawSiteUrl : `https://${rawSiteUrl}`
-
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "ClawPilot | Hosted OpenClaw Without Setup Drama",
+  title: {
+    default: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+    template: "%s | ClawPilot",
+  },
   description:
-    "ClawPilot hosts OpenClaw for you. No servers to manage, no uptime babysitting, and full control over access and actions.",
-  keywords: [
-    "OpenClaw",
-    "hosted OpenClaw",
-    "OpenClaw hosting",
-    "OpenClaw WhatsApp",
-    "OpenClaw Telegram",
-    "OpenClaw iMessage",
-    "OpenClaw Slack",
-    "OpenClaw Discord",
-    "OpenClaw Signal",
-    "AI chat assistant",
-    "ClawPilot",
-  ],
+    "ClawPilot is the easy OpenClaw setup: hosted OpenClaw in minutes, no hardware, no terminal setup, and reliable always-on uptime.",
+  applicationName: siteName,
+  referrer: "origin-when-cross-origin",
+  authors: [{ name: siteName }],
+  creator: siteName,
+  publisher: siteName,
+  category: "technology",
+  keywords: seoKeywords,
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "ClawPilot | Hosted OpenClaw Without Setup Drama",
+    title: "ClawPilot | OpenClaw Easy Setup Without Server Work",
     description:
-      "ClawPilot handles OpenClaw hosting, updates, and reliability so your assistant is ready when you need it.",
+      "Get easy OpenClaw setup with ClawPilot. We host, install, and maintain OpenClaw so you can start fast.",
     url: "/",
-    siteName: "ClawPilot",
+    siteName,
+    locale: "en_US",
     images: [
       {
         url: "/logo.png",
         width: 512,
         height: 512,
-        alt: "ClawPilot logo",
+        alt: "ClawPilot - hosted OpenClaw with easy setup",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClawPilot | Hosted OpenClaw Without Setup Drama",
+    title: "ClawPilot | OpenClaw Easy Setup Without Server Work",
     description:
-      "Hosted OpenClaw by ClawPilot. No setup overhead. You stay in control.",
+      "Easy OpenClaw setup in minutes. ClawPilot handles hosting and uptime.",
     images: ["/logo.png"],
   },
   robots: {

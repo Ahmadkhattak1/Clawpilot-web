@@ -1,5 +1,26 @@
 import { redirect } from 'next/navigation'
+import type { Metadata } from "next"
+import { getSafeNextPath } from '@/lib/supabase-auth'
 
-export default function SignInAliasRoute() {
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+}
+
+type SignInAliasRouteProps = {
+  searchParams?: Promise<{
+    next?: string | string[]
+  }>
+}
+
+export default async function SignInAliasRoute({ searchParams }: SignInAliasRouteProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
+  const rawNext = resolvedSearchParams?.next
+  const nextParam = Array.isArray(rawNext) ? rawNext[0] : rawNext
+  if (nextParam) {
+    redirect(`/signin?next=${encodeURIComponent(getSafeNextPath(nextParam))}`)
+  }
   redirect('/signin')
 }

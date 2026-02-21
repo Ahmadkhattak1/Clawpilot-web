@@ -4,7 +4,8 @@ import * as React from "react"
 import { motion, type Variants } from "framer-motion"
 import { cn } from "@/lib/utils"
 
-interface FeatureHighlightProps extends React.HTMLAttributes<HTMLDivElement> {
+interface FeatureHighlightProps
+  extends Omit<React.ComponentPropsWithoutRef<typeof motion.div>, 'title' | 'children'> {
   icon?: React.ReactNode
   title: string
   features: React.ReactNode[]

@@ -93,7 +93,12 @@ export function AuthCard({ mode }: AuthCardProps) {
     ? 'Enter your email to get an OTP code, then set your password.'
     : 'Welcome back. Pick a sign-in method to continue.'
   const emailButtonText = isSignUp ? 'Send OTP' : 'Sign in with email'
-  const switchHref = isSignUp ? '/signin' : '/signup'
+  const switchHref = useMemo(() => {
+    const targetPath = isSignUp ? '/signin' : '/signup'
+    const params = new URLSearchParams()
+    params.set('next', nextPath)
+    return `${targetPath}?${params.toString()}`
+  }, [isSignUp, nextPath])
   const switchText = isSignUp
     ? 'Already have an account? Sign in'
     : "Don't have an account? Sign up"
@@ -157,7 +162,8 @@ export function AuthCard({ mode }: AuthCardProps) {
     try {
       const supabase = getSupabaseAuthClient()
       if (isSignUp) {
-        const signupCallback = buildAuthCallbackUrl(`/set-password?email=${encodeURIComponent(normalizedEmail)}`)
+        const signupNextPath = `/set-password?email=${encodeURIComponent(normalizedEmail)}&next=${encodeURIComponent(nextPath)}`
+        const signupCallback = buildAuthCallbackUrl(signupNextPath)
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: normalizedEmail,
           options: {
@@ -168,7 +174,9 @@ export function AuthCard({ mode }: AuthCardProps) {
         if (otpError) throw otpError
 
         rememberMethod('email')
-        router.replace(`/confirm-email?email=${encodeURIComponent(normalizedEmail)}`)
+        router.replace(
+          `/confirm-email?email=${encodeURIComponent(normalizedEmail)}&next=${encodeURIComponent(nextPath)}`,
+        )
         return
       } else {
         if (!password) {
@@ -298,7 +306,7 @@ export function AuthCard({ mode }: AuthCardProps) {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
+                placeholder="email"
                 autoComplete="email"
                 required
               />

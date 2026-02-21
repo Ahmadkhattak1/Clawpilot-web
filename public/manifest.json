@@ -1,7 +1,7 @@
 {
     "name": "ClawPilot",
     "short_name": "ClawPilot",
-    "description": "Hosted OpenClaw without setup drama. No servers to manage, no uptime babysitting.",
+    "description": "OpenClaw easy setup with managed hosting. No servers to manage, no uptime babysitting.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",

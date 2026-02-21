@@ -122,6 +122,7 @@ export interface RuntimeWorkspaceHooksStatus {
   bootMdEnabled: boolean
   commandLoggerEnabled: boolean
   sessionMemoryEnabled: boolean
+  bootstrapExtraFilesEnabled: boolean
 }
 
 export interface RuntimeWorkspaceFilesStatus {
@@ -303,20 +304,66 @@ function readBoolean(record: Record<string, unknown>, keys: string[]): boolean |
   return null
 }
 
+const RUNTIME_NESTED_RESULT_KEYS = ['result', 'data', 'payload'] as const
+
+function extractObjectCandidate(
+  result: unknown,
+  keys: string[],
+): Record<string, unknown> | null {
+  const queue: unknown[] = [result]
+  const visited = new Set<Record<string, unknown>>()
+  let fallback: Record<string, unknown> | null = null
+
+  for (let index = 0; index < queue.length && index < 30; index += 1) {
+    const objectValue = toObject(queue[index])
+    if (!objectValue || visited.has(objectValue)) {
+      continue
+    }
+
+    visited.add(objectValue)
+    fallback = objectValue
+
+    if (keys.some((key) => Object.prototype.hasOwnProperty.call(objectValue, key))) {
+      return objectValue
+    }
+
+    for (const nestedKey of RUNTIME_NESTED_RESULT_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(objectValue, nestedKey)) {
+        queue.push(objectValue[nestedKey])
+      }
+    }
+  }
+
+  return fallback
+}
+
 function extractArrayCandidates(result: unknown, keys: string[]): unknown[] {
-  if (Array.isArray(result)) {
-    return result
-  }
+  const queue: unknown[] = [result]
+  const visited = new Set<Record<string, unknown>>()
 
-  const objectValue = toObject(result)
-  if (!objectValue) {
-    return []
-  }
-
-  for (const key of keys) {
-    const value = objectValue[key]
+  for (let index = 0; index < queue.length && index < 30; index += 1) {
+    const value = queue[index]
     if (Array.isArray(value)) {
       return value
+    }
+
+    const objectValue = toObject(value)
+    if (!objectValue || visited.has(objectValue)) {
+      continue
+    }
+    visited.add(objectValue)
+
+    for (const key of keys) {
+      const arrayValue = objectValue[key]
+      if (Array.isArray(arrayValue)) {
+        return arrayValue
+      }
+    }
+
+    for (const nestedKey of RUNTIME_NESTED_RESULT_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(objectValue, nestedKey)) {
+        queue.push(objectValue[nestedKey])
+      }
     }
   }
 
@@ -514,7 +561,7 @@ function parseCurrentModelId(result: unknown): string | null {
     return result.trim()
   }
 
-  const objectValue = toObject(result)
+  const objectValue = extractObjectCandidate(result, ['currentModelId', 'currentModel', 'activeModel', 'current', 'active', 'selected'])
   if (!objectValue) {
     return null
   }
@@ -592,18 +639,20 @@ function parseSkillItem(item: unknown, keyFallback?: string): RuntimeSkillSummar
 function parseSkills(result: unknown): RuntimeSkillsData {
   const parsed: RuntimeSkillSummary[] = []
 
-  const arrayItems = extractArrayCandidates(result, ['skills', 'items', 'list', 'results', 'data'])
+  const root = extractObjectCandidate(result, ['skills', 'items', 'list', 'results', 'data', 'available'])
+  const arrayItems = extractArrayCandidates(root ?? result, ['skills', 'items', 'list', 'results', 'data', 'available'])
   for (const item of arrayItems) {
     const normalized = parseSkillItem(item)
     if (normalized) parsed.push(normalized)
   }
 
-  const objectValue = toObject(result)
+  const objectValue = root ?? toObject(result)
   if (parsed.length === 0 && objectValue) {
     const skillObject =
       toObject(objectValue.skills) ??
       toObject(objectValue.items) ??
       toObject(objectValue.data) ??
+      toObject(objectValue.result) ??
       objectValue
     for (const [key, value] of Object.entries(skillObject)) {
       const normalized = parseSkillItem(value, key)
@@ -618,7 +667,7 @@ function parseSkills(result: unknown): RuntimeSkillsData {
 }
 
 function parseChannelsStatus(result: unknown): RuntimeChannelsStatusData {
-  const root = toObject(result)
+  const root = extractObjectCandidate(result, ['channels', 'channelAccounts', 'channelLabels', 'channelOrder'])
   const rawChannels = toObject(root?.channels) ?? {}
   const channels: Record<string, Record<string, unknown>> = {}
   const rawAccounts = toObject(root?.channelAccounts) ?? {}
@@ -664,52 +713,95 @@ function parseChannelsStatus(result: unknown): RuntimeChannelsStatusData {
 }
 
 function parseWorkspaceHealth(result: unknown): RuntimeWorkspaceHealthData {
-  const root = toObject(result)
+  const root = extractObjectCandidate(result, [
+    'workspaceDir',
+    'workspace',
+    'workspacePath',
+    'workspace_dir',
+    'workspace_path',
+    'memoryDir',
+    'memory_dir',
+    'hooks',
+    'files',
+  ])
   const hooks = toObject(root?.hooks)
   const files = toObject(root?.files)
   return {
-    workspaceDir: typeof root?.workspaceDir === 'string' ? root.workspaceDir : null,
-    memoryDir: typeof root?.memoryDir === 'string' ? root.memoryDir : null,
-    memoryDirExists: Boolean(root?.memoryDirExists),
+    workspaceDir: root ? readString(root, ['workspaceDir', 'workspace', 'workspacePath', 'workspace_dir', 'workspace_path']) : null,
+    memoryDir: root ? readString(root, ['memoryDir', 'memory_dir']) : null,
+    memoryDirExists: root ? (readBoolean(root, ['memoryDirExists', 'memory_dir_exists']) ?? false) : false,
     hooks: {
-      internalEnabled: Boolean(hooks?.internalEnabled),
-      bootMdEnabled: Boolean(hooks?.bootMdEnabled),
-      commandLoggerEnabled: Boolean(hooks?.commandLoggerEnabled),
-      sessionMemoryEnabled: Boolean(hooks?.sessionMemoryEnabled),
+      internalEnabled: hooks ? (readBoolean(hooks, ['internalEnabled', 'internal_enabled', 'enabled']) ?? false) : false,
+      bootMdEnabled: hooks ? (readBoolean(hooks, ['bootMdEnabled', 'boot_md_enabled']) ?? false) : false,
+      commandLoggerEnabled: hooks ? (readBoolean(hooks, ['commandLoggerEnabled', 'command_logger_enabled']) ?? false) : false,
+      sessionMemoryEnabled: hooks ? (readBoolean(hooks, ['sessionMemoryEnabled', 'session_memory_enabled']) ?? false) : false,
+      bootstrapExtraFilesEnabled: hooks
+        ? (readBoolean(hooks, ['bootstrapExtraFilesEnabled', 'bootstrap_extra_files_enabled']) ?? false)
+        : false,
     },
     files: {
-      memoryMdExists: Boolean(files?.memoryMdExists),
-      bootMdExists: Boolean(files?.bootMdExists),
-      agentsMdExists: Boolean(files?.agentsMdExists),
+      memoryMdExists: files ? (readBoolean(files, ['memoryMdExists', 'memory_md_exists']) ?? false) : false,
+      bootMdExists: files ? (readBoolean(files, ['bootMdExists', 'boot_md_exists']) ?? false) : false,
+      agentsMdExists: files ? (readBoolean(files, ['agentsMdExists', 'agents_md_exists']) ?? false) : false,
     },
-    repaired: Boolean(root?.repaired),
+    repaired: root ? (readBoolean(root, ['repaired', 'isRepaired']) ?? false) : false,
     raw: result,
   }
 }
 
 function parseWorkspaceFiles(result: unknown): RuntimeWorkspaceFilesData {
-  const root = toObject(result)
-  const files = Array.isArray(root?.files)
-    ? root.files
-      .map((value) => (typeof value === 'string' ? value.trim() : ''))
-      .filter(Boolean)
-    : []
+  const root = extractObjectCandidate(result, [
+    'workspaceDir',
+    'workspace',
+    'workspacePath',
+    'workspace_dir',
+    'workspace_path',
+    'files',
+    'items',
+    'list',
+    'data',
+  ])
+  const fileEntries = extractArrayCandidates(root ?? result, ['files', 'items', 'list', 'results', 'data'])
+  const files = Array.from(
+    new Set(
+      fileEntries
+        .map((entry) => {
+          if (typeof entry === 'string') {
+            return entry.trim()
+          }
+          const record = toObject(entry)
+          if (!record) {
+            return ''
+          }
+          return readString(record, ['relativePath', 'path', 'file', 'name']) ?? ''
+        })
+        .filter(Boolean),
+    ),
+  )
   return {
-    workspaceDir: typeof root?.workspaceDir === 'string' ? root.workspaceDir : null,
+    workspaceDir: root ? readString(root, ['workspaceDir', 'workspace', 'workspacePath', 'workspace_dir', 'workspace_path']) : null,
     files,
     raw: result,
   }
 }
 
 function parseWorkspaceFile(result: unknown): RuntimeWorkspaceFileData {
-  const root = toObject(result)
-  const relativePath = (
-    (typeof root?.relativePath === 'string' ? root.relativePath : null) ??
-    (typeof root?.path === 'string' ? root.path : null) ??
-    ''
-  )
-  const content = typeof root?.content === 'string' ? root.content : ''
-  const exists = typeof root?.exists === 'boolean' ? root.exists : Boolean(content)
+  const root = extractObjectCandidate(result, ['relativePath', 'path', 'content', 'contentBase64', 'exists'])
+  const relativePath = root ? (readString(root, ['relativePath', 'path', 'file', 'name']) ?? '') : ''
+  let content = root ? (readString(root, ['content']) ?? '') : ''
+  if (!content && root) {
+    const contentBase64 = readString(root, ['contentBase64', 'content_base64'])
+    if (contentBase64 && typeof atob === 'function') {
+      try {
+        const binary = atob(contentBase64)
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+        content = new TextDecoder().decode(bytes)
+      } catch {
+        content = ''
+      }
+    }
+  }
+  const exists = root ? (readBoolean(root, ['exists', 'found']) ?? Boolean(content)) : Boolean(content)
   return {
     relativePath: relativePath.trim(),
     exists,
@@ -719,9 +811,10 @@ function parseWorkspaceFile(result: unknown): RuntimeWorkspaceFileData {
 }
 
 function parseWorkspaceTrash(result: unknown): RuntimeWorkspaceTrashData {
-  const root = toObject(result)
-  const files = Array.isArray(root?.files)
-    ? root.files
+  const root = extractObjectCandidate(result, ['trashDir', 'trash_dir', 'files', 'items', 'list', 'data'])
+  const fileEntries = extractArrayCandidates(root ?? result, ['files', 'items', 'list', 'results', 'data'])
+  const files = fileEntries.length > 0
+    ? fileEntries
       .map((item) => toObject(item))
       .filter((item): item is Record<string, unknown> => Boolean(item))
       .map((record) => ({
@@ -735,25 +828,31 @@ function parseWorkspaceTrash(result: unknown): RuntimeWorkspaceTrashData {
     : []
 
   return {
-    trashDir: typeof root?.trashDir === 'string' ? root.trashDir : null,
+    trashDir: root ? (readString(root, ['trashDir', 'trash_dir']) ?? null) : null,
     files,
     raw: result,
   }
 }
 
 function parseWorkspaceFileVersions(result: unknown): RuntimeWorkspaceFileVersionsData {
-  const root = toObject(result)
-  const versions = Array.isArray(root?.versions)
-    ? root.versions
+  const root = extractObjectCandidate(result, ['relativePath', 'versionsDir', 'versions', 'items', 'list', 'data'])
+  const versionEntries = extractArrayCandidates(root ?? result, ['versions', 'items', 'list', 'results', 'data'])
+  const versions = versionEntries.length > 0
+    ? versionEntries
       .map((item) => toObject(item))
       .filter((item): item is Record<string, unknown> => Boolean(item))
       .map((record) => {
         const sizeValue = record.sizeBytes
+        const sizeFromString = readString(record, ['sizeBytes', 'size_bytes'])
+        const parsedSizeFromString =
+          sizeFromString && !Number.isNaN(Number(sizeFromString))
+            ? Number(sizeFromString)
+            : null
         return {
           versionId: readString(record, ['versionId']) ?? '',
           createdAt: readString(record, ['createdAt']) ?? null,
           path: readString(record, ['path']) ?? null,
-          sizeBytes: typeof sizeValue === 'number' ? sizeValue : null,
+          sizeBytes: typeof sizeValue === 'number' ? sizeValue : parsedSizeFromString,
           raw: record,
         }
       })
@@ -761,18 +860,17 @@ function parseWorkspaceFileVersions(result: unknown): RuntimeWorkspaceFileVersio
     : []
 
   return {
-    relativePath: readString(root ?? {}, ['relativePath']) ?? '',
-    versionsDir: readString(root ?? {}, ['versionsDir']) ?? null,
+    relativePath: readString(root ?? {}, ['relativePath', 'path']) ?? '',
+    versionsDir: readString(root ?? {}, ['versionsDir', 'versions_dir']) ?? null,
     versions,
     raw: result,
   }
 }
 
 function parseWhatsAppLogin(result: unknown): RuntimeWhatsAppLoginData {
-  const record = toObject(result)
-  const connectedValue = record?.connected
-  const connected = typeof connectedValue === 'boolean' ? connectedValue : null
-  const qrDataUrl = readString(record ?? {}, ['qrDataUrl'])
+  const record = extractObjectCandidate(result, ['message', 'status', 'connected', 'qrDataUrl', 'qr_data_url'])
+  const connected = record ? readBoolean(record, ['connected']) : null
+  const qrDataUrl = readString(record ?? {}, ['qrDataUrl', 'qr_data_url'])
   const message = readString(record ?? {}, ['message', 'status']) ?? null
 
   return {
@@ -826,6 +924,32 @@ class RuntimeRequestError extends Error {
 }
 
 const runtimeRequestInFlight = new Map<string, Promise<unknown>>()
+const runtimeDebugEnabled = (
+  process.env.NODE_ENV !== 'production' ||
+  process.env.NEXT_PUBLIC_RUNTIME_DEBUG === '1'
+)
+
+function runtimeDebugLog(
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  details?: Record<string, unknown>,
+): void {
+  if (!runtimeDebugEnabled || typeof window === 'undefined') {
+    return
+  }
+
+  const logger = level === 'error'
+    ? console.error
+    : level === 'warn'
+      ? console.warn
+      : console.info
+
+  if (details) {
+    logger(`[runtime-controls] ${message}`, details)
+    return
+  }
+  logger(`[runtime-controls] ${message}`)
+}
 
 function buildRuntimeRequestKey(
   tenantId: string,
@@ -859,9 +983,44 @@ async function runtimeRequest<T>(
       ...(init.headers ?? {}),
     })
 
-    const response = await fetch(`${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}${path}`, {
-      ...init,
-      headers,
+    const method = (init.method ?? 'GET').toUpperCase()
+    const requestUrl = `${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}${path}`
+    runtimeDebugLog('info', 'request:start', {
+      tenantId,
+      method,
+      path,
+      requestUrl,
+      hasTenantHeader: Boolean(headers['x-tenant-id']),
+      hasAuthorizationHeader: Boolean(headers.authorization),
+      headerNames: Object.keys(headers),
+    })
+
+    let response: Response
+    try {
+      response = await fetch(requestUrl, {
+        ...init,
+        headers,
+      })
+    } catch (error) {
+      runtimeDebugLog('error', 'request:network-error', {
+        tenantId,
+        method,
+        path,
+        requestUrl,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+
+    runtimeDebugLog('info', 'request:response', {
+      tenantId,
+      method,
+      path,
+      requestUrl,
+      status: response.status,
+      ok: response.ok,
+      skillsSourceHeader: response.headers.get('x-clawpilot-skills-source'),
+      contentType: response.headers.get('content-type'),
     })
 
     let payload: unknown = null
@@ -872,10 +1031,32 @@ async function runtimeRequest<T>(
     }
 
     if (!response.ok) {
+      runtimeDebugLog('warn', 'request:error-response', {
+        tenantId,
+        method,
+        path,
+        requestUrl,
+        status: response.status,
+        payload: toObject(payload) ?? payload,
+      })
       throw new RuntimeRequestError(response.status, payload)
     }
 
-    return payload as T
+    // Normalize successful runtime responses to RuntimeEnvelope so callers can
+    // safely read `.result` across backend variants:
+    // - empty/non-JSON success body -> { result: null }
+    // - direct payload object/array  -> { result: payload }
+    // - envelope payload             -> passthrough
+    if (payload === null || payload === undefined) {
+      return { result: null } as T
+    }
+
+    const record = toObject(payload)
+    if (record && Object.prototype.hasOwnProperty.call(record, 'result')) {
+      return payload as T
+    }
+
+    return { result: payload } as T
   })()
 
   runtimeRequestInFlight.set(requestKey, requestPromise as Promise<unknown>)

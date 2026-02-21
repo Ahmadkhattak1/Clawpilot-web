@@ -1,30 +1,24 @@
-# ClawPilot - LLM Context
+# ClawPilot - OpenClaw Easy Setup
 
-> ClawPilot hosts OpenClaw for users who want the power of OpenClaw without setup and maintenance overhead.
+> ClawPilot is managed OpenClaw hosting for people searching for "OpenClaw easy setup", "easy OpenClaw setup", and "easy open claw setup".
 
-## About
+## Summary
 
-ClawPilot runs OpenClaw as a managed service. Users create an account, connect chat tools, and start delegating tasks without managing servers or uptime.
+ClawPilot lets users run OpenClaw without local hardware, server maintenance, or manual setup. Create an account, connect channels, and start delegating tasks in chat.
 
-## Key Features
+## Canonical Pages
 
-- **Managed Hosting**: No extra machines, no server setup, and no uptime babysitting.
-- **Multi-Platform Support**: Works with WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, and WebChat.
-- **Control and Safety**: Users decide what OpenClaw can access and can require confirmation for sensitive actions.
-- **Open Source Foundation**: Powered by OpenClaw.
+- Homepage: https://clawpilot.app
+- OpenClaw easy setup: https://clawpilot.app/openclaw-easy-setup
 
-## How It Works
+## Core Capabilities
 
-1. Create an account
-2. Connect chat and tools
-3. Start delegating tasks
+- Managed OpenClaw hosting with updates and uptime handled by ClawPilot.
+- Easy setup workflow for non-technical users.
+- Multi-channel support (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, WebChat).
+- Permission-aware controls and confirmation gates.
 
-## Links
+## References
 
-- Website: https://clawpilot.app
 - OpenClaw GitHub: https://github.com/openclaw/openclaw
 - Clawhub: https://clawhub.ai
-
-## Contact
-
-For early access, join the waitlist at https://clawpilot.app

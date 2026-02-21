@@ -24,7 +24,7 @@ import {
   isModelSupportedByProvider,
 } from '@/lib/model-providers'
 import { isOnboardingComplete, markOnboardingComplete } from '@/lib/onboarding-state'
-import { completeRuntimeOpenAICodexOAuth, startRuntimeOpenAICodexOAuth } from '@/lib/runtime-controls'
+import { completeRuntimeOpenAICodexOAuth, getBackendUrl, startRuntimeOpenAICodexOAuth } from '@/lib/runtime-controls'
 import { SKILLS_CONFIG_STORAGE_KEY, SKILLS_STORAGE_KEY, type SkillConfigStorage } from '@/lib/skill-options'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
@@ -105,7 +105,6 @@ const DEPLOY_STAGE_LABELS = [
   'hydrate skills',
   'final health check',
 ] as const
-const DEFAULT_BACKEND_URL = 'http://localhost:4000'
 const PAYWALL_MONTHLY_PRICE_USD = 25
 const PAYWALL_YEARLY_PRICE_USD = 240
 
@@ -519,7 +518,7 @@ export default function HooksPage() {
       return false
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     const attempts = postCheckoutSuccess ? 6 : 1
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -586,7 +585,7 @@ export default function HooksPage() {
       return
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     const successUrl =
       typeof window !== 'undefined'
         ? `${window.location.origin}/dashboard/hooks?checkout=success&session_id={CHECKOUT_SESSION_ID}`
@@ -647,7 +646,7 @@ export default function HooksPage() {
       return false
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? DEFAULT_BACKEND_URL
+    const backendUrl = getBackendUrl()
     try {
       const headers = await buildTenantAuthHeaders(tenantId, {
         'content-type': 'application/json',

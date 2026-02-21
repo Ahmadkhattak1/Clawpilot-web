@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 
 import { toOpenClawProviderId } from '@/lib/model-providers'
+import { getBackendUrl } from '@/lib/runtime-controls'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
 const RequestBodySchema = z.object({
@@ -60,8 +61,7 @@ async function backendRequest<T>({
   headers = {},
   body,
 }: BackendRequestOptions): Promise<{ status: number; data: T }> {
-  const backendApiUrl =
-    process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000'
+  const backendApiUrl = getBackendUrl()
 
   try {
     const response = await fetch(`${backendApiUrl}${path}`, {

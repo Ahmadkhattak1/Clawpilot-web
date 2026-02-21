@@ -22,6 +22,11 @@ export const HOOK_OPTIONS: readonly HookOption[] = [
     label: 'session-memory',
     summary: 'Keeps session memory available across runs.',
   },
+  {
+    id: 'bootstrap-extra-files',
+    label: 'bootstrap-extra-files',
+    summary: 'Injects additional bootstrap markdown files during agent bootstrap.',
+  },
 ] as const
 
 export const HOOK_DEFAULT_IDS = HOOK_OPTIONS.map((hook) => hook.id) as readonly string[]

@@ -1,35 +1,67 @@
 import { faqItems } from "./faq-data"
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
 export function SeoSchema() {
+  const keywordText = seoKeywords.join(", ")
+
   const schema = {
     "@context": "https://schema.org",
     "@graph": [
       {
         "@type": "Organization",
-        name: "ClawPilot",
+        "@id": `${siteUrl}#organization`,
+        name: siteName,
         url: siteUrl,
         logo: `${siteUrl}/logo.png`,
       },
       {
         "@type": "WebSite",
-        name: "ClawPilot",
+        "@id": `${siteUrl}#website`,
+        name: siteName,
         url: siteUrl,
         description:
-          "ClawPilot hosts OpenClaw for you so you can use it in your chat apps without setup or uptime management overhead.",
+          "ClawPilot provides easy OpenClaw setup with managed hosting, updates, and uptime.",
         inLanguage: "en",
+        keywords: keywordText,
+        publisher: {
+          "@id": `${siteUrl}#organization`,
+        },
+      },
+      {
+        "@type": "WebPage",
+        "@id": `${siteUrl}/#webpage`,
+        url: siteUrl,
+        name: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+        description:
+          "Easy OpenClaw setup from ClawPilot. Launch hosted OpenClaw without hardware, terminal setup, or maintenance work.",
+        inLanguage: "en",
+        isPartOf: {
+          "@id": `${siteUrl}#website`,
+        },
+        keywords: [
+          "OpenClaw easy setup",
+          "easy OpenClaw setup",
+          "easy open claw",
+        ],
       },
       {
         "@type": "SoftwareApplication",
-        name: "ClawPilot",
+        "@id": `${siteUrl}#software`,
+        name: siteName,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         isAccessibleForFree: false,
+        url: siteUrl,
+        description:
+          "Managed OpenClaw hosting that gives teams easy setup and always-on reliability.",
+        brand: {
+          "@id": `${siteUrl}#organization`,
+        },
         license: "https://github.com/openclaw/openclaw/blob/main/LICENSE",
       },
       {
         "@type": "FAQPage",
+        "@id": `${siteUrl}#faq`,
         mainEntity: faqItems.map((item) => ({
           "@type": "Question",
           name: item.question,

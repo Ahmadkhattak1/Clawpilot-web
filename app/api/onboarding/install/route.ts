@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+
 import { toOpenClawProviderId } from '@/lib/model-providers'
+import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
 const RequestBodySchema = z.object({
   tenantId: z
@@ -93,6 +96,15 @@ async function backendRequest<T>({
   }
 }
 
+function extractBearerToken(authorizationHeader: string | null): string | null {
+  if (!authorizationHeader) return null
+  const normalized = authorizationHeader.trim()
+  if (!normalized) return null
+  if (!normalized.toLowerCase().startsWith('bearer ')) return null
+  const token = normalized.slice(7).trim()
+  return token || null
+}
+
 export async function POST(request: Request) {
   let body: z.infer<typeof RequestBodySchema>
 
@@ -119,6 +131,59 @@ export async function POST(request: Request) {
     )
   }
 
+  const accessToken = extractBearerToken(request.headers.get('authorization'))
+  if (!accessToken) {
+    return NextResponse.json(
+      {
+        error: 'UNAUTHORIZED',
+        message: 'Missing access token',
+      },
+      { status: 401 },
+    )
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      {
+        error: 'SERVER_MISCONFIGURED',
+        message: 'Supabase environment variables are missing.',
+      },
+      { status: 500 },
+    )
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken)
+  if (userError || !userData.user) {
+    return NextResponse.json(
+      {
+        error: 'UNAUTHORIZED',
+        message: 'Invalid or expired session token.',
+      },
+      { status: 401 },
+    )
+  }
+
+  const tenantId = deriveTenantIdFromUserId(userData.user.id)
+  if (body.tenantId !== tenantId) {
+    return NextResponse.json(
+      {
+        error: 'TENANT_ACCESS_DENIED',
+        message: 'Authenticated user cannot provision this tenant.',
+      },
+      { status: 403 },
+    )
+  }
+
   const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN
   if (!internalToken) {
     return NextResponse.json(
@@ -141,7 +206,7 @@ export async function POST(request: Request) {
         'x-internal-api-token': internalToken,
       },
       body: {
-        tenantId: body.tenantId,
+        tenantId,
         state: 'ACTIVE',
       },
     })
@@ -173,7 +238,7 @@ export async function POST(request: Request) {
       path: '/api/v1/daemons',
       method: 'POST',
       headers: {
-        'x-tenant-id': body.tenantId,
+        'x-tenant-id': tenantId,
         'x-internal-api-token': internalToken,
       },
       body: {
@@ -211,7 +276,7 @@ export async function POST(request: Request) {
         'x-internal-api-token': internalToken,
       },
       body: {
-        tenantId: body.tenantId,
+        tenantId,
         apiRequests: 5,
         daemonRuntimeMinutes: 5,
         egressGb: 0,
@@ -222,7 +287,7 @@ export async function POST(request: Request) {
       path: '/api/v1/subscription',
       method: 'GET',
       headers: {
-        'x-tenant-id': body.tenantId,
+        'x-tenant-id': tenantId,
         'x-internal-api-token': internalToken,
       },
     })
@@ -231,14 +296,14 @@ export async function POST(request: Request) {
       path: '/api/v1/costs/current-month',
       method: 'GET',
       headers: {
-        'x-tenant-id': body.tenantId,
+        'x-tenant-id': tenantId,
         'x-internal-api-token': internalToken,
       },
     })
 
     return NextResponse.json({
       status: 'ok',
-      tenantId: body.tenantId,
+      tenantId,
       setupCollected: {
         modelProviderId: openClawProviderId,
         modelId: body.onboarding.modelId,

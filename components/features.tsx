@@ -81,14 +81,17 @@ export function Features() {
             }`}
             style={{ transitionDelay: "120ms" }}
           >
-            <div className="pointer-events-none absolute inset-x-8 bottom-8 h-24 rounded-full bg-[radial-gradient(circle,rgba(249,188,116,0.35)_0%,rgba(249,188,116,0.0)_75%)] blur-2xl" />
+            <div className="pointer-events-none absolute inset-x-6 bottom-6 h-24 rounded-full bg-[radial-gradient(circle,rgba(249,188,116,0.35)_0%,rgba(249,188,116,0.0)_75%)] blur-2xl" />
             <Image
-              src="/cloud-ride.svg"
-              alt="Lobster mascot riding a cloud"
-              width={1024}
-              height={1024}
-              className="relative z-10 mx-auto h-auto w-full max-w-[360px] object-contain drop-shadow-[0_14px_24px_rgba(0,0,0,0.14)] lg:translate-x-4"
+              src="/hero-hatch.svg"
+              alt="OpenClaw mascot hatching from an egg"
+              width={4563}
+              height={3676}
+              className="relative z-10 mx-auto h-auto w-full max-w-[380px] object-contain drop-shadow-[0_16px_30px_rgba(0,0,0,0.15)] lg:translate-x-3"
             />
+            <div className="absolute -bottom-1 left-2 z-20 rounded-xl border border-border/55 bg-background/92 px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur">
+              <p className="text-[11px] font-medium text-foreground/85">Now hosted by ClawPilot</p>
+            </div>
           </div>
         </div>
 

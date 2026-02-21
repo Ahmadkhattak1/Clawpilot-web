@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { buildAuthCallbackUrl, getSupabaseAuthClient } from '@/lib/supabase-auth'
+import { buildAuthCallbackUrl, getSafeNextPath, getSupabaseAuthClient } from '@/lib/supabase-auth'
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message
@@ -27,6 +27,7 @@ function getErrorMessage(error: unknown) {
 
 interface ConfirmEmailCardProps {
   initialEmail?: string
+  initialNextPath?: string
 }
 
 const VERIFY_OTP_TYPES: readonly EmailOtpType[] = ['email', 'signup']
@@ -51,7 +52,7 @@ async function verifyEmailOtp(
   throw lastError ?? new Error('Invalid OTP. Please request a new code and try again.')
 }
 
-export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
+export function ConfirmEmailCard({ initialEmail, initialNextPath }: ConfirmEmailCardProps) {
   const router = useRouter()
   const [email, setEmail] = useState(initialEmail ?? '')
   const [otp, setOtp] = useState('')
@@ -59,6 +60,7 @@ export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
+  const nextPath = getSafeNextPath(initialNextPath)
 
   async function onVerify(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -81,7 +83,9 @@ export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
     try {
       const supabase = getSupabaseAuthClient()
       await verifyEmailOtp(supabase, normalizedEmail, otp.trim())
-      router.replace(`/set-password?email=${encodeURIComponent(normalizedEmail)}`)
+      router.replace(
+        `/set-password?email=${encodeURIComponent(normalizedEmail)}&next=${encodeURIComponent(nextPath)}`,
+      )
     } catch (verifyError) {
       setError(getErrorMessage(verifyError))
     } finally {
@@ -105,7 +109,8 @@ export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
 
     try {
       const supabase = getSupabaseAuthClient()
-      const signupCallback = buildAuthCallbackUrl(`/set-password?email=${encodeURIComponent(normalizedEmail)}`)
+      const signupNextPath = `/set-password?email=${encodeURIComponent(normalizedEmail)}&next=${encodeURIComponent(nextPath)}`
+      const signupCallback = buildAuthCallbackUrl(signupNextPath)
       const { error: resendError } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
@@ -150,7 +155,7 @@ export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
+                placeholder="email"
                 autoComplete="email"
                 required
               />
@@ -198,7 +203,7 @@ export function ConfirmEmailCard({ initialEmail }: ConfirmEmailCardProps) {
 
         <CardFooter className="pt-0">
           <Button variant="link" className="h-auto p-0 text-sm" asChild>
-            <Link href="/signup">Back to sign up</Link>
+            <Link href={`/signup?next=${encodeURIComponent(nextPath)}`}>Back to sign up</Link>
           </Button>
         </CardFooter>
       </Card>

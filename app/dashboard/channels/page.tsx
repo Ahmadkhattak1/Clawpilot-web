@@ -6,9 +6,11 @@ import { ArrowLeft, Loader2, QrCode, Unplug, RefreshCw, Send, LogOut } from 'luc
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { CHANNEL_OPTIONS } from '@/lib/channel-options'
 import {
   connectRuntimeWhatsApp,
   connectRuntimeTelegram,
@@ -27,6 +29,19 @@ type ChannelId = 'whatsapp' | 'telegram'
 type ChannelStatusRecord = Record<string, unknown>
 type ChannelAccountRecord = Record<string, unknown>
 type WhatsAppDmPolicy = 'pairing' | 'allowlist' | 'open' | 'disabled'
+
+function shortChannelLabel(label: string): string {
+  const withoutBracketSuffix = label.split('[')[0]?.trim() ?? label
+  return withoutBracketSuffix.split('(')[0]?.trim() ?? withoutBracketSuffix
+}
+
+const OPENCLAW_UI_ONLY_CHANNELS = CHANNEL_OPTIONS
+  .filter((channel) => channel.id !== 'whatsapp' && channel.id !== 'telegram' && channel.logoSrc)
+  .map((channel) => ({
+    id: channel.id,
+    label: shortChannelLabel(channel.label),
+    logoSrc: channel.logoSrc as string,
+  }))
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -126,6 +141,7 @@ export default function ChannelsPage() {
 
   const [loadingStatus, setLoadingStatus] = useState(false)
   const [statusError, setStatusError] = useState('')
+  const [openClawUiError, setOpenClawUiError] = useState('')
   const [statusSnapshot, setStatusSnapshot] = useState<RuntimeChannelsStatusData | null>(null)
 
   const [activeChannel, setActiveChannel] = useState<ChannelId | null>(null)
@@ -444,6 +460,42 @@ export default function ChannelsPage() {
           </div>
         )}
 
+        {openClawUiError && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {openClawUiError}
+          </div>
+        )}
+
+        <div className="rounded-xl border border-border/70 bg-card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Need more channels?</p>
+              <p className="text-xs text-muted-foreground">
+                Configure WhatsApp and Telegram here. Open OpenClaw UI for the rest.
+              </p>
+            </div>
+            <OpenClawUiLaunchButton
+              tenantId={tenantId}
+              onUnauthorized={redirectToSignIn}
+              onLaunchStart={() => setOpenClawUiError('')}
+              onError={setOpenClawUiError}
+              className="shrink-0"
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {OPENCLAW_UI_ONLY_CHANNELS.map((channel) => (
+              <span
+                key={channel.id}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2.5 py-1.5"
+                title={`${channel.label} setup is available in OpenClaw UI`}
+              >
+                <Image src={channel.logoSrc} alt={channel.label} width={14} height={14} className="h-3.5 w-3.5 object-contain" />
+                <span className="text-[11px] text-muted-foreground">{channel.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
         {/* Channel selector buttons */}
         <div className="grid grid-cols-2 gap-3">
           <ChannelButton
@@ -653,7 +705,6 @@ export default function ChannelsPage() {
 
             {waQr && (
               <div className="flex justify-center rounded-lg border border-border/70 bg-white p-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={waQr} alt="WhatsApp QR" className="h-52 w-52 rounded" />
               </div>
             )}

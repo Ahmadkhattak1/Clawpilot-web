@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
+import { getRecoveredSupabaseSession, getSafeNextPath, getSupabaseAuthClient } from '@/lib/supabase-auth'
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message
@@ -26,15 +26,17 @@ function getErrorMessage(error: unknown) {
 
 interface SetPasswordCardProps {
   initialEmail?: string
+  initialNextPath?: string
 }
 
-export function SetPasswordCard({ initialEmail }: SetPasswordCardProps) {
+export function SetPasswordCard({ initialEmail, initialNextPath }: SetPasswordCardProps) {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
+  const nextPath = getSafeNextPath(initialNextPath)
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -68,7 +70,7 @@ export function SetPasswordCard({ initialEmail }: SetPasswordCardProps) {
       if (updateError) throw updateError
 
       setStatus('Password set successfully. Redirecting...')
-      router.replace('/chat')
+      router.replace(nextPath)
     } catch (submitError) {
       setError(getErrorMessage(submitError))
     } finally {
@@ -133,7 +135,7 @@ export function SetPasswordCard({ initialEmail }: SetPasswordCardProps) {
 
         <CardFooter className="pt-0">
           <Button variant="link" className="h-auto p-0 text-sm" asChild>
-            <Link href="/signup">Back to sign up</Link>
+            <Link href={`/signup?next=${encodeURIComponent(nextPath)}`}>Back to sign up</Link>
           </Button>
         </CardFooter>
       </Card>

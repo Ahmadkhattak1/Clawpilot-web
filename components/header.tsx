@@ -78,6 +78,12 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-6">
           <Link
+            href="/openclaw-easy-setup"
+            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Easy setup
+          </Link>
+          <Link
             href="#simple-idea"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >

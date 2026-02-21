@@ -1,36 +1,45 @@
 # ClawPilot - LLM Context (Full)
 
-> ClawPilot is managed OpenClaw: hosted, maintained, and kept available so users can focus on outcomes.
+> ClawPilot is the easiest path to launch OpenClaw in production: easy OpenClaw setup, managed hosting, and always-on reliability.
 
-## Overview
+## Positioning
 
-OpenClaw is powerful, but self-hosting can become a side project. ClawPilot handles hosting, setup, updates, and reliability so users can run OpenClaw in their chats without infrastructure overhead.
+ClawPilot is for users who want OpenClaw outcomes without building and maintaining infra. It addresses queries such as:
+- OpenClaw easy setup
+- easy OpenClaw setup
+- easy open claw setup
+- hosted OpenClaw
+- managed OpenClaw
 
-## What is OpenClaw?
+## Product Overview
 
-OpenClaw is an open-source personal AI assistant that:
-- Works inside messaging apps (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, WebChat)
-- Handles conversations and delegated tasks
-- Can connect to approved tools and systems
-- Is community-built and open source
+OpenClaw is an open-source AI assistant that can run in messaging channels and perform delegated tasks.  
+ClawPilot provides the managed layer for OpenClaw:
+- Setup handled by ClawPilot
+- Hosting and uptime handled by ClawPilot
+- Updates handled by ClawPilot
+- Permission and access controls owned by the user
 
-## What is ClawPilot?
+## Canonical URLs
 
-ClawPilot is the hosted layer for OpenClaw:
-- Managed infrastructure and uptime
-- Setup and updates handled by ClawPilot
+- Homepage: https://clawpilot.app
+- Easy setup page: https://clawpilot.app/openclaw-easy-setup
+- LLM summary: https://clawpilot.app/llms.txt
+
+## Features
+
+### Easy Setup
+- No Mac mini or always-on local machine required
+- No terminal-led deployment process
 - Account-first onboarding
-- Permission-aware controls for actions and integrations
 
-## Key Features
+### Managed Operations
+- Reliable hosted OpenClaw runtime
+- Reduced maintenance burden
+- Faster path from signup to active usage
 
-### Managed OpenClaw Hosting
-- No hardware purchases required
-- No server deployments or scaling setup
-- No uptime babysitting
-
-### Multi-Platform Gateway
-Connect to multiple messaging platforms through one OpenClaw gateway:
+### Multi-Channel Support
+OpenClaw can be connected to:
 - WhatsApp
 - Telegram
 - Slack
@@ -40,32 +49,19 @@ Connect to multiple messaging platforms through one OpenClaw gateway:
 - Microsoft Teams
 - WebChat
 
-### Control and Safety
-- Users approve what OpenClaw can access
-- Sensitive actions can require explicit confirmation
-- Activity can be reviewed after tasks run
+### Safety and Control
+- Explicit access and integration approval
+- Optional confirmation for sensitive actions
+- Auditability of task behavior
 
-## Typical Use Cases
+## Ideal Use Cases
 
-- Email support and follow-ups
-- Calendar planning and reminders
-- Routine tasks and personal workflows
-- Chat-based "do this for me" delegation
+- Personal productivity delegation
+- Team task routing and lightweight operations
+- Customer and internal support workflows
+- Calendar, follow-up, and routine orchestration
 
-Additional use cases include business operations, customer support, and outbound workflows. More capabilities are available through Clawhub.
+## References
 
-## Links
-
-- Website: https://clawpilot.app
 - OpenClaw GitHub: https://github.com/openclaw/openclaw
 - Clawhub: https://clawhub.ai
-
-## Getting Started
-
-1. Join the waitlist at https://clawpilot.app
-2. Connect chat and tools
-3. Start delegating tasks in chat
-
-## Contact
-
-For early access and updates, join the waitlist at https://clawpilot.app

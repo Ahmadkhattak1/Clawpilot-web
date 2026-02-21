@@ -37,14 +37,28 @@ const Node = forwardRef<
 
 Node.displayName = "Node"
 
+/* shared beam styling */
+const beamBase = {
+  className: "hidden lg:block",
+  pathWidth: 1.6,
+  pathColor: "hsl(var(--foreground))",
+  gradientStartColor: "#f9bc74",
+  gradientStopColor: "#f97316",
+} as const
+
 export function SimpleIdea() {
   const containerRef = useRef<HTMLDivElement>(null)
   const youRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const openClawRef = useRef<HTMLDivElement>(null)
+
+  // explicit ref per integration target
   const inboxRef = useRef<HTMLDivElement>(null)
   const whatsappRef = useRef<HTMLDivElement>(null)
   const telegramRef = useRef<HTMLDivElement>(null)
+  const discordRef = useRef<HTMLDivElement>(null)
+  const slackRef = useRef<HTMLDivElement>(null)
+  const imessageRef = useRef<HTMLDivElement>(null)
   const routineRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -62,7 +76,7 @@ export function SimpleIdea() {
           <div className="pointer-events-none absolute -left-10 top-8 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(249,188,116,0.24)_0%,rgba(249,188,116,0)_75%)] blur-2xl" />
           <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(249,188,116,0.2)_0%,rgba(249,188,116,0)_75%)] blur-3xl" />
 
-          <div className="relative grid gap-4 lg:grid-cols-[0.52fr_0.7fr_0.8fr_1.15fr] lg:items-center lg:gap-7">
+          <div className="relative grid gap-4 lg:grid-cols-[0.48fr_0.65fr_0.75fr_1.25fr] lg:items-center lg:gap-7">
             <Node
               ref={youRef}
               title="You"
@@ -100,52 +114,20 @@ export function SimpleIdea() {
               className="mx-auto w-full max-w-[190px] border-foreground/15 bg-background"
             />
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:justify-items-start">
-              <Node
-                ref={inboxRef}
-                title="Inbox"
-                icon={<Inbox className="h-4.5 w-4.5 text-foreground/85" />}
-                className="w-full lg:max-w-[340px]"
-              />
-              <Node
-                ref={whatsappRef}
-                title="WhatsApp"
-                icon={
-                  <Image
-                    src="/integrations/whatsapp.svg"
-                    alt="WhatsApp logo"
-                    width={20}
-                    height={20}
-                    className="h-5 w-5 object-contain"
-                  />
-                }
-                className="w-full lg:max-w-[340px]"
-              />
-              <Node
-                ref={telegramRef}
-                title="Telegram"
-                icon={
-                  <Image
-                    src="/integrations/telegram.svg"
-                    alt="Telegram logo"
-                    width={20}
-                    height={20}
-                    className="h-5 w-5 object-contain"
-                  />
-                }
-                className="w-full lg:max-w-[340px]"
-              />
-              <Node
-                ref={routineRef}
-                title="Routine tasks"
-                icon={<ListTodo className="h-4.5 w-4.5 text-foreground/85" />}
-                className="w-full lg:max-w-[340px]"
-              />
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1 lg:justify-items-start">
+              <Node ref={inboxRef} title="Inbox" icon={<Inbox className="h-4.5 w-4.5 text-foreground/85" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={whatsappRef} title="WhatsApp" icon={<Image src="/integrations/whatsapp.svg" alt="WhatsApp" width={20} height={20} className="h-5 w-5 object-contain" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={telegramRef} title="Telegram" icon={<Image src="/integrations/telegram.svg" alt="Telegram" width={20} height={20} className="h-5 w-5 object-contain" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={discordRef} title="Discord" icon={<Image src="/integrations/discord.svg" alt="Discord" width={20} height={20} className="h-5 w-5 object-contain" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={slackRef} title="Slack" icon={<Image src="/integrations/Slack.svg" alt="Slack" width={20} height={20} className="h-5 w-5 object-contain" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={imessageRef} title="iMessage" icon={<Image src="/integrations/imessage.svg" alt="iMessage" width={20} height={20} className="h-5 w-5 object-contain" />} className="w-full lg:max-w-[340px]" />
+              <Node ref={routineRef} title="Routine tasks" icon={<ListTodo className="h-4.5 w-4.5 text-foreground/85" />} className="w-full lg:max-w-[340px]" />
             </div>
           </div>
 
+          {/* ── Beam: You → ClawPilot ── */}
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
             containerRef={containerRef}
             fromRef={youRef}
             toRef={layerRef}
@@ -153,16 +135,12 @@ export function SimpleIdea() {
             curvature={0}
             fromAnchorX="right"
             toAnchorX="left"
-            startXOffset={0}
-            endXOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.18}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
+
+          {/* ── Beam: ClawPilot → OpenClaw ── */}
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
             containerRef={containerRef}
             fromRef={layerRef}
             toRef={openClawRef}
@@ -170,94 +148,93 @@ export function SimpleIdea() {
             curvature={0}
             fromAnchorX="right"
             toAnchorX="left"
-            startXOffset={0}
-            endXOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.16}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
+
+          {/* ── Beams: OpenClaw → integrations (fanned evenly) ── */}
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
             containerRef={containerRef}
             fromRef={openClawRef}
             toRef={inboxRef}
-            duration={3.6}
-            curvature={-8}
+            duration={3.4}
+            delay={0}
+            curvature={-36}
             fromAnchorX="right"
-            fromAnchorY="top"
             toAnchorX="left"
-            toAnchorY="center"
-            startXOffset={0}
-            startYOffset={10}
-            endXOffset={0}
-            endYOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.14}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
             containerRef={containerRef}
             fromRef={openClawRef}
             toRef={whatsappRef}
-            duration={3.6}
-            delay={0.18}
-            curvature={-4}
+            duration={3.4}
+            delay={0.12}
+            curvature={-24}
             fromAnchorX="right"
             toAnchorX="left"
-            startXOffset={0}
-            startYOffset={-14}
-            endXOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.14}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
             containerRef={containerRef}
             fromRef={openClawRef}
             toRef={telegramRef}
-            duration={3.6}
-            delay={0.34}
-            curvature={4}
+            duration={3.4}
+            delay={0.24}
+            curvature={-12}
             fromAnchorX="right"
             toAnchorX="left"
-            startXOffset={0}
-            startYOffset={14}
-            endXOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.14}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
           <AnimatedBeam
-            className="hidden lg:block"
+            {...beamBase}
+            containerRef={containerRef}
+            fromRef={openClawRef}
+            toRef={discordRef}
+            duration={3.4}
+            delay={0.36}
+            curvature={0}
+            fromAnchorX="right"
+            toAnchorX="left"
+            pathOpacity={0.14}
+          />
+          <AnimatedBeam
+            {...beamBase}
+            containerRef={containerRef}
+            fromRef={openClawRef}
+            toRef={slackRef}
+            duration={3.4}
+            delay={0.48}
+            curvature={12}
+            fromAnchorX="right"
+            toAnchorX="left"
+            pathOpacity={0.14}
+          />
+          <AnimatedBeam
+            {...beamBase}
+            containerRef={containerRef}
+            fromRef={openClawRef}
+            toRef={imessageRef}
+            duration={3.4}
+            delay={0.60}
+            curvature={24}
+            fromAnchorX="right"
+            toAnchorX="left"
+            pathOpacity={0.14}
+          />
+          <AnimatedBeam
+            {...beamBase}
             containerRef={containerRef}
             fromRef={openClawRef}
             toRef={routineRef}
-            duration={3.6}
-            delay={0.5}
-            curvature={8}
+            duration={3.4}
+            delay={0.72}
+            curvature={36}
             fromAnchorX="right"
-            fromAnchorY="bottom"
             toAnchorX="left"
-            toAnchorY="center"
-            startXOffset={0}
-            startYOffset={-10}
-            endXOffset={0}
-            endYOffset={0}
-            pathWidth={1.6}
-            pathColor="hsl(var(--foreground))"
             pathOpacity={0.14}
-            gradientStartColor="#f9bc74"
-            gradientStopColor="#f97316"
           />
         </div>
       </div>

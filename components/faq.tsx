@@ -9,7 +9,7 @@ export function FAQ() {
             FAQ
           </h2>
           <p className="type-body">
-            Clear answers about hosted OpenClaw with ClawPilot.
+            Clear answers about hosted OpenClaw and easy setup with ClawPilot.
           </p>
         </div>
 

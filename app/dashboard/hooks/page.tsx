@@ -828,7 +828,7 @@ export default function HooksPage() {
       setOauthExpiresAt(oauthStart.expiresAt)
       setStatus(
         options?.auto
-          ? 'Deployment complete. Open the OAuth URL, sign in, then paste the localhost callback URL below.'
+          ? 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.'
           : 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.',
       )
       return true
@@ -839,13 +839,13 @@ export default function HooksPage() {
         setOauthAuthUrl('')
         setOauthExpiresAt(null)
         setError('')
-        setStatus('Deployment complete. Finalizing runtime startup before OAuth...')
+        setStatus('Setting up your instance...')
         return false
       }
 
       setError(message)
       if (options?.auto) {
-        setStatus('Deployment complete. Retry OAuth preparation in a moment.')
+        setStatus('Retrying OAuth preparation in a moment...')
       }
       return false
     } finally {
@@ -986,7 +986,7 @@ export default function HooksPage() {
       setUpgradeRequired(false)
       setDeployStageIndex(DEPLOY_STAGE_LABELS.length)
       if (requiresPostInstallOpenAIOAuth) {
-        setStatus('Deployment complete. Finalizing runtime startup before OAuth...')
+        setStatus('Setting up your instance...')
         await startOpenAIOAuthSession({ auto: true })
         return
       }
@@ -1013,6 +1013,14 @@ export default function HooksPage() {
     return () => clearTimeout(timer)
   }, [oauthSessionReady, oauthSubmitting, waitingForRuntimeBeforeOpenAIOAuth])
 
+  // On reload, simulate terminal progress based on elapsed time instead of showing everything instantly complete
+  const simulatedStageIndex = useMemo(() => {
+    if (submitting) return deployStageIndex
+    if (!hasDeployStarted) return 0
+    // ~15s per stage when not actively submitting (reload scenario)
+    return Math.min(Math.floor(deployElapsedSeconds / 15), DEPLOY_STAGE_LABELS.length)
+  }, [deployElapsedSeconds, deployStageIndex, hasDeployStarted, submitting])
+
   const terminalLines = useMemo(() => {
     const checkLines: TerminalLine[] = onboardingChecks.map((check) => ({
       id: `check-${check.label}`,
@@ -1020,13 +1028,16 @@ export default function HooksPage() {
       tone: check.complete ? 'ok' : 'idle',
     }))
 
+    const allStagesDone = showConfetti || waitingForPostInstallOpenAIOAuth
     const deployLines: TerminalLine[] = DEPLOY_STAGE_LABELS.map((label, index) => {
       const isDone =
-        showConfetti ||
-        waitingForRuntimeBeforeOpenAIOAuth ||
-        waitingForPostInstallOpenAIOAuth ||
-        (submitting && index < deployStageIndex)
-      const isActive = submitting && !showConfetti && index === deployStageIndex
+        allStagesDone ||
+        (submitting && index < deployStageIndex) ||
+        (!submitting && hasDeployStarted && index < simulatedStageIndex)
+      const isActive =
+        !allStagesDone &&
+        ((submitting && !showConfetti && index === deployStageIndex) ||
+         (!submitting && hasDeployStarted && index === simulatedStageIndex && simulatedStageIndex < DEPLOY_STAGE_LABELS.length))
       return {
         id: `deploy-${label}`,
         text: `[deploy] ${label}${isDone ? ' complete' : isActive ? ' running' : ''}`,
@@ -1037,7 +1048,7 @@ export default function HooksPage() {
     if (waitingForRuntimeBeforeOpenAIOAuth) {
       deployLines.push({
         id: 'deploy-oauth-preparing',
-        text: '[deploy] runtime is still bootstrapping, OAuth step pending',
+        text: '[deploy] setting up instance...',
         tone: 'active',
       })
     } else if (waitingForPostInstallOpenAIOAuth) {
@@ -1066,8 +1077,10 @@ export default function HooksPage() {
   }, [
     deployStageIndex,
     error,
+    hasDeployStarted,
     onboardingChecks,
     showConfetti,
+    simulatedStageIndex,
     submitting,
     waitingForPostInstallOpenAIOAuth,
     waitingForRuntimeBeforeOpenAIOAuth,
@@ -1135,10 +1148,8 @@ export default function HooksPage() {
 
               {hasDeployStarted ? (() => {
                 const lennyOAuthNudge = waitingForPostInstallOpenAIOAuth
-                  ? 'Hey \u2014 I need you for a second. OpenAI OAuth is ready and waiting for you on the right. Open the URL, sign in, paste the callback, and we\u2019re golden.'
-                  : waitingForRuntimeBeforeOpenAIOAuth
-                    ? 'Almost there. The runtime is still warming up so I can get your OAuth link ready. Hang tight.'
-                    : null
+                  ? 'Hey \u2014 I need you for a second. OpenAI OAuth is ready and waiting for you. Open the URL, sign in, paste the callback, and we\u2019re golden.'
+                  : null
                 const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
                 const currentMessage = lennyOAuthNudge ?? (visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null)
                 if (!currentMessage) return null
@@ -1188,10 +1199,10 @@ export default function HooksPage() {
                   <section className="rounded-xl border border-border/70 bg-card/80 p-4">
                     <p className="inline-flex items-center gap-2 text-sm font-semibold">
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      Preparing OpenAI OAuth...
+                      Setting up instance...
                     </p>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Runtime is still starting. OAuth options will appear once the gateway is ready...
+                      OAuth will appear once setup is complete...
                     </p>
                   </section>
                 ) : null}
@@ -1207,7 +1218,7 @@ export default function HooksPage() {
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
                 {waitingForRuntimeBeforeOpenAIOAuth ? (
-                  <p className="text-xs text-muted-foreground">Waiting for runtime readiness before OAuth.</p>
+                  <p className="text-xs text-muted-foreground">Setting up your instance...</p>
                 ) : waitingForPostInstallOpenAIOAuth ? (
                   <p className="text-xs text-muted-foreground">Finish OAuth to complete onboarding.</p>
                 ) : upgradeRequired ? (

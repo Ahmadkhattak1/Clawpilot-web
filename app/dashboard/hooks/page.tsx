@@ -1,6 +1,7 @@
 'use client'
 
 import type { Session } from '@supabase/supabase-js'
+import Image from 'next/image'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Rocket, ShieldCheck, TerminalSquare } from 'lucide-react'
@@ -164,6 +165,60 @@ function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
   return `${remainingMinutes}m ${secondsPart}s`
 }
 
+const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
+  { atSecond: 0, text: 'Hi. I\u2019m Lenny. I\u2019m the lobster they assigned to keep you company while your OpenClaw instance boots up.' },
+  { atSecond: 8, text: 'Right now a loud computer in a building that smells like warm electricity is doing a lot of important nerd stuff on your behalf.' },
+  { atSecond: 18, text: 'Things are unpacking. Things are linking. Something just printed a log that looks confident but absolutely isn\u2019t.' },
+  { atSecond: 30, text: 'I\u2019m here either way. They don\u2019t even give me a chair.' },
+  { atSecond: 60, text: 'Small update: your instance exists now. If the internet had a census, you\u2019d be on it.' },
+  { atSecond: 75, text: 'Networking\u2019s being sorted. Permissions are being negotiated. A background service just woke up and immediately pretended it knew what was going on.' },
+  { atSecond: 95, text: 'This is the part where people start wondering if it\u2019s stuck. It\u2019s not stuck. It\u2019s thinking.' },
+  { atSecond: 115, text: 'You ever watch someone type and then delete everything and type again? That\u2019s your deployment right now, but with more Linux.' },
+  { atSecond: 150, text: 'This is the middle stretch. Not flashy. Not dramatic. But extremely important.' },
+  { atSecond: 165, text: 'Your instance is basically learning how to behave in public. How to answer requests without freaking out. How to survive on the internet without developing trust issues.' },
+  { atSecond: 185, text: 'Somewhere deep in the logs, something just printed a message so cryptic it looks like a password had a nervous breakdown.' },
+  { atSecond: 210, text: 'Also: you\u2019re watching a lobster narrate infrastructure. If 2005 internet saw this, it would panic.' },
+  { atSecond: 240, text: 'Now we\u2019re cooking. Services are talking to each other. Checks are passing.' },
+  { atSecond: 255, text: 'Your instance is starting to look less like a pile of parts and more like a functioning thing.' },
+  { atSecond: 275, text: 'This is usually when people lean toward the screen like they\u2019re trying to telepathically encourage it. You can try. I\u2019ll pretend it helped.' },
+  { atSecond: 300, text: 'Somewhere a process just booted successfully and immediately acted like it always planned to. Classic.' },
+  { atSecond: 330, text: 'Alright, final stretch. Your instance is basically backstage right now, doing that thing performers do where they bounce on their toes and whisper \u201Cokay, okay, okay.\u201D' },
+  { atSecond: 350, text: 'The system\u2019s doing one last sweep to make sure it didn\u2019t forget something embarrassing. Kind of like patting your pockets before leaving the house.' },
+  { atSecond: 375, text: 'It could step out any second. Or it might take another minute to get comfortable.' },
+  { atSecond: 400, text: 'Stick around, switch tabs, grab a drink, question your life choices \u2014 whatever works. I\u2019ll let you know when the curtain moves.' },
+]
+
+function getVisibleLennyMessages(elapsedSeconds: number): string[] {
+  return LENNY_MESSAGES.filter((m) => m.atSecond <= elapsedSeconds).map((m) => m.text)
+}
+
+const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
+
+function readPersistedDeployStartedAt(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(DEPLOY_STARTED_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writePersistedDeployStartedAt(ts: number | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (ts === null) {
+      window.localStorage.removeItem(DEPLOY_STARTED_STORAGE_KEY)
+    } else {
+      window.localStorage.setItem(DEPLOY_STARTED_STORAGE_KEY, String(ts))
+    }
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 interface TerminalLine {
   id: string
   text: string
@@ -307,7 +362,12 @@ export default function HooksPage() {
   const [skillConfigs, setSkillConfigs] = useState<Record<string, Record<string, string>>>({})
   const [deployStageIndex, setDeployStageIndex] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [hasDeployStarted, setHasDeployStarted] = useState(false)
+  const [hasDeployStarted, setHasDeployStarted] = useState(() => readPersistedDeployStartedAt() !== null)
+  const [deployStartedAt, setDeployStartedAt] = useState<number | null>(() => readPersistedDeployStartedAt())
+  const [deployElapsedSeconds, setDeployElapsedSeconds] = useState(() => {
+    const persisted = readPersistedDeployStartedAt()
+    return persisted ? Math.floor((Date.now() - persisted) / 1000) : 0
+  })
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const [oauthSessionId, setOauthSessionId] = useState('')
   const [oauthAuthUrl, setOauthAuthUrl] = useState('')
@@ -448,6 +508,15 @@ export default function HooksPage() {
     }, 1000)
     return () => clearInterval(timer)
   }, [oauthExpiresAt])
+
+  useEffect(() => {
+    if (!deployStartedAt) return
+    setDeployElapsedSeconds(0)
+    const timer = setInterval(() => {
+      setDeployElapsedSeconds(Math.floor((Date.now() - deployStartedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [deployStartedAt])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -722,6 +791,7 @@ export default function HooksPage() {
     setShowConfetti(true)
     setError('')
     setStatus(nextStatus)
+    writePersistedDeployStartedAt(null)
 
     if (activeSession) {
       try {
@@ -842,6 +912,9 @@ export default function HooksPage() {
 
     setSubmitting(true)
     setHasDeployStarted(true)
+    const now = Date.now()
+    setDeployStartedAt(now)
+    writePersistedDeployStartedAt(now)
     setError('')
     setStatus('Deploy in progress...')
     setShowConfetti(false)
@@ -1026,7 +1099,7 @@ export default function HooksPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/skills/setup">
+            <Link href="/open-cloud">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>
@@ -1060,23 +1133,52 @@ export default function HooksPage() {
                 </ul>
               </section>
 
-              <section className="rounded-xl border border-border/70 bg-card p-4">
-                <p className="text-sm font-semibold">Summary</p>
-                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Provider: <span className="font-medium text-foreground">{selectedModelProviderId ?? '-'}</span></p>
-                  <p>Model: <span className="font-medium text-foreground">{selectedModelLabel ?? '-'}</span></p>
-                  <p>Skills: <span className="font-medium text-foreground">{skillIds.length || '-'}</span></p>
-                </div>
-              </section>
+              {hasDeployStarted ? (() => {
+                const lennyOAuthNudge = waitingForPostInstallOpenAIOAuth
+                  ? 'Hey \u2014 I need you for a second. OpenAI OAuth is ready and waiting for you on the right. Open the URL, sign in, paste the callback, and we\u2019re golden.'
+                  : waitingForRuntimeBeforeOpenAIOAuth
+                    ? 'Almost there. The runtime is still warming up so I can get your OAuth link ready. Hang tight.'
+                    : null
+                const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
+                const currentMessage = lennyOAuthNudge ?? (visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null)
+                if (!currentMessage) return null
+                return (
+                  <section className={cn(
+                    'rounded-xl border bg-card/80 p-4 transition-colors',
+                    lennyOAuthNudge ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border/70',
+                  )}>
+                    <div className="flex gap-2.5">
+                      <Image
+                        src="/pfp.webp"
+                        alt="Lenny the lobster"
+                        width={32}
+                        height={32}
+                        className="mt-0.5 h-8 w-8 shrink-0 rounded-full"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground/70">Lenny</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{currentMessage}</p>
+                      </div>
+                    </div>
+                  </section>
+                )
+              })() : null}
             </div>
 
             {hasDeployStarted ? (
               <div className="space-y-4">
                 <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                  <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                    <TerminalSquare className="h-4 w-4 text-muted-foreground" />
-                    Deployment Terminal
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                      <TerminalSquare className="h-4 w-4 text-muted-foreground" />
+                      Deployment Terminal
+                    </p>
+                    {deployStartedAt ? (
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        {Math.floor(deployElapsedSeconds / 60)}:{String(deployElapsedSeconds % 60).padStart(2, '0')}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="mt-2">
                     <DeployTerminal lines={terminalLines} running={submitting} />
                   </div>
@@ -1085,109 +1187,16 @@ export default function HooksPage() {
                 {waitingForRuntimeBeforeOpenAIOAuth ? (
                   <section className="rounded-xl border border-border/70 bg-card/80 p-4">
                     <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                      Preparing OpenAI OAuth
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      Preparing OpenAI OAuth...
                     </p>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Runtime is still starting. OAuth options will appear once gateway is ready.
+                      Runtime is still starting. OAuth options will appear once the gateway is ready...
                     </p>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mt-3"
-                      onClick={() => void startOpenAIOAuthSession()}
-                      disabled={submitting || oauthSubmitting}
-                    >
-                      {oauthSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Checking
-                        </>
-                      ) : (
-                        'Check now'
-                      )}
-                    </Button>
                   </section>
                 ) : null}
 
-                {waitingForPostInstallOpenAIOAuth ? (
-                  <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                      OpenAI OAuth
-                    </p>
-                    {oauthAuthUrl ? (
-                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                        <li>Click <span className="font-medium text-foreground">Open URL</span> and sign in to your OpenAI account.</li>
-                        <li>On the OpenAI page, click <span className="font-medium text-foreground">Continue</span> to authorize.</li>
-                        <li>After redirect, copy the full browser URL that starts with <span className="font-mono text-foreground">http://localhost:1455/auth/callback</span>.</li>
-                        <li>Paste the full URL below and click <span className="font-medium text-foreground">Complete OAuth</span>.</li>
-                      </ol>
-                    ) : null}
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void startOpenAIOAuthSession()}
-                        disabled={submitting || oauthSubmitting}
-                      >
-                        {oauthSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Generating
-                          </>
-                        ) : oauthSessionId ? (
-                          'Regenerate URL'
-                        ) : (
-                          'Generate URL'
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => window.open(oauthAuthUrl, '_blank', 'noopener,noreferrer')}
-                        disabled={!oauthAuthUrl || submitting || oauthSubmitting}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Open URL
-                      </Button>
-                    </div>
-
-                    {oauthExpiresAt ? (
-                      <p className="mt-2 text-[11px] text-muted-foreground">
-                        Expires in: {formatOAuthExpiryCountdown(oauthExpiresAt, oauthCountdownNowMs)}
-                      </p>
-                    ) : null}
-
-                    <div className="mt-3 space-y-1.5">
-                      <p className="text-xs font-medium text-foreground">Callback URL</p>
-                      <Input
-                        value={oauthCallback}
-                        onChange={(event) => setOauthCallback(event.target.value)}
-                        placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-                        autoComplete="off"
-                      />
-                    </div>
-
-                    <Button
-                      type="button"
-                      className="mt-3"
-                      onClick={() => void completeOpenAIOAuthSession()}
-                      disabled={!oauthSessionId || !oauthCallback.trim() || submitting || oauthSubmitting}
-                    >
-                      {oauthSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Completing
-                        </>
-                      ) : (
-                        'Complete OAuth'
-                      )}
-                    </Button>
-                  </section>
-                ) : null}
+                {/* OAuth is handled in a modal overlay below */}
               </div>
             ) : null}
           </div>
@@ -1213,6 +1222,7 @@ export default function HooksPage() {
                 onClick={upgradeRequired ? () => setUpgradeModalOpen(true) : completeSetup}
                 disabled={
                   submitting ||
+                  hasDeployStarted ||
                   oauthSubmitting ||
                   showConfetti ||
                   waitingForRuntimeBeforeOpenAIOAuth ||
@@ -1227,7 +1237,7 @@ export default function HooksPage() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Redirecting
                   </>
-                ) : submitting ? (
+                ) : submitting || hasDeployStarted ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Deploying
@@ -1338,6 +1348,90 @@ export default function HooksPage() {
                 Not now
               </Button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {waitingForPostInstallOpenAIOAuth ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
+            <p className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              OpenAI OAuth
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your instance is ready. Complete OAuth to finish setup.
+            </p>
+
+            {oauthAuthUrl ? (
+              <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                <li>Click <span className="font-medium text-foreground">Open URL</span> and sign in to your OpenAI account.</li>
+                <li>Click <span className="font-medium text-foreground">Continue</span> to authorize.</li>
+                <li>Copy the full browser URL that starts with <span className="font-mono text-foreground">http://localhost:1455/auth/callback</span>.</li>
+                <li>Paste it below and click <span className="font-medium text-foreground">Complete OAuth</span>.</li>
+              </ol>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void startOpenAIOAuthSession()}
+                disabled={submitting || oauthSubmitting}
+              >
+                {oauthSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating
+                  </>
+                ) : oauthSessionId ? (
+                  'Regenerate URL'
+                ) : (
+                  'Generate URL'
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => window.open(oauthAuthUrl, '_blank', 'noopener,noreferrer')}
+                disabled={!oauthAuthUrl || submitting || oauthSubmitting}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open URL
+              </Button>
+            </div>
+
+            {oauthExpiresAt ? (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Expires in: {formatOAuthExpiryCountdown(oauthExpiresAt, oauthCountdownNowMs)}
+              </p>
+            ) : null}
+
+            <div className="mt-3 space-y-1.5">
+              <p className="text-xs font-medium text-foreground">Callback URL</p>
+              <Input
+                value={oauthCallback}
+                onChange={(event) => setOauthCallback(event.target.value)}
+                placeholder="http://localhost:1455/auth/callback?code=...&state=..."
+                autoComplete="off"
+              />
+            </div>
+
+            <Button
+              type="button"
+              className="mt-3 w-full"
+              onClick={() => void completeOpenAIOAuthSession()}
+              disabled={!oauthSessionId || !oauthCallback.trim() || submitting || oauthSubmitting}
+            >
+              {oauthSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Completing
+                </>
+              ) : (
+                'Complete OAuth'
+              )}
+            </Button>
           </div>
         </div>
       ) : null}

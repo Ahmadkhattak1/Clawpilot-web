@@ -104,7 +104,7 @@ export async function POST(request: Request) {
   const tenantId = deriveTenantIdFromUserId(userData.user.id)
   const backendApiUrl = getBackendUrl()
   const backendPublicApiUrl = getBackendUrl()
-  const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN
+  const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN?.trim()
   if (!internalToken) {
     return NextResponse.json(
       {

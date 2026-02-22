@@ -184,7 +184,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN
+  const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN?.trim()
   if (!internalToken) {
     return NextResponse.json(
       {

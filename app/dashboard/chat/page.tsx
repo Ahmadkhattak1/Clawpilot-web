@@ -116,6 +116,7 @@ interface PersistedPaywallState {
   status: PaywallStatus
   freeMessageCount: number
   countdownEndsAtMs: number | null
+  discountOffered?: boolean
 }
 
 interface SubscriptionSnapshot {
@@ -238,6 +239,7 @@ function readPersistedPaywallState(tenantId: string): PersistedPaywallState | nu
       status: normalizePaywallStatus(record.status),
       freeMessageCount: normalizePaywallFreeMessageCount(record.freeMessageCount),
       countdownEndsAtMs,
+      discountOffered: record.discountOffered === true,
     }
   } catch {
     return null
@@ -1283,6 +1285,7 @@ export default function ChatPage() {
   const [discountAnimationPhase, setDiscountAnimationPhase] = useState<DiscountAnimationPhase>('initial')
   const [isDiscountAnimating, setIsDiscountAnimating] = useState(false)
   const [isHeadsUpDiscountEligible, setIsHeadsUpDiscountEligible] = useState(false)
+  const [discountOffered, setDiscountOffered] = useState(false)
   const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false)
   const [activeBillingPlan, setActiveBillingPlan] = useState<BillingPlan | null>(null)
   const [hasResolvedBillingPlan, setHasResolvedBillingPlan] = useState(false)
@@ -1895,11 +1898,12 @@ export default function ChatPage() {
   const closePaywallModal = useCallback(() => {
     if (paywallModal === 'initial') {
       setSelectedPaywallPlan('monthly')
+      setDiscountOffered(true)
       setPaywallModal('discount')
       return
     }
     if (paywallModal === 'discount') {
-      void startBackendManagedPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
+      void startBackendManagedPaywallCountdown()
       return
     }
     if (paywallModal === 'leave-warning') {
@@ -1946,18 +1950,6 @@ export default function ChatPage() {
     setPaywallModal('plan-pricing')
   }, [activeBillingPlan])
 
-  const kickStartPaywallTest = useCallback(() => {
-    setPaywallStatus('not-triggered')
-    setPaywallCountdownEndsAtMs(null)
-    setPaywallRemainingMs(null)
-    setSubscriptionDeletionWarning(null)
-    setPaywallModal('initial')
-    setFreeMessageCount(0)
-    paywallDeletionHandledRef.current = false
-    setPendingLeaveHref(null)
-    setSendError('')
-  }, [])
-
   useEffect(() => {
     if (!tenantId) return
     const persisted = readPersistedPaywallState(tenantId)
@@ -1978,10 +1970,15 @@ export default function ChatPage() {
       typeof persistedCountdownEndsAtMs === 'number' &&
       persistedCountdownEndsAtMs > now
 
+    if (persisted.discountOffered) {
+      setDiscountOffered(true)
+    }
+
     if (hasCountdown) {
       setPaywallStatus('countdown')
       setPaywallCountdownEndsAtMs(persistedCountdownEndsAtMs)
       setPaywallRemainingMs(persistedCountdownEndsAtMs - now)
+      setPaywallModal('none')
     } else if (persisted.status === 'countdown' || persisted.status === 'deleted') {
       setPaywallStatus('deleted')
       setPaywallCountdownEndsAtMs(null)
@@ -2176,16 +2173,19 @@ export default function ChatPage() {
       status: paywallStatus === 'upgraded' ? 'not-triggered' : paywallStatus,
       freeMessageCount,
       countdownEndsAtMs: paywallStatus === 'countdown' ? paywallCountdownEndsAtMs : null,
+      discountOffered,
     })
-  }, [freeMessageCount, hasLoadedPaywallState, paywallCountdownEndsAtMs, paywallStatus, tenantId])
+  }, [discountOffered, freeMessageCount, hasLoadedPaywallState, paywallCountdownEndsAtMs, paywallStatus, tenantId])
 
   useEffect(() => {
     if (!hasLoadedPaywallState || !historyReady) return
     if (paywallStatus !== 'not-triggered') return
     if (paywallModal !== 'none') return
     if (freeMessageCount < PAYWALL_FREE_MESSAGE_LIMIT) return
+    if (discountOffered) return
     setPaywallModal('initial')
   }, [
+    discountOffered,
     freeMessageCount,
     hasLoadedPaywallState,
     historyReady,
@@ -4274,14 +4274,6 @@ export default function ChatPage() {
                 )}
                 Open OpenClaw UI
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs"
-                onClick={kickStartPaywallTest}
-              >
-                Test paywall
-              </Button>
               <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
                 <SheetTrigger asChild>
                   <button
@@ -4645,12 +4637,14 @@ export default function ChatPage() {
                   </Button>
                   <Button
                     variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => {
                       setSelectedPaywallPlan('monthly')
+                      setDiscountOffered(true)
                       setPaywallModal('discount')
                     }}
                   >
-                    Not now
+                    Delete instance
                   </Button>
                 </div>
               </div>
@@ -4658,10 +4652,9 @@ export default function ChatPage() {
 
             {paywallModal === 'discount' ? (
               <div>
-                <p className="text-xl font-semibold text-foreground">Before you go: 25% off (one-time deal)</p>
+                <p className="text-xl font-semibold text-foreground">One-time offer: 25% off</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Looks like you&apos;re about to go, and we don&apos;t want to let you go.
-                  Take 25% off from us as a one-time deal on your first month.
+                  You will never see this discount again.
                 </p>
                 <div className="mt-4">
                   <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 sm:p-5">
@@ -4696,9 +4689,6 @@ export default function ChatPage() {
                     </p>
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
-                </p>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
                   <Button
                     onClick={() => {
@@ -4711,11 +4701,12 @@ export default function ChatPage() {
                   </Button>
                   <Button
                     variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => {
-                      void startBackendManagedPaywallCountdown({ showNote: true, keepDiscountForHeadsUp: true })
+                      void startBackendManagedPaywallCountdown()
                     }}
                   >
-                    No thanks, start 3-min timer
+                    Delete instance
                   </Button>
                 </div>
               </div>
@@ -4898,49 +4889,30 @@ export default function ChatPage() {
               <div>
                 <p className="flex items-center gap-2 text-lg font-semibold text-foreground">
                   <Info className="h-4 w-4 text-muted-foreground" />
-                  Quick heads-up
+                  Why the timer?
                 </p>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">This is a 3-minute trial. When the timer ends, we will delete your instance.</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  OpenClaw is free. You pay for secure managed hosting (no hardware to buy or manage) and a simpler UI.
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Hosting costs real servers. When the timer runs out, your instance is deleted.
                 </p>
-                {isHeadsUpDiscountEligible ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    One-time 25% off is still active:{' '}
-                    <span className="font-semibold text-emerald-700">
-                      {formatUsd(PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD)}/mo
-                    </span>{' '}
-                    for month one. If you skip this now, you will not see this discount again.
-                  </p>
-                ) : null}
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <Button
                     className="w-full"
                     onClick={() => {
-                      if (isHeadsUpDiscountEligible) {
-                        setSelectedPaywallPlan('monthly')
-                        void activateFrontendUpgrade({ plan: 'monthly', applyDiscount: true })
-                        return
-                      }
                       void activateFrontendUpgrade({ plan: selectedPaywallPlan })
                     }}
                     disabled={isCheckoutRedirecting}
                   >
-                    {isCheckoutRedirecting
-                      ? 'Redirecting...'
-                      : isHeadsUpDiscountEligible
-                        ? `Keep my instance for ${formatUsd(PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD)}`
-                        : 'Keep my instance running'}
+                    {isCheckoutRedirecting ? 'Redirecting...' : 'Upgrade'}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full"
+                    className="w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => {
                       setIsHeadsUpDiscountEligible(false)
                       setPaywallModal('none')
                     }}
                   >
-                    No thanks, delete in 3 min
+                    Delete instance
                   </Button>
                 </div>
               </div>
@@ -4976,7 +4948,7 @@ export default function ChatPage() {
               <div>
                 <p className="text-xl font-semibold text-foreground">Instance deleted</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Your 3-minute trial ended, so we deleted your OpenClaw instance. Upgrade to launch a new one.
+                  Your OpenClaw instance has been deleted. Upgrade to launch a new one.
                 </p>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
                   <Button variant="outline" onClick={() => setPaywallModal('later-upgrade')}>

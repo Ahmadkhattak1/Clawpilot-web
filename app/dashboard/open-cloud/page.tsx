@@ -204,7 +204,7 @@ export default function OpenCloudStepPage() {
         ? saveOAuthSelection(false)
         : saveApiKeySelection(false)
     if (!didSave) return
-    router.push('/skills')
+    router.push('/hooks')
   }
 
   if (checkingSession) {

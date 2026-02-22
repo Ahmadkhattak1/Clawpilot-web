@@ -239,7 +239,7 @@ export default function DashboardPage() {
     if (!selectedProviderId || !selectedModelId) return
     window.localStorage.setItem(MODEL_PROVIDER_STORAGE_KEY, selectedProviderId)
     window.localStorage.setItem(MODEL_PROVIDER_MODEL_STORAGE_KEY, selectedModelId)
-    router.push('/dashboard/open-cloud')
+    router.push('/dashboard/openclaw')
   }
 
   if (checkingSession) {

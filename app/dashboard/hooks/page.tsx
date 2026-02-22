@@ -1099,7 +1099,7 @@ export default function HooksPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/open-cloud">
+            <Link href="/dashboard/openclaw">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>

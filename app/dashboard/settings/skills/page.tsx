@@ -1645,7 +1645,7 @@ export default function SkillsManagementPage() {
       setStatus('Factory reset executed. Redirecting to onboarding...')
       setResetDialogOpen(false)
       window.setTimeout(() => {
-        router.push('/dashboard/open-cloud')
+        router.push('/dashboard/openclaw')
       }, 900)
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : 'Failed to reset OpenClaw.')

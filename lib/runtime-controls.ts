@@ -54,6 +54,12 @@ export interface RuntimeModelSummary {
 export interface RuntimeModelsData {
   models: RuntimeModelSummary[]
   currentModelId: string | null
+  storedModelConfig: {
+    modelProviderId: string | null
+    modelId: string | null
+    modelAuthMethod: 'api-key' | 'oauth' | null
+    modelOauthConnected: boolean | null
+  } | null
   raw: unknown
 }
 
@@ -590,7 +596,17 @@ function parseModels(result: unknown): RuntimeModelsData {
     .filter((item): item is RuntimeModelSummary => Boolean(item))
 
   const objectValue = toObject(result)
-  if (parsed.length === 0 && objectValue) {
+  const hasExplicitModelCollection = Boolean(
+    objectValue
+    && (
+      Array.isArray(objectValue.models)
+      || Array.isArray(objectValue.items)
+      || Array.isArray(objectValue.data)
+      || Array.isArray(objectValue.available)
+      || Array.isArray(objectValue.list)
+    ),
+  )
+  if (parsed.length === 0 && objectValue && !hasExplicitModelCollection) {
     const fallbackCollection =
       toObject(objectValue.models) ??
       toObject(objectValue.items) ??
@@ -607,9 +623,27 @@ function parseModels(result: unknown): RuntimeModelsData {
     }
   }
 
+  const root = toObject(result)
+  const storedModelConfigRecord = toObject(root?.storedModelConfig)
+  let parsedStoredModelConfig: RuntimeModelsData['storedModelConfig'] = null
+  if (storedModelConfigRecord) {
+    const rawModelAuthMethod = readString(storedModelConfigRecord, ['modelAuthMethod'])?.toLowerCase() ?? null
+    let modelAuthMethod: 'api-key' | 'oauth' | null = null
+    if (rawModelAuthMethod === 'api-key' || rawModelAuthMethod === 'oauth') {
+      modelAuthMethod = rawModelAuthMethod
+    }
+    parsedStoredModelConfig = {
+      modelProviderId: readString(storedModelConfigRecord, ['modelProviderId']),
+      modelId: readString(storedModelConfigRecord, ['modelId']),
+      modelAuthMethod,
+      modelOauthConnected: readBoolean(storedModelConfigRecord, ['modelOauthConnected']),
+    }
+  }
+
   return {
     models: dedupeModels(parsed),
-    currentModelId: parseCurrentModelId(result),
+    currentModelId: parseCurrentModelId(result) ?? parsedStoredModelConfig?.modelId ?? null,
+    storedModelConfig: parsedStoredModelConfig,
     raw: result,
   }
 }

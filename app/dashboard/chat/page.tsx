@@ -432,27 +432,63 @@ function buildSetupStartedStorageKey(tenantId: string): string {
   return `${SETUP_STARTED_STORAGE_KEY_PREFIX}:${tenantId.trim() || 'anonymous'}`
 }
 
-function readPersistedSetupStartedAt(tenantId: string): number | null {
+interface PersistedSetupStartState {
+  startedAt: number
+  deploymentFingerprint: string | null
+}
+
+function normalizeDeploymentFingerprint(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function readPersistedSetupStartedAt(tenantId: string): PersistedSetupStartState | null {
   if (typeof window === 'undefined' || !tenantId.trim()) return null
   try {
     const raw = window.localStorage.getItem(buildSetupStartedStorageKey(tenantId))
     if (!raw) return null
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+    const legacyParsed = Number(raw)
+    if (Number.isFinite(legacyParsed) && legacyParsed > 0) {
+      return {
+        startedAt: legacyParsed,
+        deploymentFingerprint: null,
+      }
+    }
+
+    const parsed = JSON.parse(raw) as {
+      startedAt?: unknown
+      deploymentFingerprint?: unknown
+    }
+    const startedAt = Number(parsed?.startedAt)
+    if (!Number.isFinite(startedAt) || startedAt <= 0) {
+      return null
+    }
+
+    return {
+      startedAt,
+      deploymentFingerprint: normalizeDeploymentFingerprint(parsed?.deploymentFingerprint),
+    }
   } catch {
     return null
   }
 }
 
-function writePersistedSetupStartedAt(tenantId: string, ts: number | null) {
+function writePersistedSetupStartedAt(tenantId: string, value: PersistedSetupStartState | null) {
   if (typeof window === 'undefined' || !tenantId.trim()) return
   try {
     const storageKey = buildSetupStartedStorageKey(tenantId)
-    if (ts === null) {
+    if (value === null) {
       window.localStorage.removeItem(storageKey)
       return
     }
-    window.localStorage.setItem(storageKey, String(ts))
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        startedAt: value.startedAt,
+        deploymentFingerprint: value.deploymentFingerprint,
+      }),
+    )
   } catch {
     // Ignore storage write failures.
   }
@@ -1172,12 +1208,6 @@ function MarkdownMessage({ content }: { content: string }) {
   )
 }
 
-function formatSetupProbeLabel(error: string | null, ready: boolean | null): string {
-  if (ready === true) return 'ok'
-  if (!error) return 'pending'
-  return error
-}
-
 function buildSetupTerminalLines(
   steps: SetupStep[],
   runtimeStatus: SetupRuntimeStatusSnapshot,
@@ -1188,30 +1218,17 @@ function buildSetupTerminalLines(
     tone: step.status === 'done' ? 'ok' : step.status === 'active' ? 'active' : 'idle',
   }))
 
-  const probePublic = formatSetupProbeLabel(runtimeStatus.gatewayProbe.publicProbeError, runtimeStatus.gatewayProbe.ready)
-  const probePrivate = formatSetupProbeLabel(runtimeStatus.gatewayProbe.privateProbeError, runtimeStatus.gatewayProbe.ready)
-
-  stageLines.push({
-    id: 'runtime-state',
-    text: `[runtime] state=${runtimeStatus.instanceState ?? 'unknown'} setupComplete=${String(runtimeStatus.setupComplete)}`,
-    tone: runtimeStatus.setupComplete ? 'ok' : 'active',
-  })
-  stageLines.push({
-    id: 'runtime-network',
-    text: `[runtime] network publicIp=${runtimeStatus.hasPublicIp ? 'yes' : 'no'} privateIp=${runtimeStatus.hasPrivateIp ? 'yes' : 'no'}`,
-    tone: 'idle',
-  })
-  stageLines.push({
-    id: 'runtime-probe',
-    text: `[runtime] probe public=${probePublic} private=${probePrivate} port=${runtimeStatus.gatewayProbe.gatewayPort ?? '?'}`,
-    tone: runtimeStatus.gatewayProbe.ready ? 'ok' : 'active',
-  })
-
-  if (runtimeStatus.gatewayProbe.checkedAt) {
+  if (runtimeStatus.setupComplete) {
     stageLines.push({
-      id: 'runtime-probe-time',
-      text: `[runtime] probe checkedAt=${runtimeStatus.gatewayProbe.checkedAt}`,
-      tone: 'idle',
+      id: 'runtime-ready',
+      text: '[deploy] assistant startup complete',
+      tone: 'ok',
+    })
+  } else if (steps.some((step) => step.status === 'active')) {
+    stageLines.push({
+      id: 'runtime-wait',
+      text: '[deploy] waiting for assistant startup',
+      tone: 'active',
     })
   }
 
@@ -2423,11 +2440,17 @@ export default function ChatPage() {
       setPaywallCountdownEndsAtMs(persistedCountdownEndsAtMs)
       setPaywallRemainingMs(persistedCountdownEndsAtMs - now)
       setPaywallModal('none')
-    } else if (persisted.status === 'countdown' || persisted.status === 'deleted') {
+    } else if (persisted.status === 'countdown') {
       setPaywallStatus('deleted')
       setPaywallCountdownEndsAtMs(null)
       setPaywallRemainingMs(0)
       setPaywallModal('deleted')
+    } else if (persisted.status === 'deleted') {
+      // "deleted" is terminal and must be confirmed by backend, not local storage.
+      setPaywallStatus('not-triggered')
+      setPaywallCountdownEndsAtMs(null)
+      setPaywallRemainingMs(null)
+      setPaywallModal('none')
     } else {
       setPaywallStatus(persisted.status === 'upgraded' ? 'not-triggered' : persisted.status)
       setPaywallCountdownEndsAtMs(null)
@@ -3738,18 +3761,42 @@ export default function ChatPage() {
 
   // Poll instance status and progress through setup phases
   const startSetupPolling = useCallback(
-    (tid: string) => {
+    (tid: string, options: { deploymentFingerprint?: string | null; forceReset?: boolean } = {}) => {
       const backendUrl = getBackendUrl()
       stopPolling()
       setSetupPhase('checking')
       setSetupTimedOut(false)
       setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
-      const persistedStartedAt = readPersistedSetupStartedAt(tid)
-      const startedAt = persistedStartedAt ?? Date.now()
-      setSetupStartedAt(startedAt)
-      if (!persistedStartedAt) {
-        writePersistedSetupStartedAt(tid, startedAt)
+
+      let activeDeploymentFingerprint = normalizeDeploymentFingerprint(options.deploymentFingerprint)
+      const scheduleSetupTimeout = (startedAt: number) => {
+        const timeoutMs = Math.max(0, 600000 - (Date.now() - startedAt))
+        if (setupTimeoutRef.current) {
+          clearTimeout(setupTimeoutRef.current)
+        }
+        setupTimeoutRef.current = setTimeout(() => {
+          setSetupTimedOut(true)
+        }, timeoutMs)
       }
+
+      const persistedStart = readPersistedSetupStartedAt(tid)
+      const persistedFingerprint = persistedStart?.deploymentFingerprint ?? null
+      const shouldResetStartedAt =
+        options.forceReset === true
+        || !persistedStart
+        || (
+          activeDeploymentFingerprint !== null
+          && persistedFingerprint !== activeDeploymentFingerprint
+        )
+
+      const startedAt = shouldResetStartedAt ? Date.now() : persistedStart.startedAt
+      const fingerprintToPersist = activeDeploymentFingerprint ?? persistedFingerprint ?? null
+      setSetupStartedAt(startedAt)
+      writePersistedSetupStartedAt(tid, {
+        startedAt,
+        deploymentFingerprint: fingerprintToPersist,
+      })
+      scheduleSetupTimeout(startedAt)
 
       let wsAttempted = false
 
@@ -3770,12 +3817,14 @@ export default function ChatPage() {
             daemon?: { runtimeMode?: string }
             instance?: Record<string, unknown>
           }
+          const daemonRecord = asObjectRecord(data.daemon)
           const instanceRecord = asObjectRecord(data.instance)
           const gatewayProbeRecord = asObjectRecord(instanceRecord?.gatewayProbe)
 
           const instanceState = readRecordString(instanceRecord, 'instanceState')
           const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
           const instanceId = readRecordString(instanceRecord, 'instanceId')
+          const runtimeResourceId = readRecordString(daemonRecord, 'runtimeResourceId')
           const publicIp = readRecordString(instanceRecord, 'publicIp')
           const privateIp = readRecordString(instanceRecord, 'privateIp')
           const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
@@ -3789,6 +3838,36 @@ export default function ChatPage() {
           const gatewayReachableVia = readRecordString(gatewayProbeRecord, 'reachableVia')
           const publicProbeError = readRecordString(gatewayProbeRecord, 'publicProbeError')
           const privateProbeError = readRecordString(gatewayProbeRecord, 'privateProbeError')
+          const observedDeploymentFingerprint =
+            normalizeDeploymentFingerprint(instanceId)
+            ?? normalizeDeploymentFingerprint(runtimeResourceId)
+
+          if (
+            observedDeploymentFingerprint
+            && observedDeploymentFingerprint !== activeDeploymentFingerprint
+          ) {
+            const persisted = readPersistedSetupStartedAt(tid)
+            const persistedFingerprintForObserved = persisted?.deploymentFingerprint ?? null
+            activeDeploymentFingerprint = observedDeploymentFingerprint
+
+            if (!persisted || persistedFingerprintForObserved !== observedDeploymentFingerprint) {
+              const restartedAt = Date.now()
+              setSetupStartedAt(restartedAt)
+              setSetupTimedOut(false)
+              writePersistedSetupStartedAt(tid, {
+                startedAt: restartedAt,
+                deploymentFingerprint: observedDeploymentFingerprint,
+              })
+              scheduleSetupTimeout(restartedAt)
+            } else {
+              setSetupStartedAt(persisted.startedAt)
+              writePersistedSetupStartedAt(tid, {
+                startedAt: persisted.startedAt,
+                deploymentFingerprint: observedDeploymentFingerprint,
+              })
+              scheduleSetupTimeout(persisted.startedAt)
+            }
+          }
 
           setSetupRuntimeStatus({
             instanceId,
@@ -3838,15 +3917,6 @@ export default function ChatPage() {
 
       // Poll every 8 seconds
       pollRef.current = setInterval(poll, 8000)
-
-      // Timeout after 10 minutes
-      const timeoutMs = Math.max(0, 600000 - (Date.now() - startedAt))
-      if (setupTimeoutRef.current) {
-        clearTimeout(setupTimeoutRef.current)
-      }
-      setupTimeoutRef.current = setTimeout(() => {
-        setSetupTimedOut(true)
-      }, timeoutMs)
     },
     [buildTenantRequestHeaders, connectWebSocket, stopPolling],
   )
@@ -4109,10 +4179,13 @@ export default function ChatPage() {
 
           if (oauthPending) {
             const persistedSetupStartedAt = readPersistedSetupStartedAt(tid)
-            const fallbackStartedAt = persistedSetupStartedAt ?? Date.now()
+            const fallbackStartedAt = persistedSetupStartedAt?.startedAt ?? Date.now()
             setSetupStartedAt(fallbackStartedAt)
             if (!persistedSetupStartedAt) {
-              writePersistedSetupStartedAt(tid, fallbackStartedAt)
+              writePersistedSetupStartedAt(tid, {
+                startedAt: fallbackStartedAt,
+                deploymentFingerprint: null,
+              })
             }
             setSetupPhase('starting')
           } else {
@@ -4135,9 +4208,11 @@ export default function ChatPage() {
               }
               const instanceRecord = asObjectRecord(data.instance)
               const gatewayProbeRecord = asObjectRecord(instanceRecord?.gatewayProbe)
+              const daemonRecord = asObjectRecord(data.daemon)
               const instanceState = readRecordString(instanceRecord, 'instanceState')
               const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
               const instanceId = readRecordString(instanceRecord, 'instanceId')
+              const runtimeResourceId = readRecordString(daemonRecord, 'runtimeResourceId')
               const publicIp = readRecordString(instanceRecord, 'publicIp')
               const privateIp = readRecordString(instanceRecord, 'privateIp')
               const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
@@ -4162,9 +4237,12 @@ export default function ChatPage() {
                 },
               })
               const isInstanceReady = instanceState === 'active' && setupComplete
+              const deploymentFingerprint =
+                normalizeDeploymentFingerprint(instanceId)
+                ?? normalizeDeploymentFingerprint(runtimeResourceId)
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
-                startSetupPolling(tid)
+                startSetupPolling(tid, { deploymentFingerprint })
                 return
               }
 
@@ -4834,7 +4912,7 @@ export default function ChatPage() {
           if (tenantId) {
             stopPolling()
             writePersistedSetupStartedAt(tenantId, null)
-            startSetupPolling(tenantId)
+            startSetupPolling(tenantId, { forceReset: true })
           }
         }}
         onStartOauth={handleStartOpenAIOAuth}

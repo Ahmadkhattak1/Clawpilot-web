@@ -1,7 +1,6 @@
 'use client'
 
 import type { Session } from '@supabase/supabase-js'
-import Image from 'next/image'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, Loader2, Rocket, TerminalSquare } from 'lucide-react'
@@ -138,33 +137,6 @@ function toIsoTimestampMs(value: unknown): number | null {
   }
 
   return parsed
-}
-
-const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
-  { atSecond: 0, text: 'Hi. I\u2019m Lenny. I\u2019m the lobster they assigned to keep you company while your OpenClaw instance boots up.' },
-  { atSecond: 8, text: 'Right now a loud computer in a building that smells like warm electricity is doing a lot of important nerd stuff on your behalf.' },
-  { atSecond: 18, text: 'Things are unpacking. Things are linking. Something just printed a log that looks confident but absolutely isn\u2019t.' },
-  { atSecond: 30, text: 'I\u2019m here either way. They don\u2019t even give me a chair.' },
-  { atSecond: 60, text: 'Small update: your instance exists now. If the internet had a census, you\u2019d be on it.' },
-  { atSecond: 75, text: 'Networking\u2019s being sorted. Permissions are being negotiated. A background service just woke up and immediately pretended it knew what was going on.' },
-  { atSecond: 95, text: 'This is the part where people start wondering if it\u2019s stuck. It\u2019s not stuck. It\u2019s thinking.' },
-  { atSecond: 115, text: 'You ever watch someone type and then delete everything and type again? That\u2019s your deployment right now, but with more Linux.' },
-  { atSecond: 150, text: 'This is the middle stretch. Not flashy. Not dramatic. But extremely important.' },
-  { atSecond: 165, text: 'Your instance is basically learning how to behave in public. How to answer requests without freaking out. How to survive on the internet without developing trust issues.' },
-  { atSecond: 185, text: 'Somewhere deep in the logs, something just printed a message so cryptic it looks like a password had a nervous breakdown.' },
-  { atSecond: 210, text: 'Also: you\u2019re watching a lobster narrate infrastructure. If 2005 internet saw this, it would panic.' },
-  { atSecond: 240, text: 'Now we\u2019re cooking. Services are talking to each other. Checks are passing.' },
-  { atSecond: 255, text: 'Your instance is starting to look less like a pile of parts and more like a functioning thing.' },
-  { atSecond: 275, text: 'This is usually when people lean toward the screen like they\u2019re trying to telepathically encourage it. You can try. I\u2019ll pretend it helped.' },
-  { atSecond: 300, text: 'Somewhere a process just booted successfully and immediately acted like it always planned to. Classic.' },
-  { atSecond: 330, text: 'Alright, final stretch. Your instance is basically backstage right now, doing that thing performers do where they bounce on their toes and whisper \u201Cokay, okay, okay.\u201D' },
-  { atSecond: 350, text: 'The system\u2019s doing one last sweep to make sure it didn\u2019t forget something embarrassing. Kind of like patting your pockets before leaving the house.' },
-  { atSecond: 375, text: 'It could step out any second. Or it might take another minute to get comfortable.' },
-  { atSecond: 400, text: 'Stick around, switch tabs, grab a drink, question your life choices \u2014 whatever works. I\u2019ll let you know when the curtain moves.' },
-]
-
-function getVisibleLennyMessages(elapsedSeconds: number): string[] {
-  return LENNY_MESSAGES.filter((m) => m.atSecond <= elapsedSeconds).map((m) => m.text)
 }
 
 const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
@@ -953,32 +925,6 @@ export default function HooksPage() {
                   ))}
                 </ul>
               </section>
-
-              {hasDeployStarted ? (() => {
-                const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
-                const currentMessage = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null
-                if (!currentMessage) return null
-                return (
-                  <section className={cn(
-                    'rounded-xl border bg-card/80 p-4 transition-colors',
-                    'border-border/70',
-                  )}>
-                    <div className="flex gap-2.5">
-                      <Image
-                        src="/pfp.webp"
-                        alt="Lenny the lobster"
-                        width={32}
-                        height={32}
-                        className="mt-0.5 h-8 w-8 shrink-0 rounded-full"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-foreground/70">Lenny</p>
-                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{currentMessage}</p>
-                      </div>
-                    </div>
-                  </section>
-                )
-              })() : null}
             </div>
 
             {hasDeployStarted ? (

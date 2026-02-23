@@ -193,6 +193,7 @@ function getVisibleLennyMessages(elapsedSeconds: number): string[] {
 }
 
 const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
+const MAX_RUNTIME_SETUP_WAIT_SECONDS = 10 * 60
 
 function readPersistedDeployStartedAt(): number | null {
   if (typeof window === 'undefined') return null
@@ -382,6 +383,14 @@ export default function HooksPage() {
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
   const [checkoutSessionId, setCheckoutSessionId] = useState('')
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function resetDeployProgress() {
+    setHasDeployStarted(false)
+    setDeployStartedAt(null)
+    setDeployElapsedSeconds(0)
+    setDeployStageIndex(0)
+    writePersistedDeployStartedAt(null)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -835,6 +844,18 @@ export default function HooksPage() {
     } catch (oauthError) {
       const message = readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.')
       if (isRuntimeGatewayStartingError(message)) {
+        const runtimeSetupTimedOut = options?.auto && deployElapsedSeconds >= MAX_RUNTIME_SETUP_WAIT_SECONDS
+        if (runtimeSetupTimedOut) {
+          const waitMinutes = Math.floor(MAX_RUNTIME_SETUP_WAIT_SECONDS / 60)
+          resetDeployProgress()
+          setOauthSessionId('')
+          setOauthAuthUrl('')
+          setOauthExpiresAt(null)
+          setError(`Instance setup timed out after ${waitMinutes} minutes. Deployment was reset so you can retry.`)
+          setStatus('')
+          return false
+        }
+
         setOauthSessionId('')
         setOauthAuthUrl('')
         setOauthExpiresAt(null)
@@ -845,7 +866,8 @@ export default function HooksPage() {
 
       setError(message)
       if (options?.auto) {
-        setStatus('Retrying OAuth preparation in a moment...')
+        resetDeployProgress()
+        setStatus('')
       }
       return false
     } finally {
@@ -927,9 +949,9 @@ export default function HooksPage() {
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
       const accessToken = session?.access_token?.trim() ?? ''
       if (!accessToken) {
+        resetDeployProgress()
         setError('Session expired. Please sign in again.')
         setStatus('')
-        setDeployStageIndex(0)
         return
       }
 
@@ -970,16 +992,16 @@ export default function HooksPage() {
           (payload.error === 'UPGRADE_REQUIRED' || payload.error === 'TENANT_TERMINATED' || backendError === 'TENANT_TERMINATED')
 
         if (isUpgradeRequired) {
+          resetDeployProgress()
           setUpgradeRequired(true)
           setError(payload.message ?? payload.backend?.message ?? 'Your trial ended. Upgrade to deploy.')
           setStatus('')
-          setDeployStageIndex(0)
           return
         }
 
+        resetDeployProgress()
         setError(payload.message ?? payload.error ?? 'Deploy failed.')
         setStatus('')
-        setDeployStageIndex(0)
         return
       }
 
@@ -993,9 +1015,9 @@ export default function HooksPage() {
 
       await finalizeSetupAndRedirect('Deployment complete. Opening chat...')
     } catch {
+      resetDeployProgress()
       setError('Network error.')
       setStatus('')
-      setDeployStageIndex(0)
     } finally {
       setSubmitting(false)
     }

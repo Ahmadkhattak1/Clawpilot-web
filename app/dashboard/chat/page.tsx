@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ArrowDown,
   ArrowUp,
@@ -39,6 +40,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Toggle } from '@/components/ui/toggle'
 import {
   DEFAULT_CHAT_SESSION_KEY,
+  completeRuntimeOpenAICodexOAuth,
   getBackendUrl,
   listRuntimeChannelEvents,
   listRuntimeChannelsStatus,
@@ -46,11 +48,21 @@ import {
   patchRuntimeSession,
   listRuntimeSessions,
   readStoredChatSessionKey,
+  startRuntimeOpenAICodexOAuth,
   type RuntimeChannelEvent,
   type RuntimeChannelsStatusData,
   type RuntimeSessionSummary,
   writeStoredChatSessionKey,
 } from '@/lib/runtime-controls'
+import {
+  MODEL_PROVIDER_MODEL_STORAGE_KEY,
+  MODEL_PROVIDER_STORAGE_KEY,
+} from '@/lib/model-providers'
+import {
+  MODEL_PROVIDER_SETUP_STORAGE_KEY,
+  type ProviderSetupRecord,
+  type ProviderSetupStorage,
+} from '@/lib/provider-auth-config'
 import {
   insertPersistedRuntimeMessage,
   listPersistedRuntimeMessages,
@@ -76,8 +88,36 @@ interface ChatMessage {
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
-type SetupPhase = 'checking' | 'provisioning' | 'installing' | 'starting' | 'ready' | null
+type SetupPhase = 'checking' | 'provisioning' | 'installing' | 'starting' | 'oauth' | 'ready' | null
 type ChannelHealthStatus = 'connected' | 'running' | 'configured' | 'off'
+
+interface SetupRuntimeStatusSnapshot {
+  instanceId: string | null
+  instanceState: string | null
+  setupComplete: boolean
+  hasPublicIp: boolean
+  hasPrivateIp: boolean
+  gatewayProbe: {
+    ready: boolean | null
+    checkedAt: string | null
+    gatewayPort: number | null
+    reachableVia: string | null
+    publicProbeError: string | null
+    privateProbeError: string | null
+  }
+}
+
+interface SetupStep {
+  label: string
+  description: string
+  status: 'done' | 'active' | 'pending'
+}
+
+interface SetupTerminalLine {
+  id: string
+  text: string
+  tone: 'idle' | 'ok' | 'active'
+}
 
 const INPUT_LINE_HEIGHT = 24
 const INPUT_VERTICAL_PADDING = 20
@@ -99,6 +139,34 @@ const PAYWALL_DISCOUNTED_FIRST_MONTH_PRICE_USD =
 const PAYWALL_DISCOUNT_STRIKE_DELAY_MS = 500
 const PAYWALL_DISCOUNT_NEW_PRICE_DELAY_MS = 300
 const PAYWALL_DISCOUNT_ANIMATION_MS = 2300
+const SETUP_STARTED_STORAGE_KEY_PREFIX = 'clawpilot:chat-setup-started-at'
+const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
+  { atSecond: 0, text: 'Hi. I am Lenny. I am the lobster they assigned to keep you company while your OpenClaw instance boots up.' },
+  { atSecond: 8, text: 'Right now a loud computer in a building that smells like warm electricity is doing important nerd stuff on your behalf.' },
+  { atSecond: 18, text: 'Things are unpacking. Things are linking. Something just printed a log that looks confident but absolutely is not.' },
+  { atSecond: 30, text: 'I am here either way. They do not even give me a chair.' },
+  { atSecond: 60, text: 'Small update: your instance exists now. If the internet had a census, you would be on it.' },
+  { atSecond: 95, text: 'This is the part where people start wondering if it is stuck. It is not stuck. It is thinking.' },
+  { atSecond: 150, text: 'This is the middle stretch. Not flashy. Not dramatic. But very important.' },
+  { atSecond: 210, text: 'You are watching a lobster narrate infrastructure. 2005 internet would panic.' },
+  { atSecond: 255, text: 'Your instance is starting to look less like parts and more like a working thing.' },
+  { atSecond: 330, text: 'Final stretch. Your assistant is backstage doing the okay-okay-okay bounce.' },
+]
+const EMPTY_SETUP_RUNTIME_STATUS: SetupRuntimeStatusSnapshot = {
+  instanceId: null,
+  instanceState: null,
+  setupComplete: false,
+  hasPublicIp: false,
+  hasPrivateIp: false,
+  gatewayProbe: {
+    ready: null,
+    checkedAt: null,
+    gatewayPort: null,
+    reachableVia: null,
+    publicProbeError: null,
+    privateProbeError: null,
+  },
+}
 type PaywallStatus = 'not-triggered' | 'countdown' | 'deleted' | 'upgraded'
 type PaywallPlan = 'monthly' | 'yearly'
 type BillingPlan = 'FREE' | 'PRO_MONTHLY' | 'PRO_YEARLY'
@@ -290,6 +358,77 @@ function buildPfpWebUrl(email: string): string | null {
   return `https://pfp.web/${encodeURIComponent(normalized)}`
 }
 
+function getStoredProviderSetup(): ProviderSetupStorage {
+  if (typeof window === 'undefined') return {}
+  const raw = window.localStorage.getItem(MODEL_PROVIDER_SETUP_STORAGE_KEY)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    return parsed as ProviderSetupStorage
+  } catch {
+    return {}
+  }
+}
+
+function isOpenAIOAuthSetupPending(
+  providerId: string | null | undefined,
+  providerSetup: ProviderSetupRecord | null | undefined,
+): boolean {
+  return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
+}
+
+function normalizeOpenAIModelIdForRuntime(modelId: string): string {
+  const normalized = modelId.trim()
+  if (!normalized.startsWith('openai/')) return normalized
+  return `openai-codex/${normalized.slice('openai/'.length)}`
+}
+
+function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
+  const expiresAtMs = Date.parse(expiresAt)
+  if (!Number.isFinite(expiresAtMs)) return 'Unknown'
+  const remainingMs = expiresAtMs - nowMs
+  const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const remainingMinutes = Math.floor(remainingSeconds / 60)
+  const secondsPart = remainingSeconds % 60
+  if (remainingMs <= 0) return 'Expired'
+  return `${remainingMinutes}m ${secondsPart}s`
+}
+
+function getVisibleLennyMessages(elapsedSeconds: number): string[] {
+  return LENNY_MESSAGES.filter((message) => message.atSecond <= elapsedSeconds).map((message) => message.text)
+}
+
+function buildSetupStartedStorageKey(tenantId: string): string {
+  return `${SETUP_STARTED_STORAGE_KEY_PREFIX}:${tenantId.trim() || 'anonymous'}`
+}
+
+function readPersistedSetupStartedAt(tenantId: string): number | null {
+  if (typeof window === 'undefined' || !tenantId.trim()) return null
+  try {
+    const raw = window.localStorage.getItem(buildSetupStartedStorageKey(tenantId))
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writePersistedSetupStartedAt(tenantId: string, ts: number | null) {
+  if (typeof window === 'undefined' || !tenantId.trim()) return
+  try {
+    const storageKey = buildSetupStartedStorageKey(tenantId)
+    if (ts === null) {
+      window.localStorage.removeItem(storageKey)
+      return
+    }
+    window.localStorage.setItem(storageKey, String(ts))
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 function formatElapsed(startedAt: number): string {
   const seconds = Math.floor((Date.now() - startedAt) / 1000)
   if (seconds < 60) return `${seconds}s`
@@ -336,7 +475,8 @@ function getOpenClawStatusLabel({
     setupPhase === 'checking' ||
     setupPhase === 'provisioning' ||
     setupPhase === 'installing' ||
-    setupPhase === 'starting'
+    setupPhase === 'starting' ||
+    setupPhase === 'oauth'
   ) {
     return 'connecting'
   }
@@ -386,6 +526,14 @@ function readRecordString(record: Record<string, unknown> | null | undefined, ke
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized || null
+}
+
+function readRecordNumber(record: Record<string, unknown> | null | undefined, key: string): number | null {
+  const value = record?.[key]
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null
+  }
+  return value
 }
 
 function deriveChannelHealthStatus(record: Record<string, unknown> | null | undefined): ChannelHealthStatus {
@@ -931,12 +1079,6 @@ function isCronSessionSummary(session: RuntimeSessionSummary): boolean {
 
 // ─── Setup progress view ──────────────────────────────────────────────
 
-interface SetupStep {
-  label: string
-  description: string
-  status: 'pending' | 'active' | 'done'
-}
-
 function MarkdownMessage({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -1001,30 +1143,189 @@ function MarkdownMessage({ content }: { content: string }) {
   )
 }
 
+function formatSetupProbeLabel(error: string | null, ready: boolean | null): string {
+  if (ready === true) return 'ok'
+  if (!error) return 'pending'
+  return error
+}
+
+function buildSetupTerminalLines(
+  steps: SetupStep[],
+  runtimeStatus: SetupRuntimeStatusSnapshot,
+): SetupTerminalLine[] {
+  const stageLines: SetupTerminalLine[] = steps.map((step) => ({
+    id: `stage-${step.label}`,
+    text: `[deploy] ${step.label.toLowerCase()}${step.status === 'done' ? ' complete' : step.status === 'active' ? ' running' : ''}`,
+    tone: step.status === 'done' ? 'ok' : step.status === 'active' ? 'active' : 'idle',
+  }))
+
+  const probePublic = formatSetupProbeLabel(runtimeStatus.gatewayProbe.publicProbeError, runtimeStatus.gatewayProbe.ready)
+  const probePrivate = formatSetupProbeLabel(runtimeStatus.gatewayProbe.privateProbeError, runtimeStatus.gatewayProbe.ready)
+
+  stageLines.push({
+    id: 'runtime-state',
+    text: `[runtime] state=${runtimeStatus.instanceState ?? 'unknown'} setupComplete=${String(runtimeStatus.setupComplete)}`,
+    tone: runtimeStatus.setupComplete ? 'ok' : 'active',
+  })
+  stageLines.push({
+    id: 'runtime-network',
+    text: `[runtime] network publicIp=${runtimeStatus.hasPublicIp ? 'yes' : 'no'} privateIp=${runtimeStatus.hasPrivateIp ? 'yes' : 'no'}`,
+    tone: 'idle',
+  })
+  stageLines.push({
+    id: 'runtime-probe',
+    text: `[runtime] probe public=${probePublic} private=${probePrivate} port=${runtimeStatus.gatewayProbe.gatewayPort ?? '?'}`,
+    tone: runtimeStatus.gatewayProbe.ready ? 'ok' : 'active',
+  })
+
+  if (runtimeStatus.gatewayProbe.checkedAt) {
+    stageLines.push({
+      id: 'runtime-probe-time',
+      text: `[runtime] probe checkedAt=${runtimeStatus.gatewayProbe.checkedAt}`,
+      tone: 'idle',
+    })
+  }
+
+  return stageLines
+}
+
+function SetupTerminal({
+  lines,
+  running,
+}: {
+  lines: SetupTerminalLine[]
+  running: boolean
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-lg shadow-primary/10">
+      <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-4 py-2.5">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+        </div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">deploy.log</p>
+      </div>
+      <div className="max-h-64 overflow-auto px-4 py-3 font-mono text-[11px] leading-6">
+        {lines.map((line) => (
+          <p
+            key={line.id}
+            className={
+              line.tone === 'ok'
+                ? 'text-emerald-700'
+                : line.tone === 'active'
+                  ? 'text-amber-700'
+                  : 'text-muted-foreground'
+            }
+          >
+            {line.text}
+          </p>
+        ))}
+        {running ? (
+          <motion.span
+            className="mt-1 inline-block h-4 w-2 bg-foreground"
+            animate={{ opacity: [1, 0.1, 1] }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
 function SetupProgressView({
+  phase,
   steps,
+  runtimeStatus,
   startedAt,
   timedOut,
+  oauthRequired,
+  oauthConnected,
+  oauthBusy,
+  oauthModalOpen,
+  oauthSessionId,
+  oauthAuthUrl,
+  oauthCallback,
+  oauthExpiresAt,
+  oauthError,
+  oauthStatus,
   onRetry,
-  onSkip,
+  onStartOauth,
+  onCompleteOauth,
+  onOauthCallbackChange,
 }: {
+  phase: SetupPhase
   steps: SetupStep[]
+  runtimeStatus: SetupRuntimeStatusSnapshot
   startedAt: number
   timedOut: boolean
+  oauthRequired: boolean
+  oauthConnected: boolean
+  oauthBusy: boolean
+  oauthModalOpen: boolean
+  oauthSessionId: string
+  oauthAuthUrl: string
+  oauthCallback: string
+  oauthExpiresAt: string | null
+  oauthError: string
+  oauthStatus: string
   onRetry: () => void
-  onSkip: () => void
+  onStartOauth: () => void
+  onCompleteOauth: () => void
+  onOauthCallbackChange: (value: string) => void
 }) {
+  const reduceMotion = useReducedMotion()
   const [elapsed, setElapsed] = useState('0s')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
+  const lastAutoRefreshOauthExpiryRef = useRef<string | null>(null)
 
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsed(formatElapsed(startedAt))
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
     }, 1000)
     return () => clearInterval(interval)
   }, [startedAt])
 
+  useEffect(() => {
+    if (!oauthExpiresAt) return
+    const timer = setInterval(() => {
+      setOauthNowMs(Date.now())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [oauthExpiresAt])
+
+  const terminalLines = useMemo(() => buildSetupTerminalLines(steps, runtimeStatus), [runtimeStatus, steps])
+  const running = phase !== 'ready'
+  const activeLennyMessage = useMemo(() => {
+    const visibleMessages = getVisibleLennyMessages(elapsedSeconds)
+    return visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null
+  }, [elapsedSeconds])
+  const oauthCountdownLabel = oauthExpiresAt ? formatOAuthExpiryCountdown(oauthExpiresAt, oauthNowMs) : null
+  const oauthExpiresAtMs = oauthExpiresAt ? Date.parse(oauthExpiresAt) : null
+  const oauthUrlExpired = oauthExpiresAtMs !== null && Number.isFinite(oauthExpiresAtMs) && oauthNowMs >= oauthExpiresAtMs
+  const hasOauthSession = oauthSessionId.trim().length > 0 && oauthAuthUrl.trim().length > 0
+
+  useEffect(() => {
+    if (!oauthRequired || oauthConnected || oauthBusy || !oauthExpiresAt) return
+    const expiresAtMs = Date.parse(oauthExpiresAt)
+    if (!Number.isFinite(expiresAtMs) || oauthNowMs < expiresAtMs) return
+    if (lastAutoRefreshOauthExpiryRef.current === oauthExpiresAt) return
+    lastAutoRefreshOauthExpiryRef.current = oauthExpiresAt
+    onStartOauth()
+  }, [oauthBusy, oauthConnected, oauthExpiresAt, oauthNowMs, oauthRequired, onStartOauth])
+
+  const handleOpenOauthWindow = useCallback(() => {
+    if (!oauthAuthUrl || oauthUrlExpired) {
+      onStartOauth()
+      return
+    }
+    window.open(oauthAuthUrl, '_blank', 'noopener,noreferrer')
+  }, [oauthAuthUrl, oauthUrlExpired, onStartOauth])
+
   return (
-    <div className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-background px-4">
+    <div className="relative min-h-[100svh] overflow-hidden bg-background px-4 py-8 sm:px-6 md:px-10 md:py-12">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
@@ -1034,106 +1335,204 @@ function SetupProgressView({
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <div className="relative z-10 w-full max-w-md">
-        <div className="flex flex-col items-center text-center">
-          <div className="rounded-full border border-border/70 bg-card p-5">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-6xl flex-col border-border/70 shadow-sm shadow-primary/10">
+        <CardContent className="flex flex-1 flex-col px-5 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-9">
+          <div className="flex flex-col items-center text-center">
+            <div className="rounded-full border border-border/70 bg-card p-5">
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            </div>
+            <h1 className="mt-6 text-3xl font-semibold tracking-tight">Setting up your assistant</h1>
+            <p className="mt-2 max-w-2xl text-base text-muted-foreground">
+              We&apos;re preparing your OpenClaw instance. This usually takes 4-7 minutes.
+            </p>
           </div>
 
-          <h1 className="mt-6 text-lg font-semibold tracking-tight">Setting up your assistant</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            We&apos;re preparing your OpenClaw instance. This usually takes 3-5 minutes.
-          </p>
-        </div>
+          <div className="mt-7 grid flex-1 gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="space-y-5">
+              <Card className="border-border/70">
+                <CardContent className="p-5">
+                  <div className="space-y-0">
+                    {steps.map((step, index) => (
+                      <div key={step.label} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div
+                            className={cn(
+                              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                              step.status === 'done'
+                                ? 'border-emerald-500/30 bg-emerald-500/10'
+                                : step.status === 'active'
+                                  ? 'border-primary/30 bg-primary/10'
+                                  : 'border-border/70 bg-muted/30',
+                            )}
+                          >
+                            {step.status === 'done' ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : step.status === 'active' ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            ) : (
+                              <Circle className="h-2.5 w-2.5 text-muted-foreground/40" />
+                            )}
+                          </div>
+                          {index < steps.length - 1 ? (
+                            <div
+                              className={cn(
+                                'my-1 w-px flex-1',
+                                step.status === 'done' ? 'bg-emerald-500/30' : 'bg-border/70',
+                              )}
+                              style={{ minHeight: '16px' }}
+                            />
+                          ) : null}
+                        </div>
 
-        <Card className="mt-8 border-border/70 shadow-sm shadow-primary/10">
-          <CardContent className="p-5">
-            <div className="space-y-0">
-              {steps.map((step, index) => (
-                <div key={step.label} className="flex gap-3">
-                  {/* Vertical line + icon column */}
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={cn(
-                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
-                        step.status === 'done'
-                          ? 'border-emerald-500/30 bg-emerald-500/10'
-                          : step.status === 'active'
-                            ? 'border-primary/30 bg-primary/10'
-                            : 'border-border/70 bg-muted/30',
-                      )}
-                    >
-                      {step.status === 'done' ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
-                      ) : step.status === 'active' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      ) : (
-                        <Circle className="h-2.5 w-2.5 text-muted-foreground/40" />
-                      )}
-                    </div>
-                    {index < steps.length - 1 ? (
-                      <div
-                        className={cn(
-                          'my-1 w-px flex-1',
-                          step.status === 'done' ? 'bg-emerald-500/30' : 'bg-border/70',
-                        )}
-                        style={{ minHeight: '16px' }}
-                      />
-                    ) : null}
+                        <div className="pb-4">
+                          <p
+                            className={cn(
+                              'text-base font-medium leading-7',
+                              step.status === 'done'
+                                ? 'text-emerald-600'
+                                : step.status === 'active'
+                                  ? 'text-foreground'
+                                  : 'text-muted-foreground',
+                            )}
+                          >
+                            {step.label}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{step.description}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* Label + description */}
-                  <div className="pb-4">
-                    <p
-                      className={cn(
-                        'text-sm font-medium leading-7',
-                        step.status === 'done'
-                          ? 'text-emerald-600'
-                          : step.status === 'active'
-                            ? 'text-foreground'
-                            : 'text-muted-foreground',
-                      )}
-                    >
-                      {step.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{step.description}</p>
-                  </div>
+              <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                <div className="flex items-center gap-2.5">
+                  <Image
+                    src="/pfp.webp"
+                    alt="Lenny the lobster"
+                    width={36}
+                    height={36}
+                    className="h-9 w-9 shrink-0 rounded-full"
+                  />
+                  <p className="text-sm font-semibold text-foreground/70">Lenny</p>
                 </div>
-              ))}
+                <div className="mt-3 space-y-2">
+                  <AnimatePresence initial={false}>
+                    {activeLennyMessage ? (
+                      <motion.div
+                        key={activeLennyMessage}
+                        initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
+                        animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+                        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.28, ease: 'easeOut' }}
+                        className="max-w-[96%] rounded-2xl border border-border/60 bg-background px-3 py-2 text-[15px] leading-6 text-foreground/85 shadow-sm"
+                      >
+                        {activeLennyMessage}
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              </section>
             </div>
-          </CardContent>
-        </Card>
 
-        <div className="mt-5 flex flex-col items-center gap-3 text-center">
-          <p className="text-xs text-muted-foreground">
-            Elapsed: {elapsed}
-          </p>
+            <div className="space-y-4">
+              <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">Deployment Terminal</p>
+                  <span className="tabular-nums text-xs text-muted-foreground">
+                    {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, '0')}
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <SetupTerminal lines={terminalLines} running={running} />
+                </div>
+              </section>
+            </div>
+          </div>
 
-          {timedOut ? (
-            <>
-              <p className="text-xs text-amber-600">
-                This is taking longer than expected.
-              </p>
-              <div className="flex gap-2">
+          <div className="mt-5 flex flex-col items-center gap-3 text-center">
+            <p className="text-sm text-muted-foreground">Elapsed: {elapsed}</p>
+            {timedOut ? (
+              <>
+                <p className="text-sm text-amber-600">This is taking longer than expected.</p>
                 <Button variant="outline" size="sm" onClick={onRetry}>
                   Retry
                 </Button>
-                <Button variant="ghost" size="sm" onClick={onSkip}>
-                  Use preview mode
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={onSkip}
-              className="text-xs text-muted-foreground/60 underline-offset-2 transition-colors hover:text-muted-foreground hover:underline"
-            >
-              Skip and use preview mode
-            </button>
-          )}
+              </>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      {oauthModalOpen ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
+            <p className="text-xl font-semibold text-foreground">Connect OpenAI OAuth</p>
+            <p className="mt-2 text-sm font-medium text-foreground">Follow these steps:</p>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
+              <li>Click <span className="font-medium text-foreground">Open OAuth Window</span>.</li>
+              <li>Sign in to your OpenAI account and complete the authorization flow.</li>
+              <li>
+                After approval, your browser will show a URL that starts with{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-[12px] text-foreground">
+                  http://127.0.0.1:1455/callback...
+                </code>
+                .
+              </li>
+              <li>Copy that full URL and paste it into the Callback URL field below.</li>
+            </ol>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={handleOpenOauthWindow}
+                disabled={oauthBusy}
+                className="bg-black text-white hover:bg-black/90 dark:bg-black dark:text-white dark:hover:bg-black/90"
+              >
+                {oauthBusy
+                  ? 'Preparing OAuth...'
+                  : !oauthAuthUrl
+                    ? 'Prepare OAuth Window'
+                    : oauthUrlExpired
+                      ? 'Refresh OAuth Window'
+                      : 'Open OAuth Window'}
+                <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="outline" onClick={onStartOauth} disabled={oauthBusy || !hasOauthSession}>
+                Regenerate URL
+              </Button>
+            </div>
+
+            {oauthExpiresAt ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                OAuth URL expires in {oauthCountdownLabel}.
+              </p>
+            ) : null}
+
+            <div className="mt-4">
+              <label className="text-sm font-medium text-foreground" htmlFor="oauth-callback">
+                Callback URL
+              </label>
+              <textarea
+                id="oauth-callback"
+                value={oauthCallback}
+                onChange={(event) => onOauthCallbackChange(event.target.value)}
+                rows={3}
+                placeholder="http://127.0.0.1:1455/callback?... "
+                className="mt-2 w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-sm outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+
+            {oauthStatus ? <p className="mt-3 text-xs text-muted-foreground">{oauthStatus}</p> : null}
+            {oauthError ? <p className="mt-1 text-xs text-destructive">{oauthError}</p> : null}
+
+            <div className="mt-5">
+              <Button onClick={onCompleteOauth} disabled={oauthBusy || !oauthSessionId || !oauthCallback.trim()}>
+                {oauthBusy ? 'Completing...' : 'Complete OAuth'}
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }
@@ -1296,6 +1695,17 @@ export default function ChatPage() {
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
   const [setupStartedAt, setSetupStartedAt] = useState<number>(0)
   const [setupTimedOut, setSetupTimedOut] = useState(false)
+  const [setupRuntimeStatus, setSetupRuntimeStatus] = useState<SetupRuntimeStatusSnapshot>(EMPTY_SETUP_RUNTIME_STATUS)
+  const [oauthRequired, setOauthRequired] = useState(false)
+  const [oauthConnected, setOauthConnected] = useState(false)
+  const [oauthModalOpen, setOauthModalOpen] = useState(false)
+  const [oauthBusy, setOauthBusy] = useState(false)
+  const [oauthSessionId, setOauthSessionId] = useState('')
+  const [oauthAuthUrl, setOauthAuthUrl] = useState('')
+  const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
+  const [oauthCallback, setOauthCallback] = useState('')
+  const [oauthStatus, setOauthStatus] = useState('')
+  const [oauthError, setOauthError] = useState('')
 
   // Wrapper to keep ref in sync with state (so WebSocket callbacks see latest value)
   const setSetupPhase = useCallback((value: SetupPhase | ((prev: SetupPhase) => SetupPhase)) => {
@@ -1311,6 +1721,14 @@ export default function ChatPage() {
     }
   }, [])
 
+  useEffect(() => {
+    oauthRequiredRef.current = oauthRequired
+  }, [oauthRequired])
+
+  useEffect(() => {
+    oauthConnectedRef.current = oauthConnected
+  }, [oauthConnected])
+
   const wsRef = useRef<WebSocket | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const rpcIdRef = useRef(0)
@@ -1322,6 +1740,7 @@ export default function ChatPage() {
   const historyPollInFlightRef = useRef(false)
   const wsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsInitialConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const accessTokenRef = useRef('')
   const connectionStableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestIdRef = useRef(0)
@@ -1329,6 +1748,8 @@ export default function ChatPage() {
   const lastRequestedSessionKeyRef = useRef<string | null>(null)
   const sessionMismatchRetryRef = useRef(false)
   const setupPhaseRef = useRef<SetupPhase>(null)
+  const oauthRequiredRef = useRef(false)
+  const oauthConnectedRef = useRef(false)
   const activeSessionKeyRef = useRef<string | null>(null)
   const pendingSessionKeysRef = useRef<Set<string>>(new Set())
   const userIdRef = useRef('')
@@ -2751,6 +3172,10 @@ export default function ChatPage() {
       clearTimeout(wsRetryRef.current)
       wsRetryRef.current = null
     }
+    if (setupTimeoutRef.current) {
+      clearTimeout(setupTimeoutRef.current)
+      setupTimeoutRef.current = null
+    }
   }, [])
 
   const stopHistoryPolling = useCallback(() => {
@@ -2819,6 +3244,122 @@ export default function ChatPage() {
     },
     [loadSessionHistory, stopHistoryPolling],
   )
+
+  const completeSetupFlow = useCallback(() => {
+    if (tenantId) {
+      writePersistedSetupStartedAt(tenantId, null)
+    }
+    setSetupPhase('ready')
+    setTimeout(() => setSetupPhase(null), 600)
+  }, [tenantId, setSetupPhase])
+
+  const persistOpenAIOAuthConnected = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+    if (providerId !== 'openai') return
+
+    const setupStore = getStoredProviderSetup()
+    const currentSetup = setupStore[providerId] ?? {}
+    setupStore[providerId] = {
+      ...currentSetup,
+      method: 'oauth',
+      oauthConnected: true,
+    }
+    window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
+  }, [])
+
+  const handleStartOpenAIOAuth = useCallback(async () => {
+    if (!tenantId) return
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('')
+    try {
+      const selectedModelId = typeof window === 'undefined'
+        ? ''
+        : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const oauthStart = await startRuntimeOpenAICodexOAuth(tenantId, {
+        modelId: runtimeModelId || undefined,
+      })
+
+      setOauthSessionId(oauthStart.sessionId)
+      setOauthAuthUrl(oauthStart.authUrl)
+      setOauthExpiresAt(oauthStart.expiresAt)
+      setOauthStatus('OAuth URL ready. Sign in, then paste the localhost callback URL.')
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Failed to start OpenAI OAuth.'
+      if (/gateway_starting|bootstrapping|gateway_unavailable|not running/i.test(message)) {
+        setOauthStatus('Gateway is still starting. Retry in a few seconds.')
+      } else {
+        setOauthError(message)
+      }
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [tenantId])
+
+  const handleCompleteOpenAIOAuth = useCallback(async () => {
+    if (!tenantId) return
+    const callback = oauthCallback.trim()
+    if (!oauthSessionId) {
+      setOauthError('Generate OAuth URL first.')
+      return
+    }
+    if (!callback) {
+      setOauthError('Paste callback URL.')
+      return
+    }
+
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('Completing OpenAI OAuth...')
+    try {
+      const selectedModelId = typeof window === 'undefined'
+        ? ''
+        : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const result = await completeRuntimeOpenAICodexOAuth(tenantId, {
+        sessionId: oauthSessionId,
+        callback,
+        modelId: runtimeModelId || undefined,
+      })
+      if (!result.oauthConnected) {
+        throw new Error('OAuth did not complete.')
+      }
+
+      persistOpenAIOAuthConnected()
+      setOauthConnected(true)
+      setOauthRequired(false)
+      setOauthModalOpen(false)
+      setOauthStatus('OAuth connected. Opening chat...')
+      setOauthError('')
+      completeSetupFlow()
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Failed to complete OpenAI OAuth.'
+      setOauthError(message)
+      setOauthStatus('')
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [completeSetupFlow, oauthCallback, oauthSessionId, persistOpenAIOAuthConnected, tenantId])
+
+  const handleOpenOauthModal = useCallback(() => {
+    setOauthModalOpen(true)
+    setOauthError('')
+    if (!oauthSessionId || !oauthAuthUrl) {
+      void handleStartOpenAIOAuth()
+    }
+  }, [handleStartOpenAIOAuth, oauthAuthUrl, oauthSessionId])
+
+  useEffect(() => {
+    if (setupPhase !== 'oauth') return
+    if (!oauthRequired || oauthConnected || oauthModalOpen) return
+    handleOpenOauthModal()
+  }, [handleOpenOauthModal, oauthConnected, oauthModalOpen, oauthRequired, setupPhase])
 
   const sendSessionSelectionRpc = useCallback((sessionKey: string): boolean => {
     const ws = wsRef.current
@@ -2953,13 +3494,19 @@ export default function ChatPage() {
             } else {
               sessionMismatchRetryRef.current = false
             }
-            setSetupPhase('ready')
             if (!hasHydratedSessionsOnConnectRef.current) {
               hasHydratedSessionsOnConnectRef.current = true
               void loadSessions(tid, { silent: true })
             }
             stopPolling()
-            setTimeout(() => setSetupPhase(null), 600)
+            if (oauthRequiredRef.current && !oauthConnectedRef.current) {
+              setSetupPhase('oauth')
+              setOauthStatus('OAuth is required before chat can start.')
+            } else {
+              writePersistedSetupStartedAt(tid, null)
+              setSetupPhase('ready')
+              setTimeout(() => setSetupPhase(null), 600)
+            }
             return
           }
 
@@ -3143,22 +3690,20 @@ export default function ChatPage() {
     ],
   )
 
-  // Skip setup and connect immediately.
-  const skipSetup = useCallback(() => {
-    stopPolling()
-    setSetupPhase(null)
-    if (tenantId) {
-      connectWebSocket(tenantId, activeSessionKeyRef.current ?? undefined)
-    }
-  }, [tenantId, connectWebSocket, stopPolling])
-
   // Poll instance status and progress through setup phases
   const startSetupPolling = useCallback(
     (tid: string) => {
       const backendUrl = getBackendUrl()
+      stopPolling()
       setSetupPhase('checking')
-      setSetupStartedAt(Date.now())
       setSetupTimedOut(false)
+      setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
+      const persistedStartedAt = readPersistedSetupStartedAt(tid)
+      const startedAt = persistedStartedAt ?? Date.now()
+      setSetupStartedAt(startedAt)
+      if (!persistedStartedAt) {
+        writePersistedSetupStartedAt(tid, startedAt)
+      }
 
       let wsAttempted = false
 
@@ -3177,11 +3722,43 @@ export default function ChatPage() {
 
           const data = (await res.json()) as {
             daemon?: { runtimeMode?: string }
-            instance?: { instanceState?: string; instanceId?: string; setupComplete?: boolean }
+            instance?: Record<string, unknown>
           }
+          const instanceRecord = asObjectRecord(data.instance)
+          const gatewayProbeRecord = asObjectRecord(instanceRecord?.gatewayProbe)
 
-          const instanceState = data.instance?.instanceState
-          const setupComplete = data.instance?.setupComplete === true
+          const instanceState = readRecordString(instanceRecord, 'instanceState')
+          const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
+          const instanceId = readRecordString(instanceRecord, 'instanceId')
+          const publicIp = readRecordString(instanceRecord, 'publicIp')
+          const privateIp = readRecordString(instanceRecord, 'privateIp')
+          const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
+          const gatewayPortFromNumber = readRecordNumber(gatewayProbeRecord, 'gatewayPort')
+          const gatewayPort = gatewayPortFromNumber
+            ?? (gatewayPortFromString && Number.isFinite(Number(gatewayPortFromString))
+              ? Number(gatewayPortFromString)
+              : null)
+          const gatewayReady = readRecordBool(gatewayProbeRecord, 'ready')
+          const gatewayCheckedAt = readRecordString(gatewayProbeRecord, 'checkedAt')
+          const gatewayReachableVia = readRecordString(gatewayProbeRecord, 'reachableVia')
+          const publicProbeError = readRecordString(gatewayProbeRecord, 'publicProbeError')
+          const privateProbeError = readRecordString(gatewayProbeRecord, 'privateProbeError')
+
+          setSetupRuntimeStatus({
+            instanceId,
+            instanceState,
+            setupComplete,
+            hasPublicIp: Boolean(publicIp),
+            hasPrivateIp: Boolean(privateIp),
+            gatewayProbe: {
+              ready: gatewayReady,
+              checkedAt: gatewayCheckedAt,
+              gatewayPort,
+              reachableVia: gatewayReachableVia,
+              publicProbeError,
+              privateProbeError,
+            },
+          })
 
           if (!instanceState || instanceState === 'new') {
             setSetupPhase('provisioning')
@@ -3189,7 +3766,7 @@ export default function ChatPage() {
             if (!setupComplete) {
               setSetupPhase('installing')
             } else if (!wsAttempted) {
-              setSetupPhase('installing')
+              setSetupPhase('starting')
               // Mark immediately so repeated poll ticks don't queue duplicate timers.
               wsAttempted = true
               // Give the daemon a short warm-up window, then connect. If it is not
@@ -3200,6 +3777,8 @@ export default function ChatPage() {
                 wsInitialConnectTimeoutRef.current = null
               }, 4000)
             }
+          } else if (instanceState === 'bootstrapping') {
+            setSetupPhase('installing')
           } else {
             setSetupPhase('starting')
           }
@@ -3215,9 +3794,13 @@ export default function ChatPage() {
       pollRef.current = setInterval(poll, 8000)
 
       // Timeout after 10 minutes
-      setTimeout(() => {
+      const timeoutMs = Math.max(0, 600000 - (Date.now() - startedAt))
+      if (setupTimeoutRef.current) {
+        clearTimeout(setupTimeoutRef.current)
+      }
+      setupTimeoutRef.current = setTimeout(() => {
         setSetupTimedOut(true)
-      }, 600000)
+      }, timeoutMs)
     },
     [buildTenantRequestHeaders, connectWebSocket, stopPolling],
   )
@@ -3370,7 +3953,12 @@ export default function ChatPage() {
           redirectToSignIn()
           return
         }
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        const providerId = typeof window === 'undefined' ? null : window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+        const providerSetupStore = getStoredProviderSetup()
+        const selectedProviderSetup = providerId ? providerSetupStore[providerId] ?? null : null
+        const oauthPending = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
+
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: !oauthPending })
         if (!complete) {
           router.replace('/dashboard')
           return
@@ -3436,7 +4024,29 @@ export default function ChatPage() {
 
         if (!cancelled) {
           setTenantId(tid)
+          setOauthRequired(oauthPending)
+          setOauthConnected(!oauthPending)
+          setOauthError('')
+          setOauthStatus('')
+          setOauthSessionId('')
+          setOauthAuthUrl('')
+          setOauthExpiresAt(null)
+          setOauthCallback('')
+          setOauthModalOpen(false)
           setCheckingSession(false)
+
+          if (oauthPending) {
+            const persistedSetupStartedAt = readPersistedSetupStartedAt(tid)
+            const fallbackStartedAt = persistedSetupStartedAt ?? Date.now()
+            setSetupStartedAt(fallbackStartedAt)
+            if (!persistedSetupStartedAt) {
+              writePersistedSetupStartedAt(tid, fallbackStartedAt)
+            }
+            setSetupPhase('starting')
+          } else {
+            writePersistedSetupStartedAt(tid, null)
+            setSetupPhase(null)
+          }
 
           // Check if instance exists and what state it's in
           const backendUrl = getBackendUrl()
@@ -3449,9 +4059,37 @@ export default function ChatPage() {
             if (res.ok) {
               const data = (await res.json()) as {
                 daemon?: { runtimeMode?: string; status?: string }
-                instance?: { instanceState?: string; setupComplete?: boolean }
+                instance?: Record<string, unknown>
               }
-              const isInstanceReady = data.instance?.instanceState === 'active' && data.instance?.setupComplete === true
+              const instanceRecord = asObjectRecord(data.instance)
+              const gatewayProbeRecord = asObjectRecord(instanceRecord?.gatewayProbe)
+              const instanceState = readRecordString(instanceRecord, 'instanceState')
+              const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
+              const instanceId = readRecordString(instanceRecord, 'instanceId')
+              const publicIp = readRecordString(instanceRecord, 'publicIp')
+              const privateIp = readRecordString(instanceRecord, 'privateIp')
+              const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
+              const gatewayPortFromNumber = readRecordNumber(gatewayProbeRecord, 'gatewayPort')
+              const gatewayPort = gatewayPortFromNumber
+                ?? (gatewayPortFromString && Number.isFinite(Number(gatewayPortFromString))
+                  ? Number(gatewayPortFromString)
+                  : null)
+              setSetupRuntimeStatus({
+                instanceId,
+                instanceState,
+                setupComplete,
+                hasPublicIp: Boolean(publicIp),
+                hasPrivateIp: Boolean(privateIp),
+                gatewayProbe: {
+                  ready: readRecordBool(gatewayProbeRecord, 'ready'),
+                  checkedAt: readRecordString(gatewayProbeRecord, 'checkedAt'),
+                  gatewayPort,
+                  reachableVia: readRecordString(gatewayProbeRecord, 'reachableVia'),
+                  publicProbeError: readRecordString(gatewayProbeRecord, 'publicProbeError'),
+                  privateProbeError: readRecordString(gatewayProbeRecord, 'privateProbeError'),
+                },
+              })
+              const isInstanceReady = instanceState === 'active' && setupComplete
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
                 startSetupPolling(tid)
@@ -4062,6 +4700,7 @@ export default function ChatPage() {
   // ─── Setup progress state ─────────────────────────────────────────
 
   if (setupPhase && setupPhase !== 'ready') {
+    const startedAtForView = setupStartedAt > 0 ? setupStartedAt : Date.now()
     const steps: SetupStep[] = [
       {
         label: 'Launching instance',
@@ -4077,7 +4716,7 @@ export default function ChatPage() {
         status:
           setupPhase === 'installing'
             ? 'active'
-            : setupPhase === 'starting'
+            : setupPhase === 'starting' || setupPhase === 'oauth'
               ? 'done'
               : 'pending',
       },
@@ -4087,22 +4726,39 @@ export default function ChatPage() {
         status:
           setupPhase === 'starting'
             ? 'active'
-            : 'pending',
+            : setupPhase === 'oauth'
+              ? 'done'
+              : 'pending',
       },
     ]
 
     return (
       <SetupProgressView
+        phase={setupPhase}
         steps={steps}
-        startedAt={setupStartedAt}
+        runtimeStatus={setupRuntimeStatus}
+        startedAt={startedAtForView}
         timedOut={setupTimedOut}
+        oauthRequired={oauthRequired}
+        oauthConnected={oauthConnected}
+        oauthBusy={oauthBusy}
+        oauthModalOpen={oauthModalOpen}
+        oauthSessionId={oauthSessionId}
+        oauthAuthUrl={oauthAuthUrl}
+        oauthCallback={oauthCallback}
+        oauthExpiresAt={oauthExpiresAt}
+        oauthError={oauthError}
+        oauthStatus={oauthStatus}
         onRetry={() => {
           if (tenantId) {
             stopPolling()
+            writePersistedSetupStartedAt(tenantId, null)
             startSetupPolling(tenantId)
           }
         }}
-        onSkip={skipSetup}
+        onStartOauth={handleStartOpenAIOAuth}
+        onCompleteOauth={handleCompleteOpenAIOAuth}
+        onOauthCallbackChange={setOauthCallback}
       />
     )
   }

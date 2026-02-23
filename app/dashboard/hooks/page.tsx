@@ -136,6 +136,93 @@ function readString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function readBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true' || normalized === '1') {
+      return true
+    }
+    if (normalized === 'false' || normalized === '0') {
+      return false
+    }
+  }
+  return null
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return null
+}
+
+interface RuntimeSetupState {
+  instanceState: string | null
+  setupComplete: boolean | null
+  hasPublicIp: boolean | null
+  hasPrivateIp: boolean | null
+  probeCheckedAt: string | null
+  probeGatewayPort: number | null
+  probeReachableVia: 'public' | 'private' | null
+  publicProbeError: string | null
+  privateProbeError: string | null
+}
+
+function readRuntimeSetupStateFromError(error: unknown): RuntimeSetupState | null {
+  const errorRecord = readRecord(error)
+  if (!errorRecord) {
+    return null
+  }
+
+  const payload = readRecord(errorRecord.payload) ?? errorRecord
+  const details = readRecord(payload.details)
+  if (!details) {
+    return null
+  }
+
+  const gatewayProbe = readRecord(details.gatewayProbe)
+  const reachableVia = readString(gatewayProbe?.reachableVia)
+  const probeReachableVia = reachableVia === 'public' || reachableVia === 'private'
+    ? reachableVia
+    : null
+
+  return {
+    instanceState: readString(details.instanceState),
+    setupComplete: readBoolean(details.setupComplete),
+    hasPublicIp: readBoolean(details.hasPublicIp),
+    hasPrivateIp: readBoolean(details.hasPrivateIp),
+    probeCheckedAt: readString(gatewayProbe?.checkedAt),
+    probeGatewayPort: readFiniteNumber(gatewayProbe?.gatewayPort),
+    probeReachableVia,
+    publicProbeError: readString(gatewayProbe?.publicProbeError),
+    privateProbeError: readString(gatewayProbe?.privateProbeError),
+  }
+}
+
+function formatRuntimeProbeError(value: string | null): string {
+  return value || 'ok'
+}
+
+function formatRuntimeCheckedAt(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) {
+    return value
+  }
+  return new Date(parsed).toLocaleTimeString()
+}
+
 function toIsoTimestampMs(value: unknown): number | null {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null
@@ -382,6 +469,8 @@ export default function HooksPage() {
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
   const [checkoutSessionId, setCheckoutSessionId] = useState('')
+  const [runtimeSetupState, setRuntimeSetupState] = useState<RuntimeSetupState | null>(null)
+  const [runtimeSetupRetryCount, setRuntimeSetupRetryCount] = useState(0)
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function resetDeployProgress() {
@@ -389,6 +478,8 @@ export default function HooksPage() {
     setDeployStartedAt(null)
     setDeployElapsedSeconds(0)
     setDeployStageIndex(0)
+    setRuntimeSetupState(null)
+    setRuntimeSetupRetryCount(0)
     writePersistedDeployStartedAt(null)
   }
 
@@ -835,6 +926,8 @@ export default function HooksPage() {
       setOauthSessionId(oauthStart.sessionId)
       setOauthAuthUrl(oauthStart.authUrl)
       setOauthExpiresAt(oauthStart.expiresAt)
+      setRuntimeSetupState(null)
+      setRuntimeSetupRetryCount(0)
       setStatus(
         options?.auto
           ? 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.'
@@ -844,6 +937,7 @@ export default function HooksPage() {
     } catch (oauthError) {
       const message = readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.')
       if (isRuntimeGatewayStartingError(message)) {
+        const setupState = readRuntimeSetupStateFromError(oauthError)
         const runtimeSetupTimedOut = options?.auto && deployElapsedSeconds >= MAX_RUNTIME_SETUP_WAIT_SECONDS
         if (runtimeSetupTimedOut) {
           const waitMinutes = Math.floor(MAX_RUNTIME_SETUP_WAIT_SECONDS / 60)
@@ -859,8 +953,19 @@ export default function HooksPage() {
         setOauthSessionId('')
         setOauthAuthUrl('')
         setOauthExpiresAt(null)
+        setRuntimeSetupRetryCount((previous) => previous + 1)
+        if (setupState) {
+          setRuntimeSetupState(setupState)
+        }
         setError('')
-        setStatus('Setting up your instance...')
+        if (setupState) {
+          const instanceStateLabel = setupState.instanceState ?? 'bootstrapping'
+          const publicProbe = formatRuntimeProbeError(setupState.publicProbeError)
+          const privateProbe = formatRuntimeProbeError(setupState.privateProbeError)
+          setStatus(`Setting up your instance (${instanceStateLabel}). Probe public=${publicProbe}, private=${privateProbe}.`)
+        } else {
+          setStatus('Setting up your instance...')
+        }
         return false
       }
 
@@ -944,6 +1049,8 @@ export default function HooksPage() {
     setOauthAuthUrl('')
     setOauthExpiresAt(null)
     setOauthCallback('')
+    setRuntimeSetupState(null)
+    setRuntimeSetupRetryCount(0)
 
     try {
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
@@ -1073,6 +1180,43 @@ export default function HooksPage() {
         text: '[deploy] setting up instance...',
         tone: 'active',
       })
+      if (runtimeSetupState) {
+        const stateLabel = runtimeSetupState.instanceState ?? 'unknown'
+        const setupLabel = runtimeSetupState.setupComplete === true ? 'true' : 'false'
+        const publicProbe = formatRuntimeProbeError(runtimeSetupState.publicProbeError)
+        const privateProbe = formatRuntimeProbeError(runtimeSetupState.privateProbeError)
+        const checkedAt = formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt)
+
+        deployLines.push({
+          id: 'runtime-state',
+          text: `[runtime] state=${stateLabel} setupComplete=${setupLabel}`,
+          tone: 'active',
+        })
+        deployLines.push({
+          id: 'runtime-probe',
+          text: `[runtime] probe public=${publicProbe} private=${privateProbe} port=${runtimeSetupState.probeGatewayPort ?? '?'}`,
+          tone: 'active',
+        })
+        deployLines.push({
+          id: 'runtime-network',
+          text: `[runtime] network publicIp=${runtimeSetupState.hasPublicIp === true ? 'yes' : 'no'} privateIp=${runtimeSetupState.hasPrivateIp === true ? 'yes' : 'no'} via=${runtimeSetupState.probeReachableVia ?? 'none'}`,
+          tone: 'idle',
+        })
+        if (checkedAt) {
+          deployLines.push({
+            id: 'runtime-checked-at',
+            text: `[runtime] last probe ${checkedAt}`,
+            tone: 'idle',
+          })
+        }
+      }
+      if (runtimeSetupRetryCount > 0) {
+        deployLines.push({
+          id: 'runtime-retries',
+          text: `[runtime] oauth-start retries=${runtimeSetupRetryCount}`,
+          tone: 'idle',
+        })
+      }
     } else if (waitingForPostInstallOpenAIOAuth) {
       deployLines.push({
         id: 'deploy-oauth-wait',
@@ -1104,6 +1248,8 @@ export default function HooksPage() {
     showConfetti,
     simulatedStageIndex,
     submitting,
+    runtimeSetupRetryCount,
+    runtimeSetupState,
     waitingForPostInstallOpenAIOAuth,
     waitingForRuntimeBeforeOpenAIOAuth,
   ])
@@ -1226,6 +1372,32 @@ export default function HooksPage() {
                     <p className="mt-2 text-xs text-muted-foreground">
                       OAuth will appear once setup is complete...
                     </p>
+                    {runtimeSetupState ? (
+                      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        <p>
+                          state: <span className="font-mono">{runtimeSetupState.instanceState ?? 'unknown'}</span>,
+                          setupComplete: <span className="font-mono">{runtimeSetupState.setupComplete === true ? 'true' : 'false'}</span>
+                        </p>
+                        <p>
+                          probe public: <span className="font-mono">{formatRuntimeProbeError(runtimeSetupState.publicProbeError)}</span>,
+                          private: <span className="font-mono">{formatRuntimeProbeError(runtimeSetupState.privateProbeError)}</span>,
+                          port: <span className="font-mono">{runtimeSetupState.probeGatewayPort ?? '?'}</span>
+                        </p>
+                        <p>
+                          network publicIp: <span className="font-mono">{runtimeSetupState.hasPublicIp === true ? 'yes' : 'no'}</span>,
+                          privateIp: <span className="font-mono">{runtimeSetupState.hasPrivateIp === true ? 'yes' : 'no'}</span>,
+                          via: <span className="font-mono">{runtimeSetupState.probeReachableVia ?? 'none'}</span>
+                        </p>
+                        {formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt) ? (
+                          <p>
+                            last probe: <span className="font-mono">{formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt)}</span>
+                          </p>
+                        ) : null}
+                        <p>
+                          oauth retries: <span className="font-mono">{runtimeSetupRetryCount}</span>
+                        </p>
+                      </div>
+                    ) : null}
                   </section>
                 ) : null}
 

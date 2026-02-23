@@ -3,7 +3,7 @@
 import type { Session } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, CheckCircle2, Loader2, Rocket, TerminalSquare } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader2, Rocket } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -88,13 +88,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-const DEPLOY_STAGE_LABELS = [
-  'bootstrap runtime',
-  'install dependencies',
-  'configure gateway',
-  'hydrate skills',
-  'final health check',
-] as const
 const PAYWALL_MONTHLY_PRICE_USD = 25
 const PAYWALL_YEARLY_PRICE_USD = 240
 
@@ -164,56 +157,6 @@ function writePersistedDeployStartedAt(ts: number | null) {
   } catch {
     // Ignore storage write failures.
   }
-}
-
-interface TerminalLine {
-  id: string
-  text: string
-  tone: 'idle' | 'ok' | 'active'
-}
-
-function DeployTerminal({
-  lines,
-  running,
-}: {
-  lines: TerminalLine[]
-  running: boolean
-}) {
-  return (
-    <section className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-lg shadow-primary/10">
-      <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-        </div>
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">deploy.log</p>
-      </div>
-      <div className="max-h-64 overflow-auto px-4 py-3 font-mono text-[11px] leading-6">
-        {lines.map((line) => (
-          <p
-            key={line.id}
-            className={
-              line.tone === 'ok'
-                ? 'text-emerald-700'
-                : line.tone === 'active'
-                  ? 'text-amber-700'
-                  : 'text-muted-foreground'
-            }
-          >
-            {line.text}
-          </p>
-        ))}
-        {running ? (
-          <motion.span
-            className="mt-1 inline-block h-4 w-2 bg-foreground"
-            animate={{ opacity: [1, 0.1, 1] }}
-            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        ) : null}
-      </div>
-    </section>
-  )
 }
 
 interface ConfettiPiece {
@@ -307,14 +250,8 @@ export default function HooksPage() {
   const [providerSetup, setProviderSetup] = useState<ProviderSetupRecord | null>(null)
   const [skillIds, setSkillIds] = useState<string[]>([])
   const [skillConfigs, setSkillConfigs] = useState<Record<string, Record<string, string>>>({})
-  const [deployStageIndex, setDeployStageIndex] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
   const [hasDeployStarted, setHasDeployStarted] = useState(() => readPersistedDeployStartedAt() !== null)
-  const [deployStartedAt, setDeployStartedAt] = useState<number | null>(() => readPersistedDeployStartedAt())
-  const [deployElapsedSeconds, setDeployElapsedSeconds] = useState(() => {
-    const persisted = readPersistedDeployStartedAt()
-    return persisted ? Math.floor((Date.now() - persisted) / 1000) : 0
-  })
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [upgradeCheckoutLoading, setUpgradeCheckoutLoading] = useState(false)
@@ -326,9 +263,6 @@ export default function HooksPage() {
 
   function resetDeployProgress() {
     setHasDeployStarted(false)
-    setDeployStartedAt(null)
-    setDeployElapsedSeconds(0)
-    setDeployStageIndex(0)
     writePersistedDeployStartedAt(null)
   }
 
@@ -411,20 +345,6 @@ export default function HooksPage() {
   }, [providerSetup, selectedModelId, selectedModelProviderId])
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
-  useEffect(() => {
-    if (submitting || showConfetti) return
-    setDeployStageIndex(0)
-  }, [showConfetti, submitting])
-
-  useEffect(() => {
-    if (!submitting) return
-
-    const timer = setInterval(() => {
-      setDeployStageIndex((previous) => Math.min(previous + 1, DEPLOY_STAGE_LABELS.length))
-    }, 720)
-
-    return () => clearInterval(timer)
-  }, [submitting])
 
   useEffect(() => {
     return () => {
@@ -433,15 +353,6 @@ export default function HooksPage() {
       }
     }
   }, [])
-
-  useEffect(() => {
-    if (!deployStartedAt) return
-    setDeployElapsedSeconds(0)
-    const timer = setInterval(() => {
-      setDeployElapsedSeconds(Math.floor((Date.now() - deployStartedAt) / 1000))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [deployStartedAt])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -729,7 +640,6 @@ export default function HooksPage() {
     setSubmitting(true)
     setHasDeployStarted(true)
     const now = Date.now()
-    setDeployStartedAt(now)
     writePersistedDeployStartedAt(now)
     setError('')
     setStatus('Deploy in progress...')
@@ -796,7 +706,6 @@ export default function HooksPage() {
       }
 
       setUpgradeRequired(false)
-      setDeployStageIndex(DEPLOY_STAGE_LABELS.length)
       await finalizeSetupAndRedirect('Deployment started. Opening chat...')
     } catch {
       resetDeployProgress()
@@ -806,65 +715,6 @@ export default function HooksPage() {
       setSubmitting(false)
     }
   }
-
-  // On reload, simulate terminal progress based on elapsed time instead of showing everything instantly complete
-  const simulatedStageIndex = useMemo(() => {
-    if (submitting) return deployStageIndex
-    if (!hasDeployStarted) return 0
-    // ~15s per stage when not actively submitting (reload scenario)
-    return Math.min(Math.floor(deployElapsedSeconds / 15), DEPLOY_STAGE_LABELS.length)
-  }, [deployElapsedSeconds, deployStageIndex, hasDeployStarted, submitting])
-
-  const terminalLines = useMemo(() => {
-    const checkLines: TerminalLine[] = onboardingChecks.map((check) => ({
-      id: `check-${check.label}`,
-      text: `[preflight] ${check.label.toLowerCase()} ${check.complete ? 'ok' : 'missing'}`,
-      tone: check.complete ? 'ok' : 'idle',
-    }))
-
-    const allStagesDone = showConfetti
-    const deployLines: TerminalLine[] = DEPLOY_STAGE_LABELS.map((label, index) => {
-      const isDone =
-        allStagesDone ||
-        (submitting && index < deployStageIndex) ||
-        (!submitting && hasDeployStarted && index < simulatedStageIndex)
-      const isActive =
-        !allStagesDone &&
-        ((submitting && !showConfetti && index === deployStageIndex) ||
-         (!submitting && hasDeployStarted && index === simulatedStageIndex && simulatedStageIndex < DEPLOY_STAGE_LABELS.length))
-      return {
-        id: `deploy-${label}`,
-        text: `[deploy] ${label}${isDone ? ' complete' : isActive ? ' running' : ''}`,
-        tone: isDone ? 'ok' : isActive ? 'active' : 'idle',
-      }
-    })
-
-    if (showConfetti) {
-      deployLines.push({
-        id: 'deploy-success',
-        text: '[deploy] provisioning accepted, finishing setup',
-        tone: 'ok',
-      })
-    }
-
-    if (error) {
-      deployLines.push({
-        id: 'deploy-error',
-        text: `[deploy] error: ${error}`,
-        tone: 'active',
-      })
-    }
-
-    return [...checkLines, ...deployLines]
-  }, [
-    deployStageIndex,
-    error,
-    hasDeployStarted,
-    onboardingChecks,
-    showConfetti,
-    simulatedStageIndex,
-    submitting,
-  ])
 
   if (checkingSession) {
     return (
@@ -903,50 +753,22 @@ export default function HooksPage() {
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
-          <div
-            className={cn(
-              'grid flex-1 gap-6',
-              hasDeployStarted ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]' : undefined,
-            )}
-          >
-            <div className="space-y-6">
-              <section className="rounded-xl border border-border/70 bg-card p-4">
-                <p className="text-sm font-semibold">Checks</p>
-                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  {onboardingChecks.map((check) => (
-                    <li key={check.label} className="flex items-center gap-2">
-                      {check.complete ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
-                      )}
-                      <span>{check.label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
-
-            {hasDeployStarted ? (
-              <div className="space-y-4">
-                <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                      <TerminalSquare className="h-4 w-4 text-muted-foreground" />
-                      Deployment Terminal
-                    </p>
-                    {deployStartedAt ? (
-                      <span className="tabular-nums text-xs text-muted-foreground">
-                        {Math.floor(deployElapsedSeconds / 60)}:{String(deployElapsedSeconds % 60).padStart(2, '0')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2">
-                    <DeployTerminal lines={terminalLines} running={submitting} />
-                  </div>
-                </section>
-              </div>
-            ) : null}
+          <div className="flex-1 space-y-6">
+            <section className="rounded-xl border border-border/70 bg-card p-4">
+              <p className="text-sm font-semibold">Checks</p>
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                {onboardingChecks.map((check) => (
+                  <li key={check.label} className="flex items-center gap-2">
+                    {check.complete ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
+                    )}
+                    <span>{check.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
 
           <div className="mt-auto border-t border-border/70 pt-4">

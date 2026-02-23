@@ -4005,9 +4005,9 @@ export default function ChatPage() {
         const oauthPendingFromLocal = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
         const tid = deriveTenantIdFromUserId(session.user.id)
 
-        let oauthPending = oauthPendingFromLocal
+        let oauthPending = false
         try {
-          const runtimeModels = await listRuntimeModels(tid)
+          const runtimeModels = await listRuntimeModels(tid, { syncRuntime: true })
           const oauthPendingFromRuntime = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels.storedModelConfig)
           if (oauthPendingFromRuntime !== null) {
             oauthPending = oauthPendingFromRuntime
@@ -4027,10 +4027,11 @@ export default function ChatPage() {
             }
           }
         } catch (error) {
+          oauthPending = oauthPendingFromLocal
           console.warn('Failed to resolve runtime model auth state during chat startup', error)
         }
 
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: !oauthPending })
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         if (!complete) {
           router.replace('/dashboard')
           return

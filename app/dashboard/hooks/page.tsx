@@ -74,13 +74,6 @@ function getStoredSkillConfig(): SkillConfigStorage {
   }
 }
 
-function isOpenAIOAuthSetupPending(
-  providerId: string | null | undefined,
-  providerSetup: ProviderSetupRecord | null | undefined,
-): boolean {
-  return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
-}
-
 function readErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim()
@@ -283,7 +276,7 @@ export default function HooksPage() {
         const selectedSetup = providerId ? providerSetupStore[providerId] ?? null : null
 
         const complete = await isOnboardingComplete(session, {
-          backfillFromProvisionedTenant: !isOpenAIOAuthSetupPending(providerId, selectedSetup),
+          backfillFromProvisionedTenant: true,
         })
         if (complete) {
           router.replace('/chat')

@@ -45,6 +45,7 @@ import {
   listRuntimeChannelEvents,
   listRuntimeChannelsStatus,
   listRuntimeChatHistory,
+  listRuntimeModels,
   patchRuntimeSession,
   listRuntimeSessions,
   readStoredChatSessionKey,
@@ -381,6 +382,29 @@ function isOpenAIOAuthSetupPending(
   providerSetup: ProviderSetupRecord | null | undefined,
 ): boolean {
   return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
+}
+
+function isOpenAIOAuthAuthorizeUrl(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  try {
+    const parsed = new URL(trimmed)
+    return (
+      parsed.hostname.toLowerCase() === 'auth.openai.com'
+      && parsed.pathname.toLowerCase().includes('/oauth/authorize')
+    )
+  } catch {
+    return false
+  }
+}
+
+function resolveOAuthPendingFromRuntimeModelConfig(input: {
+  modelAuthMethod: 'api-key' | 'oauth' | null
+  modelOauthConnected: boolean | null
+} | null): boolean | null {
+  if (!input) return null
+  if (input.modelAuthMethod !== 'oauth') return false
+  return input.modelOauthConnected !== true
 }
 
 function normalizeOpenAIModelIdForRuntime(modelId: string): string {
@@ -1477,13 +1501,7 @@ function SetupProgressView({
             <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
               <li>Click <span className="font-medium text-foreground">Open OAuth Window</span>.</li>
               <li>Sign in to your OpenAI account and complete the authorization flow.</li>
-              <li>
-                After approval, your browser will show a URL that starts with{' '}
-                <code className="rounded bg-muted px-1 py-0.5 text-[12px] text-foreground">
-                  http://127.0.0.1:1455/callback...
-                </code>
-                .
-              </li>
+              <li>After approval, your browser will show a localhost callback URL that includes <code className="rounded bg-muted px-1 py-0.5 text-[12px] text-foreground">code=...</code>.</li>
               <li>Copy that full URL and paste it into the Callback URL field below.</li>
             </ol>
 
@@ -1522,7 +1540,7 @@ function SetupProgressView({
                 value={oauthCallback}
                 onChange={(event) => onOauthCallbackChange(event.target.value)}
                 rows={3}
-                placeholder="http://127.0.0.1:1455/callback?... "
+                placeholder="http://localhost:1455/auth/callback?... "
                 className="mt-2 w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-sm outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
@@ -3273,15 +3291,21 @@ export default function ChatPage() {
   const persistOpenAIOAuthConnected = useCallback(() => {
     if (typeof window === 'undefined') return
     const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-    if (providerId !== 'openai') return
-
     const setupStore = getStoredProviderSetup()
-    const currentSetup = setupStore[providerId] ?? {}
-    setupStore[providerId] = {
-      ...currentSetup,
-      method: 'oauth',
-      oauthConnected: true,
-      updatedAt: new Date().toISOString(),
+    const nowIso = new Date().toISOString()
+    const targetProviders =
+      providerId === 'openai' || providerId === 'openai-codex'
+        ? [providerId]
+        : ['openai', 'openai-codex']
+
+    for (const targetProvider of targetProviders) {
+      const currentSetup = setupStore[targetProvider] ?? {}
+      setupStore[targetProvider] = {
+        ...currentSetup,
+        method: 'oauth',
+        oauthConnected: true,
+        updatedAt: nowIso,
+      }
     }
     window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
   }, [])
@@ -3327,6 +3351,10 @@ export default function ChatPage() {
     }
     if (!callback) {
       setOauthError('Paste callback URL.')
+      return
+    }
+    if (isOpenAIOAuthAuthorizeUrl(callback)) {
+      setOauthError('Paste the localhost callback URL after approval, not the OpenAI authorization URL.')
       return
     }
 
@@ -3974,7 +4002,33 @@ export default function ChatPage() {
         const providerId = typeof window === 'undefined' ? null : window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
         const providerSetupStore = getStoredProviderSetup()
         const selectedProviderSetup = providerId ? providerSetupStore[providerId] ?? null : null
-        const oauthPending = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
+        const oauthPendingFromLocal = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
+        const tid = deriveTenantIdFromUserId(session.user.id)
+
+        let oauthPending = oauthPendingFromLocal
+        try {
+          const runtimeModels = await listRuntimeModels(tid)
+          const oauthPendingFromRuntime = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels.storedModelConfig)
+          if (oauthPendingFromRuntime !== null) {
+            oauthPending = oauthPendingFromRuntime
+            if (!oauthPendingFromRuntime) {
+              const setupStore = getStoredProviderSetup()
+              const nowIso = new Date().toISOString()
+              for (const key of ['openai', 'openai-codex']) {
+                const current = setupStore[key] ?? {}
+                setupStore[key] = {
+                  ...current,
+                  method: 'oauth',
+                  oauthConnected: true,
+                  updatedAt: nowIso,
+                }
+              }
+              window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to resolve runtime model auth state during chat startup', error)
+        }
 
         const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: !oauthPending })
         if (!complete) {
@@ -4000,7 +4054,6 @@ export default function ChatPage() {
         setProfileInitial(buildProfileInitial(displayName || email))
         setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
 
-        const tid = deriveTenantIdFromUserId(session.user.id)
         userIdRef.current = session.user.id
         accessTokenRef.current = session.access_token?.trim() ?? ''
 

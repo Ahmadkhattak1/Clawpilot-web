@@ -5,6 +5,7 @@ export interface TenantDaemonStatus {
   daemon?: {
     runtimeMode?: string
     status?: string
+    runtimeResourceId?: string | null
   }
   instance?: {
     instanceState?: string
@@ -27,8 +28,12 @@ export function deriveTenantIdFromUserId(userId: string) {
 }
 
 export function tenantHasProvisionedInstance(status: TenantDaemonStatus | null) {
-  if (!status?.instance) return false
-  return Boolean(status.instance.instanceId || status.instance.instanceState)
+  if (status?.instance && (status.instance.instanceId || status.instance.instanceState)) {
+    return true
+  }
+
+  const runtimeResourceId = status?.daemon?.runtimeResourceId?.trim()
+  return Boolean(runtimeResourceId)
 }
 
 export async function fetchTenantDaemonStatus(tenantId: string): Promise<TenantDaemonStatus | null> {

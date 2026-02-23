@@ -61,7 +61,6 @@ import {
 } from '@/lib/model-providers'
 import {
   MODEL_PROVIDER_SETUP_STORAGE_KEY,
-  type ProviderSetupRecord,
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
 import {
@@ -127,6 +126,7 @@ const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 11 + INPUT_VERTICAL_PADDING
 const ONLINE_STABILITY_MS = 1800
 const ASSISTANT_PROGRESS_TICK_MS = 1000
 const WS_INITIAL_CONNECT_DELAY_MS = 1_500
+const SETUP_MAX_DURATION_MS = 600_000
 const HISTORY_POLL_INTERVAL_MS = 6_000
 const CHANNEL_STATUS_POLL_INTERVAL_MS = 25_000
 const CHANNEL_STATUS_PROBE_TIMEOUT_MS = 6_000
@@ -377,13 +377,6 @@ function getStoredProviderSetup(): ProviderSetupStorage {
   }
 }
 
-function isOpenAIOAuthSetupPending(
-  providerId: string | null | undefined,
-  providerSetup: ProviderSetupRecord | null | undefined,
-): boolean {
-  return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
-}
-
 function isOpenAIOAuthAuthorizeUrl(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed) return false
@@ -405,6 +398,18 @@ function resolveOAuthPendingFromRuntimeModelConfig(input: {
   if (!input) return null
   if (input.modelAuthMethod !== 'oauth') return false
   return input.modelOauthConnected !== true
+}
+
+function isRecoverableOAuthWorkspaceError(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  if (!normalized) return false
+  return (
+    normalized.includes('workspace_remote_command_failed')
+    || normalized.includes('workspace remote command failed')
+    || normalized.includes('already connected')
+    || normalized.includes('already linked')
+    || normalized.includes('oauth already connected')
+  )
 }
 
 function normalizeOpenAIModelIdForRuntime(modelId: string): string {
@@ -3333,6 +3338,31 @@ export default function ChatPage() {
     window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
   }, [])
 
+  const recoverConnectedOAuthState = useCallback(async (): Promise<boolean> => {
+    if (!tenantId) return false
+    try {
+      const runtimeModels = await listRuntimeModels(tenantId, { syncRuntime: true })
+      const oauthPending = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels.storedModelConfig)
+      if (oauthPending !== false) {
+        return false
+      }
+      persistOpenAIOAuthConnected()
+      setOauthConnected(true)
+      setOauthRequired(false)
+      setOauthError('')
+      setOauthStatus('OAuth is already connected. Opening chat...')
+      setOauthSessionId('')
+      setOauthAuthUrl('')
+      setOauthExpiresAt(null)
+      setOauthCallback('')
+      setOauthModalOpen(false)
+      completeSetupFlow()
+      return true
+    } catch {
+      return false
+    }
+  }, [completeSetupFlow, persistOpenAIOAuthConnected, tenantId])
+
   const handleStartOpenAIOAuth = useCallback(async () => {
     if (!tenantId) return
     setOauthBusy(true)
@@ -3355,6 +3385,12 @@ export default function ChatPage() {
       const message = error instanceof Error && error.message.trim()
         ? error.message.trim()
         : 'Failed to start OpenAI OAuth.'
+      if (isRecoverableOAuthWorkspaceError(message)) {
+        const recovered = await recoverConnectedOAuthState()
+        if (recovered) {
+          return
+        }
+      }
       if (/gateway_starting|bootstrapping|gateway_unavailable|not running/i.test(message)) {
         setOauthStatus('Gateway is still starting. Retry in a few seconds.')
       } else {
@@ -3363,7 +3399,7 @@ export default function ChatPage() {
     } finally {
       setOauthBusy(false)
     }
-  }, [tenantId])
+  }, [recoverConnectedOAuthState, tenantId])
 
   const handleCompleteOpenAIOAuth = useCallback(async () => {
     if (!tenantId) return
@@ -3409,12 +3445,18 @@ export default function ChatPage() {
       const message = error instanceof Error && error.message.trim()
         ? error.message.trim()
         : 'Failed to complete OpenAI OAuth.'
+      if (isRecoverableOAuthWorkspaceError(message)) {
+        const recovered = await recoverConnectedOAuthState()
+        if (recovered) {
+          return
+        }
+      }
       setOauthError(message)
       setOauthStatus('')
     } finally {
       setOauthBusy(false)
     }
-  }, [completeSetupFlow, oauthCallback, oauthSessionId, persistOpenAIOAuthConnected, tenantId])
+  }, [completeSetupFlow, oauthCallback, oauthSessionId, persistOpenAIOAuthConnected, recoverConnectedOAuthState, tenantId])
 
   const handleOpenOauthModal = useCallback(() => {
     setOauthModalOpen(true)
@@ -3770,7 +3812,7 @@ export default function ChatPage() {
 
       let activeDeploymentFingerprint = normalizeDeploymentFingerprint(options.deploymentFingerprint)
       const scheduleSetupTimeout = (startedAt: number) => {
-        const timeoutMs = Math.max(0, 600000 - (Date.now() - startedAt))
+        const timeoutMs = Math.max(0, SETUP_MAX_DURATION_MS - (Date.now() - startedAt))
         if (setupTimeoutRef.current) {
           clearTimeout(setupTimeoutRef.current)
         }
@@ -3781,9 +3823,13 @@ export default function ChatPage() {
 
       const persistedStart = readPersistedSetupStartedAt(tid)
       const persistedFingerprint = persistedStart?.deploymentFingerprint ?? null
+      const persistedStartIsStale = Boolean(
+        persistedStart && (Date.now() - persistedStart.startedAt) >= SETUP_MAX_DURATION_MS,
+      )
       const shouldResetStartedAt =
         options.forceReset === true
         || !persistedStart
+        || persistedStartIsStale
         || (
           activeDeploymentFingerprint !== null
           && persistedFingerprint !== activeDeploymentFingerprint
@@ -4069,10 +4115,6 @@ export default function ChatPage() {
           redirectToSignIn()
           return
         }
-        const providerId = typeof window === 'undefined' ? null : window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-        const providerSetupStore = getStoredProviderSetup()
-        const selectedProviderSetup = providerId ? providerSetupStore[providerId] ?? null : null
-        const oauthPendingFromLocal = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
         const tid = deriveTenantIdFromUserId(session.user.id)
 
         let oauthPending = false
@@ -4097,7 +4139,6 @@ export default function ChatPage() {
             }
           }
         } catch (error) {
-          oauthPending = oauthPendingFromLocal
           console.warn('Failed to resolve runtime model auth state during chat startup', error)
         }
 
@@ -4175,22 +4216,12 @@ export default function ChatPage() {
           setOauthExpiresAt(null)
           setOauthCallback('')
           setOauthModalOpen(false)
-          setCheckingSession(false)
-
-          if (oauthPending) {
-            const persistedSetupStartedAt = readPersistedSetupStartedAt(tid)
-            const fallbackStartedAt = persistedSetupStartedAt?.startedAt ?? Date.now()
-            setSetupStartedAt(fallbackStartedAt)
-            if (!persistedSetupStartedAt) {
-              writePersistedSetupStartedAt(tid, {
-                startedAt: fallbackStartedAt,
-                deploymentFingerprint: null,
-              })
-            }
-            setSetupPhase('starting')
-          } else {
+          setSetupPhase(null)
+          setSetupStartedAt(0)
+          setSetupTimedOut(false)
+          setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
+          if (!oauthPending) {
             writePersistedSetupStartedAt(tid, null)
-            setSetupPhase(null)
           }
 
           // Check if instance exists and what state it's in
@@ -4242,11 +4273,13 @@ export default function ChatPage() {
                 ?? normalizeDeploymentFingerprint(runtimeResourceId)
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
+                setCheckingSession(false)
                 startSetupPolling(tid, { deploymentFingerprint })
                 return
               }
 
               if (data.daemon?.runtimeMode === 'digitalocean' && isInstanceReady) {
+                setCheckingSession(false)
                 connectWebSocket(tid, storedSessionKey ?? undefined)
                 return
               }
@@ -4256,6 +4289,7 @@ export default function ChatPage() {
           }
 
           // Default: connect WebSocket directly when no daemon status is available yet.
+          setCheckingSession(false)
           connectWebSocket(tid, storedSessionKey ?? undefined)
         }
       } catch {

@@ -1210,8 +1210,17 @@ export async function deleteRuntimeSession(
   })
 }
 
-export async function listRuntimeModels(tenantId: string): Promise<RuntimeModelsData> {
-  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models')
+export async function listRuntimeModels(
+  tenantId: string,
+  options: { syncRuntime?: boolean } = {},
+): Promise<RuntimeModelsData> {
+  const query = new URLSearchParams()
+  if (options.syncRuntime) {
+    query.set('syncRuntime', 'true')
+  }
+
+  const path = query.size > 0 ? `/runtime/models?${query.toString()}` : '/runtime/models'
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
   return parseModels(payload.result)
 }
 

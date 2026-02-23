@@ -168,11 +168,7 @@ function readFiniteNumber(value: unknown): number | null {
 interface RuntimeSetupState {
   instanceState: string | null
   setupComplete: boolean | null
-  hasPublicIp: boolean | null
-  hasPrivateIp: boolean | null
-  probeCheckedAt: string | null
   probeGatewayPort: number | null
-  probeReachableVia: 'public' | 'private' | null
   publicProbeError: string | null
   privateProbeError: string | null
 }
@@ -190,37 +186,18 @@ function readRuntimeSetupStateFromError(error: unknown): RuntimeSetupState | nul
   }
 
   const gatewayProbe = readRecord(details.gatewayProbe)
-  const reachableVia = readString(gatewayProbe?.reachableVia)
-  const probeReachableVia = reachableVia === 'public' || reachableVia === 'private'
-    ? reachableVia
-    : null
 
   return {
     instanceState: readString(details.instanceState),
     setupComplete: readBoolean(details.setupComplete),
-    hasPublicIp: readBoolean(details.hasPublicIp),
-    hasPrivateIp: readBoolean(details.hasPrivateIp),
-    probeCheckedAt: readString(gatewayProbe?.checkedAt),
     probeGatewayPort: readFiniteNumber(gatewayProbe?.gatewayPort),
-    probeReachableVia,
     publicProbeError: readString(gatewayProbe?.publicProbeError),
     privateProbeError: readString(gatewayProbe?.privateProbeError),
   }
 }
 
 function formatRuntimeProbeError(value: string | null): string {
-  return value || 'ok'
-}
-
-function formatRuntimeCheckedAt(value: string | null): string | null {
-  if (!value) {
-    return null
-  }
-  const parsed = Date.parse(value)
-  if (!Number.isFinite(parsed)) {
-    return value
-  }
-  return new Date(parsed).toLocaleTimeString()
+  return value || 'pending'
 }
 
 function toIsoTimestampMs(value: unknown): number | null {
@@ -470,7 +447,6 @@ export default function HooksPage() {
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
   const [checkoutSessionId, setCheckoutSessionId] = useState('')
   const [runtimeSetupState, setRuntimeSetupState] = useState<RuntimeSetupState | null>(null)
-  const [runtimeSetupRetryCount, setRuntimeSetupRetryCount] = useState(0)
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function resetDeployProgress() {
@@ -479,7 +455,6 @@ export default function HooksPage() {
     setDeployElapsedSeconds(0)
     setDeployStageIndex(0)
     setRuntimeSetupState(null)
-    setRuntimeSetupRetryCount(0)
     writePersistedDeployStartedAt(null)
   }
 
@@ -927,12 +902,7 @@ export default function HooksPage() {
       setOauthAuthUrl(oauthStart.authUrl)
       setOauthExpiresAt(oauthStart.expiresAt)
       setRuntimeSetupState(null)
-      setRuntimeSetupRetryCount(0)
-      setStatus(
-        options?.auto
-          ? 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.'
-          : 'OAuth URL ready. Open it, sign in, then paste the localhost callback URL below.',
-      )
+      setStatus('')
       return true
     } catch (oauthError) {
       const message = readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.')
@@ -953,19 +923,11 @@ export default function HooksPage() {
         setOauthSessionId('')
         setOauthAuthUrl('')
         setOauthExpiresAt(null)
-        setRuntimeSetupRetryCount((previous) => previous + 1)
         if (setupState) {
           setRuntimeSetupState(setupState)
         }
         setError('')
-        if (setupState) {
-          const instanceStateLabel = setupState.instanceState ?? 'bootstrapping'
-          const publicProbe = formatRuntimeProbeError(setupState.publicProbeError)
-          const privateProbe = formatRuntimeProbeError(setupState.privateProbeError)
-          setStatus(`Setting up your instance (${instanceStateLabel}). Probe public=${publicProbe}, private=${privateProbe}.`)
-        } else {
-          setStatus('Setting up your instance...')
-        }
+        setStatus('Setting up your instance...')
         return false
       }
 
@@ -1050,7 +1012,6 @@ export default function HooksPage() {
     setOauthExpiresAt(null)
     setOauthCallback('')
     setRuntimeSetupState(null)
-    setRuntimeSetupRetryCount(0)
 
     try {
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
@@ -1185,7 +1146,6 @@ export default function HooksPage() {
         const setupLabel = runtimeSetupState.setupComplete === true ? 'true' : 'false'
         const publicProbe = formatRuntimeProbeError(runtimeSetupState.publicProbeError)
         const privateProbe = formatRuntimeProbeError(runtimeSetupState.privateProbeError)
-        const checkedAt = formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt)
 
         deployLines.push({
           id: 'runtime-state',
@@ -1197,30 +1157,11 @@ export default function HooksPage() {
           text: `[runtime] probe public=${publicProbe} private=${privateProbe} port=${runtimeSetupState.probeGatewayPort ?? '?'}`,
           tone: 'active',
         })
-        deployLines.push({
-          id: 'runtime-network',
-          text: `[runtime] network publicIp=${runtimeSetupState.hasPublicIp === true ? 'yes' : 'no'} privateIp=${runtimeSetupState.hasPrivateIp === true ? 'yes' : 'no'} via=${runtimeSetupState.probeReachableVia ?? 'none'}`,
-          tone: 'idle',
-        })
-        if (checkedAt) {
-          deployLines.push({
-            id: 'runtime-checked-at',
-            text: `[runtime] last probe ${checkedAt}`,
-            tone: 'idle',
-          })
-        }
-      }
-      if (runtimeSetupRetryCount > 0) {
-        deployLines.push({
-          id: 'runtime-retries',
-          text: `[runtime] oauth-start retries=${runtimeSetupRetryCount}`,
-          tone: 'idle',
-        })
       }
     } else if (waitingForPostInstallOpenAIOAuth) {
       deployLines.push({
         id: 'deploy-oauth-wait',
-        text: '[deploy] runtime reachable, waiting for OpenAI OAuth callback',
+        text: '[deploy] runtime reachable, waiting for sign-in completion',
         tone: 'active',
       })
     } else if (showConfetti) {
@@ -1248,7 +1189,6 @@ export default function HooksPage() {
     showConfetti,
     simulatedStageIndex,
     submitting,
-    runtimeSetupRetryCount,
     runtimeSetupState,
     waitingForPostInstallOpenAIOAuth,
     waitingForRuntimeBeforeOpenAIOAuth,
@@ -1315,16 +1255,13 @@ export default function HooksPage() {
               </section>
 
               {hasDeployStarted ? (() => {
-                const lennyOAuthNudge = waitingForPostInstallOpenAIOAuth
-                  ? 'Hey \u2014 I need you for a second. OpenAI OAuth is ready and waiting for you. Open the URL, sign in, paste the callback, and we\u2019re golden.'
-                  : null
                 const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
-                const currentMessage = lennyOAuthNudge ?? (visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null)
+                const currentMessage = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null
                 if (!currentMessage) return null
                 return (
                   <section className={cn(
                     'rounded-xl border bg-card/80 p-4 transition-colors',
-                    lennyOAuthNudge ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border/70',
+                    'border-border/70',
                   )}>
                     <div className="flex gap-2.5">
                       <Image
@@ -1363,44 +1300,6 @@ export default function HooksPage() {
                   </div>
                 </section>
 
-                {waitingForRuntimeBeforeOpenAIOAuth ? (
-                  <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      Setting up instance...
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      OAuth will appear once setup is complete...
-                    </p>
-                    {runtimeSetupState ? (
-                      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                        <p>
-                          state: <span className="font-mono">{runtimeSetupState.instanceState ?? 'unknown'}</span>,
-                          setupComplete: <span className="font-mono">{runtimeSetupState.setupComplete === true ? 'true' : 'false'}</span>
-                        </p>
-                        <p>
-                          probe public: <span className="font-mono">{formatRuntimeProbeError(runtimeSetupState.publicProbeError)}</span>,
-                          private: <span className="font-mono">{formatRuntimeProbeError(runtimeSetupState.privateProbeError)}</span>,
-                          port: <span className="font-mono">{runtimeSetupState.probeGatewayPort ?? '?'}</span>
-                        </p>
-                        <p>
-                          network publicIp: <span className="font-mono">{runtimeSetupState.hasPublicIp === true ? 'yes' : 'no'}</span>,
-                          privateIp: <span className="font-mono">{runtimeSetupState.hasPrivateIp === true ? 'yes' : 'no'}</span>,
-                          via: <span className="font-mono">{runtimeSetupState.probeReachableVia ?? 'none'}</span>
-                        </p>
-                        {formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt) ? (
-                          <p>
-                            last probe: <span className="font-mono">{formatRuntimeCheckedAt(runtimeSetupState.probeCheckedAt)}</span>
-                          </p>
-                        ) : null}
-                        <p>
-                          oauth retries: <span className="font-mono">{runtimeSetupRetryCount}</span>
-                        </p>
-                      </div>
-                    ) : null}
-                  </section>
-                ) : null}
-
                 {/* OAuth is handled in a modal overlay below */}
               </div>
             ) : null}
@@ -1414,7 +1313,7 @@ export default function HooksPage() {
                 {waitingForRuntimeBeforeOpenAIOAuth ? (
                   <p className="text-xs text-muted-foreground">Setting up your instance...</p>
                 ) : waitingForPostInstallOpenAIOAuth ? (
-                  <p className="text-xs text-muted-foreground">Finish OAuth to complete onboarding.</p>
+                  <p className="text-xs text-muted-foreground">Complete sign-in in the modal to finish setup.</p>
                 ) : upgradeRequired ? (
                   <p className="text-xs text-muted-foreground">Trial ended. Upgrade to deploy a managed instance.</p>
                 ) : !allChecksComplete ? (
@@ -1452,7 +1351,7 @@ export default function HooksPage() {
                 ) : waitingForRuntimeBeforeOpenAIOAuth ? (
                   'Finalizing'
                 ) : waitingForPostInstallOpenAIOAuth ? (
-                  'Awaiting OAuth'
+                  'Awaiting Sign-in'
                 ) : showConfetti ? (
                   <>
                     <Rocket className="mr-2 h-4 w-4" />

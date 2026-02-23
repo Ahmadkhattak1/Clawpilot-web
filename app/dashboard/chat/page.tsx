@@ -125,6 +125,11 @@ const INPUT_MIN_HEIGHT = INPUT_LINE_HEIGHT + INPUT_VERTICAL_PADDING
 const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 11 + INPUT_VERTICAL_PADDING
 const ONLINE_STABILITY_MS = 1800
 const ASSISTANT_PROGRESS_TICK_MS = 1000
+const WS_INITIAL_CONNECT_DELAY_MS = 1_500
+const HISTORY_POLL_INTERVAL_MS = 6_000
+const CHANNEL_STATUS_POLL_INTERVAL_MS = 25_000
+const CHANNEL_STATUS_PROBE_TIMEOUT_MS = 6_000
+const CHANNEL_STATUS_BACKGROUND_TIMEOUT_MS = 3_000
 const COMPOSER_TEMPLATE_COLLAPSED_COUNT = 4
 const SESSIONS_SIDEBAR_PREFERENCE_KEY = 'clawpilot:chat:sessions-sidebar:expanded'
 const PAYWALL_STORAGE_KEY_PREFIX = 'clawpilot:paywall:v1'
@@ -2961,10 +2966,19 @@ export default function ChatPage() {
     }
   }, [loadPersistedSessions, persistSession])
 
-  const refreshChannelStatus = useCallback(async (tid: string) => {
+  const refreshChannelStatus = useCallback(async (
+    tid: string,
+    options?: {
+      probe?: boolean
+      timeoutMs?: number
+    },
+  ) => {
     if (!tid) return
     try {
-      const snapshot = await listRuntimeChannelsStatus(tid, { probe: true, timeoutMs: 8_000 })
+      const snapshot = await listRuntimeChannelsStatus(tid, {
+        probe: options?.probe ?? false,
+        timeoutMs: options?.timeoutMs,
+      })
       setChannelStatusSnapshot(snapshot)
     } catch {
       // Ignore transient probe failures here. This is a best-effort live indicator.
@@ -3230,6 +3244,9 @@ export default function ChatPage() {
 
       stopHistoryPolling()
       historyPollRef.current = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          return
+        }
         const activeKey = activeSessionKeyRef.current
         if (activeKey !== normalizedSessionKey || historyPollInFlightRef.current) {
           return
@@ -3240,7 +3257,7 @@ export default function ChatPage() {
           .finally(() => {
             historyPollInFlightRef.current = false
           })
-      }, 4000)
+      }, HISTORY_POLL_INTERVAL_MS)
     },
     [loadSessionHistory, stopHistoryPolling],
   )
@@ -3776,7 +3793,7 @@ export default function ChatPage() {
                 setSetupPhase('starting')
                 connectWebSocket(tid, activeSessionKeyRef.current ?? undefined)
                 wsInitialConnectTimeoutRef.current = null
-              }, 4000)
+              }, WS_INITIAL_CONNECT_DELAY_MS)
             }
           } else if (instanceState === 'bootstrapping') {
             setSetupPhase('installing')
@@ -4202,7 +4219,10 @@ export default function ChatPage() {
       return
     }
 
-    void refreshChannelStatus(tenantId)
+    void refreshChannelStatus(tenantId, {
+      probe: true,
+      timeoutMs: CHANNEL_STATUS_PROBE_TIMEOUT_MS,
+    })
 
     if (channelsPollRef.current) {
       clearInterval(channelsPollRef.current)
@@ -4210,8 +4230,14 @@ export default function ChatPage() {
     }
 
     channelsPollRef.current = setInterval(() => {
-      void refreshChannelStatus(tenantId)
-    }, 15_000)
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
+      void refreshChannelStatus(tenantId, {
+        probe: false,
+        timeoutMs: CHANNEL_STATUS_BACKGROUND_TIMEOUT_MS,
+      })
+    }, CHANNEL_STATUS_POLL_INTERVAL_MS)
 
     return () => {
       if (channelsPollRef.current) {

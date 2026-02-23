@@ -3264,6 +3264,7 @@ export default function ChatPage() {
       ...currentSetup,
       method: 'oauth',
       oauthConnected: true,
+      updatedAt: new Date().toISOString(),
     }
     window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
   }, [])

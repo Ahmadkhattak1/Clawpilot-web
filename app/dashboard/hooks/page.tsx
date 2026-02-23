@@ -4,13 +4,12 @@ import type { Session } from '@supabase/supabase-js'
 import Image from 'next/image'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Rocket, ShieldCheck, TerminalSquare } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader2, Rocket, TerminalSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import { buildTenantAuthHeaders } from '@/lib/backend-auth'
 import {
@@ -25,7 +24,7 @@ import {
   isModelSupportedByProvider,
 } from '@/lib/model-providers'
 import { isOnboardingComplete, markOnboardingComplete } from '@/lib/onboarding-state'
-import { completeRuntimeOpenAICodexOAuth, getBackendUrl, startRuntimeOpenAICodexOAuth } from '@/lib/runtime-controls'
+import { getBackendUrl } from '@/lib/runtime-controls'
 import { SKILLS_CONFIG_STORAGE_KEY, SKILLS_STORAGE_KEY, type SkillConfigStorage } from '@/lib/skill-options'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
@@ -90,15 +89,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-function isRuntimeGatewayStartingError(message: string): boolean {
-  const normalized = message.trim().toLowerCase()
-  return (
-    normalized.includes('gateway_starting') ||
-    normalized.includes('still bootstrapping') ||
-    normalized.includes('runtime gateway is not reachable yet')
-  )
-}
-
 const DEPLOY_STAGE_LABELS = [
   'bootstrap runtime',
   'install dependencies',
@@ -136,69 +126,6 @@ function readString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function readBoolean(value: unknown): boolean | null {
-  if (typeof value === 'boolean') {
-    return value
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase()
-    if (normalized === 'true' || normalized === '1') {
-      return true
-    }
-    if (normalized === 'false' || normalized === '0') {
-      return false
-    }
-  }
-  return null
-}
-
-function readFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) {
-      return parsed
-    }
-  }
-  return null
-}
-
-interface RuntimeSetupState {
-  instanceState: string | null
-  setupComplete: boolean | null
-  probeGatewayPort: number | null
-  publicProbeError: string | null
-  privateProbeError: string | null
-}
-
-function readRuntimeSetupStateFromError(error: unknown): RuntimeSetupState | null {
-  const errorRecord = readRecord(error)
-  if (!errorRecord) {
-    return null
-  }
-
-  const payload = readRecord(errorRecord.payload) ?? errorRecord
-  const details = readRecord(payload.details)
-  if (!details) {
-    return null
-  }
-
-  const gatewayProbe = readRecord(details.gatewayProbe)
-
-  return {
-    instanceState: readString(details.instanceState),
-    setupComplete: readBoolean(details.setupComplete),
-    probeGatewayPort: readFiniteNumber(gatewayProbe?.gatewayPort),
-    publicProbeError: readString(gatewayProbe?.publicProbeError),
-    privateProbeError: readString(gatewayProbe?.privateProbeError),
-  }
-}
-
-function formatRuntimeProbeError(value: string | null): string {
-  return value || 'pending'
-}
 
 function toIsoTimestampMs(value: unknown): number | null {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -211,22 +138,6 @@ function toIsoTimestampMs(value: unknown): number | null {
   }
 
   return parsed
-}
-
-function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
-  const expiresAtMs = Date.parse(expiresAt)
-  if (!Number.isFinite(expiresAtMs)) {
-    return 'Unknown'
-  }
-
-  const remainingMs = expiresAtMs - nowMs
-  const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000))
-  const remainingMinutes = Math.floor(remainingSeconds / 60)
-  const secondsPart = remainingSeconds % 60
-  if (remainingMs <= 0) {
-    return 'Expired'
-  }
-  return `${remainingMinutes}m ${secondsPart}s`
 }
 
 const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
@@ -257,7 +168,6 @@ function getVisibleLennyMessages(elapsedSeconds: number): string[] {
 }
 
 const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
-const MAX_RUNTIME_SETUP_WAIT_SECONDS = 10 * 60
 
 function readPersistedDeployStartedAt(): number | null {
   if (typeof window === 'undefined') return null
@@ -434,19 +344,12 @@ export default function HooksPage() {
     return persisted ? Math.floor((Date.now() - persisted) / 1000) : 0
   })
   const [activeSession, setActiveSession] = useState<Session | null>(null)
-  const [oauthSessionId, setOauthSessionId] = useState('')
-  const [oauthAuthUrl, setOauthAuthUrl] = useState('')
-  const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
-  const [oauthCallback, setOauthCallback] = useState('')
-  const [oauthSubmitting, setOauthSubmitting] = useState(false)
-  const [oauthCountdownNowMs, setOauthCountdownNowMs] = useState(() => Date.now())
   const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [upgradeCheckoutLoading, setUpgradeCheckoutLoading] = useState(false)
   const [postCheckoutSuccess, setPostCheckoutSuccess] = useState(false)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
   const [checkoutSessionId, setCheckoutSessionId] = useState('')
-  const [runtimeSetupState, setRuntimeSetupState] = useState<RuntimeSetupState | null>(null)
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function resetDeployProgress() {
@@ -454,7 +357,6 @@ export default function HooksPage() {
     setDeployStartedAt(null)
     setDeployElapsedSeconds(0)
     setDeployStageIndex(0)
-    setRuntimeSetupState(null)
     writePersistedDeployStartedAt(null)
   }
 
@@ -537,25 +439,10 @@ export default function HooksPage() {
   }, [providerSetup, selectedModelId, selectedModelProviderId])
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
-  const requiresPostInstallOpenAIOAuth = isOpenAIOAuthSetupPending(selectedModelProviderId, providerSetup)
-  const oauthSessionReady = Boolean(oauthSessionId && oauthAuthUrl)
-  const waitingForRuntimeBeforeOpenAIOAuth =
-    requiresPostInstallOpenAIOAuth &&
-    hasDeployStarted &&
-    !submitting &&
-    !showConfetti &&
-    !oauthSessionReady
-  const waitingForPostInstallOpenAIOAuth =
-    requiresPostInstallOpenAIOAuth &&
-    hasDeployStarted &&
-    !submitting &&
-    !showConfetti &&
-    oauthSessionReady
-
   useEffect(() => {
-    if (submitting || showConfetti || waitingForPostInstallOpenAIOAuth || waitingForRuntimeBeforeOpenAIOAuth) return
+    if (submitting || showConfetti) return
     setDeployStageIndex(0)
-  }, [showConfetti, submitting, waitingForPostInstallOpenAIOAuth, waitingForRuntimeBeforeOpenAIOAuth])
+  }, [showConfetti, submitting])
 
   useEffect(() => {
     if (!submitting) return
@@ -574,15 +461,6 @@ export default function HooksPage() {
       }
     }
   }, [])
-
-  useEffect(() => {
-    if (!oauthExpiresAt) return
-    setOauthCountdownNowMs(Date.now())
-    const timer = setInterval(() => {
-      setOauthCountdownNowMs(Date.now())
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [oauthExpiresAt])
 
   useEffect(() => {
     if (!deployStartedAt) return
@@ -838,30 +716,6 @@ export default function HooksPage() {
     return null
   }
 
-  function syncProviderSetupOAuthConnected() {
-    if (typeof window === 'undefined' || selectedModelProviderId !== 'openai') {
-      return
-    }
-
-    const setupStore = getStoredProviderSetup()
-    const current = setupStore.openai
-    if (!current || current.method !== 'oauth') {
-      return
-    }
-
-    const nextSetup: ProviderSetupStorage = {
-      ...setupStore,
-      openai: {
-        ...current,
-        oauthConnected: true,
-        updatedAt: new Date().toISOString(),
-      },
-    }
-
-    window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(nextSetup))
-    setProviderSetup(nextSetup.openai ?? null)
-  }
-
   async function finalizeSetupAndRedirect(nextStatus: string) {
     setShowConfetti(true)
     setError('')
@@ -883,105 +737,6 @@ export default function HooksPage() {
     redirectTimeoutRef.current = setTimeout(() => {
       router.push('/chat')
     }, 1200)
-  }
-
-  async function startOpenAIOAuthSession(options?: { auto?: boolean }): Promise<boolean> {
-    if (!tenantId) {
-      setError('Session error.')
-      return false
-    }
-
-    setOauthSubmitting(true)
-    setError('')
-
-    try {
-      const oauthStart = await startRuntimeOpenAICodexOAuth(tenantId, {
-        modelId: selectedModelId ?? undefined,
-      })
-      setOauthSessionId(oauthStart.sessionId)
-      setOauthAuthUrl(oauthStart.authUrl)
-      setOauthExpiresAt(oauthStart.expiresAt)
-      setRuntimeSetupState(null)
-      setStatus('')
-      return true
-    } catch (oauthError) {
-      const message = readErrorMessage(oauthError, 'Unable to start OpenAI OAuth.')
-      if (isRuntimeGatewayStartingError(message)) {
-        const setupState = readRuntimeSetupStateFromError(oauthError)
-        const runtimeSetupTimedOut = options?.auto && deployElapsedSeconds >= MAX_RUNTIME_SETUP_WAIT_SECONDS
-        if (runtimeSetupTimedOut) {
-          const waitMinutes = Math.floor(MAX_RUNTIME_SETUP_WAIT_SECONDS / 60)
-          resetDeployProgress()
-          setOauthSessionId('')
-          setOauthAuthUrl('')
-          setOauthExpiresAt(null)
-          setError(`Instance setup timed out after ${waitMinutes} minutes. Deployment was reset so you can retry.`)
-          setStatus('')
-          return false
-        }
-
-        setOauthSessionId('')
-        setOauthAuthUrl('')
-        setOauthExpiresAt(null)
-        if (setupState) {
-          setRuntimeSetupState(setupState)
-        }
-        setError('')
-        setStatus('Setting up your instance...')
-        return false
-      }
-
-      setError(message)
-      if (options?.auto) {
-        resetDeployProgress()
-        setStatus('')
-      }
-      return false
-    } finally {
-      setOauthSubmitting(false)
-    }
-  }
-
-  async function completeOpenAIOAuthSession() {
-    if (!tenantId) {
-      setError('Session error.')
-      return
-    }
-
-    const callback = oauthCallback.trim()
-    if (!oauthSessionId) {
-      setError('Generate OAuth URL first.')
-      return
-    }
-    if (!callback) {
-      setError('Paste callback URL.')
-      return
-    }
-
-    setOauthSubmitting(true)
-    setError('')
-    setStatus('Finalizing OpenAI OAuth...')
-
-    try {
-      const oauthResult = await completeRuntimeOpenAICodexOAuth(tenantId, {
-        sessionId: oauthSessionId,
-        callback,
-        modelId: selectedModelId ?? undefined,
-      })
-
-      if (!oauthResult.oauthConnected) {
-        throw new Error('OpenAI OAuth did not complete.')
-      }
-
-      syncProviderSetupOAuthConnected()
-      setOauthCallback('')
-      await finalizeSetupAndRedirect('OpenAI OAuth connected. Opening chat...')
-    } catch (oauthError) {
-      setError(readErrorMessage(oauthError, 'Unable to complete OpenAI OAuth.'))
-      setStatus('')
-    } finally {
-      setOauthSubmitting(false)
-    }
   }
 
   async function completeSetup() {
@@ -1007,11 +762,6 @@ export default function HooksPage() {
     setError('')
     setStatus('Deploy in progress...')
     setShowConfetti(false)
-    setOauthSessionId('')
-    setOauthAuthUrl('')
-    setOauthExpiresAt(null)
-    setOauthCallback('')
-    setRuntimeSetupState(null)
 
     try {
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
@@ -1075,13 +825,7 @@ export default function HooksPage() {
 
       setUpgradeRequired(false)
       setDeployStageIndex(DEPLOY_STAGE_LABELS.length)
-      if (requiresPostInstallOpenAIOAuth) {
-        setStatus('Setting up your instance...')
-        await startOpenAIOAuthSession({ auto: true })
-        return
-      }
-
-      await finalizeSetupAndRedirect('Deployment complete. Opening chat...')
+      await finalizeSetupAndRedirect('Deployment started. Opening chat...')
     } catch {
       resetDeployProgress()
       setError('Network error.')
@@ -1090,18 +834,6 @@ export default function HooksPage() {
       setSubmitting(false)
     }
   }
-
-  useEffect(() => {
-    if (!waitingForRuntimeBeforeOpenAIOAuth || oauthSubmitting || oauthSessionReady) {
-      return
-    }
-
-    const timer = setTimeout(() => {
-      void startOpenAIOAuthSession({ auto: true })
-    }, 4000)
-
-    return () => clearTimeout(timer)
-  }, [oauthSessionReady, oauthSubmitting, waitingForRuntimeBeforeOpenAIOAuth])
 
   // On reload, simulate terminal progress based on elapsed time instead of showing everything instantly complete
   const simulatedStageIndex = useMemo(() => {
@@ -1118,7 +850,7 @@ export default function HooksPage() {
       tone: check.complete ? 'ok' : 'idle',
     }))
 
-    const allStagesDone = showConfetti || waitingForPostInstallOpenAIOAuth
+    const allStagesDone = showConfetti
     const deployLines: TerminalLine[] = DEPLOY_STAGE_LABELS.map((label, index) => {
       const isDone =
         allStagesDone ||
@@ -1135,39 +867,10 @@ export default function HooksPage() {
       }
     })
 
-    if (waitingForRuntimeBeforeOpenAIOAuth) {
-      deployLines.push({
-        id: 'deploy-oauth-preparing',
-        text: '[deploy] setting up instance...',
-        tone: 'active',
-      })
-      if (runtimeSetupState) {
-        const stateLabel = runtimeSetupState.instanceState ?? 'unknown'
-        const setupLabel = runtimeSetupState.setupComplete === true ? 'true' : 'false'
-        const publicProbe = formatRuntimeProbeError(runtimeSetupState.publicProbeError)
-        const privateProbe = formatRuntimeProbeError(runtimeSetupState.privateProbeError)
-
-        deployLines.push({
-          id: 'runtime-state',
-          text: `[runtime] state=${stateLabel} setupComplete=${setupLabel}`,
-          tone: 'active',
-        })
-        deployLines.push({
-          id: 'runtime-probe',
-          text: `[runtime] probe public=${publicProbe} private=${privateProbe} port=${runtimeSetupState.probeGatewayPort ?? '?'}`,
-          tone: 'active',
-        })
-      }
-    } else if (waitingForPostInstallOpenAIOAuth) {
-      deployLines.push({
-        id: 'deploy-oauth-wait',
-        text: '[deploy] runtime reachable, waiting for sign-in completion',
-        tone: 'active',
-      })
-    } else if (showConfetti) {
+    if (showConfetti) {
       deployLines.push({
         id: 'deploy-success',
-        text: '[deploy] runtime reachable, chat service online',
+        text: '[deploy] provisioning accepted, finishing setup',
         tone: 'ok',
       })
     }
@@ -1189,9 +892,6 @@ export default function HooksPage() {
     showConfetti,
     simulatedStageIndex,
     submitting,
-    runtimeSetupState,
-    waitingForPostInstallOpenAIOAuth,
-    waitingForRuntimeBeforeOpenAIOAuth,
   ])
 
   if (checkingSession) {
@@ -1299,8 +999,6 @@ export default function HooksPage() {
                     <DeployTerminal lines={terminalLines} running={submitting} />
                   </div>
                 </section>
-
-                {/* OAuth is handled in a modal overlay below */}
               </div>
             ) : null}
           </div>
@@ -1310,11 +1008,7 @@ export default function HooksPage() {
               <div className="max-w-2xl flex-1 space-y-1">
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-                {waitingForRuntimeBeforeOpenAIOAuth ? (
-                  <p className="text-xs text-muted-foreground">Setting up your instance...</p>
-                ) : waitingForPostInstallOpenAIOAuth ? (
-                  <p className="text-xs text-muted-foreground">Complete sign-in in the modal to finish setup.</p>
-                ) : upgradeRequired ? (
+                {upgradeRequired ? (
                   <p className="text-xs text-muted-foreground">Trial ended. Upgrade to deploy a managed instance.</p>
                 ) : !allChecksComplete ? (
                   <p className="text-xs text-muted-foreground">Complete checks.</p>
@@ -1327,10 +1021,7 @@ export default function HooksPage() {
                 disabled={
                   submitting ||
                   hasDeployStarted ||
-                  oauthSubmitting ||
                   showConfetti ||
-                  waitingForRuntimeBeforeOpenAIOAuth ||
-                  waitingForPostInstallOpenAIOAuth ||
                   !allChecksComplete ||
                   upgradeCheckoutLoading
                 }
@@ -1348,10 +1039,6 @@ export default function HooksPage() {
                   </>
                 ) : upgradeRequired ? (
                   'Upgrade to deploy'
-                ) : waitingForRuntimeBeforeOpenAIOAuth ? (
-                  'Finalizing'
-                ) : waitingForPostInstallOpenAIOAuth ? (
-                  'Awaiting Sign-in'
                 ) : showConfetti ? (
                   <>
                     <Rocket className="mr-2 h-4 w-4" />
@@ -1456,89 +1143,6 @@ export default function HooksPage() {
         </div>
       ) : null}
 
-      {waitingForPostInstallOpenAIOAuth ? (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
-          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
-            <p className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              OpenAI OAuth
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your instance is ready. Complete OAuth to finish setup.
-            </p>
-
-            {oauthAuthUrl ? (
-              <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                <li>Click <span className="font-medium text-foreground">Open URL</span> and sign in to your OpenAI account.</li>
-                <li>Click <span className="font-medium text-foreground">Continue</span> to authorize.</li>
-                <li>Copy the full browser URL that starts with <span className="font-mono text-foreground">http://localhost:1455/auth/callback</span>.</li>
-                <li>Paste it below and click <span className="font-medium text-foreground">Complete OAuth</span>.</li>
-              </ol>
-            ) : null}
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void startOpenAIOAuthSession()}
-                disabled={submitting || oauthSubmitting}
-              >
-                {oauthSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating
-                  </>
-                ) : oauthSessionId ? (
-                  'Regenerate URL'
-                ) : (
-                  'Generate URL'
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => window.open(oauthAuthUrl, '_blank', 'noopener,noreferrer')}
-                disabled={!oauthAuthUrl || submitting || oauthSubmitting}
-              >
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Open URL
-              </Button>
-            </div>
-
-            {oauthExpiresAt ? (
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Expires in: {formatOAuthExpiryCountdown(oauthExpiresAt, oauthCountdownNowMs)}
-              </p>
-            ) : null}
-
-            <div className="mt-3 space-y-1.5">
-              <p className="text-xs font-medium text-foreground">Callback URL</p>
-              <Input
-                value={oauthCallback}
-                onChange={(event) => setOauthCallback(event.target.value)}
-                placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-                autoComplete="off"
-              />
-            </div>
-
-            <Button
-              type="button"
-              className="mt-3 w-full"
-              onClick={() => void completeOpenAIOAuthSession()}
-              disabled={!oauthSessionId || !oauthCallback.trim() || submitting || oauthSubmitting}
-            >
-              {oauthSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Completing
-                </>
-              ) : (
-                'Complete OAuth'
-              )}
-            </Button>
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }

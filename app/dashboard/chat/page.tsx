@@ -95,6 +95,8 @@ interface SetupRuntimeStatusSnapshot {
   instanceId: string | null
   instanceState: string | null
   setupComplete: boolean
+  publicIp: string | null
+  privateIp: string | null
   hasPublicIp: boolean
   hasPrivateIp: boolean
   gatewayProbe: {
@@ -163,6 +165,8 @@ const EMPTY_SETUP_RUNTIME_STATUS: SetupRuntimeStatusSnapshot = {
   instanceId: null,
   instanceState: null,
   setupComplete: false,
+  publicIp: null,
+  privateIp: null,
   hasPublicIp: false,
   hasPrivateIp: false,
   gatewayProbe: {
@@ -1287,19 +1291,74 @@ function formatInstanceStateLabel(instanceState: string | null): string {
     .join(' ')
 }
 
+function formatRelativeProbeTime(checkedAt: string | null): string | null {
+  if (!checkedAt) return null
+  const checkedAtMs = Date.parse(checkedAt)
+  if (!Number.isFinite(checkedAtMs)) return null
+
+  const deltaSeconds = Math.max(0, Math.floor((Date.now() - checkedAtMs) / 1000))
+  if (deltaSeconds < 10) return 'just now'
+  if (deltaSeconds < 60) return `${deltaSeconds}s ago`
+
+  const deltaMinutes = Math.floor(deltaSeconds / 60)
+  if (deltaMinutes < 60) return `${deltaMinutes}m ago`
+
+  const deltaHours = Math.floor(deltaMinutes / 60)
+  return `${deltaHours}h ago`
+}
+
+function formatGatewayProbeIssue(runtimeStatus: SetupRuntimeStatusSnapshot): string | null {
+  const publicError = runtimeStatus.gatewayProbe.publicProbeError
+  const privateError = runtimeStatus.gatewayProbe.privateProbeError
+  const parts: string[] = []
+
+  if (publicError && publicError !== 'public_ip_missing') {
+    const label = publicError === 'ECONNREFUSED'
+      ? 'public endpoint not accepting connections yet'
+      : publicError === 'timeout'
+        ? 'public endpoint still timing out'
+        : `public probe: ${publicError}`
+    parts.push(label)
+  }
+
+  if (privateError && privateError !== 'private_ip_missing') {
+    const label = privateError === 'ECONNREFUSED'
+      ? 'private endpoint not accepting connections yet'
+      : privateError === 'timeout'
+        ? 'private endpoint still timing out'
+        : `private probe: ${privateError}`
+    parts.push(label)
+  }
+
+  if (parts.length === 0) return null
+  return parts.join(' | ')
+}
+
 function buildSetupLiveSignals(runtimeStatus: SetupRuntimeStatusSnapshot): SetupLiveSignal[] {
   const hasInstance = Boolean(runtimeStatus.instanceId || runtimeStatus.instanceState)
   const hasNetwork = runtimeStatus.hasPublicIp || runtimeStatus.hasPrivateIp
   const gatewayReady = runtimeStatus.gatewayProbe.ready === true
   const gatewayChecked = Boolean(runtimeStatus.gatewayProbe.checkedAt)
-
+  const gatewayProbeIssue = formatGatewayProbeIssue(runtimeStatus)
+  const lastGatewayCheck = formatRelativeProbeTime(runtimeStatus.gatewayProbe.checkedAt)
+  const reachableVia = runtimeStatus.gatewayProbe.reachableVia?.trim()
+  const reachabilityHint = reachableVia
+    ? `via ${reachableVia === 'public' ? 'public IP' : reachableVia === 'private' ? 'private IP' : reachableVia}`
+    : 'from instance probes'
+  const gatewayPort = runtimeStatus.gatewayProbe.gatewayPort ?? 18789
   const gatewayDetail = gatewayReady
-    ? `Ready on port ${runtimeStatus.gatewayProbe.gatewayPort ?? 18789}.`
-    : runtimeStatus.gatewayProbe.publicProbeError || runtimeStatus.gatewayProbe.privateProbeError
-      ? 'Startup checks are still running. We keep retrying automatically.'
+    ? `Reachable ${reachabilityHint} on port ${gatewayPort}${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
+    : gatewayProbeIssue
+      ? `Waiting for gateway on port ${gatewayPort}${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}. ${gatewayProbeIssue}.`
       : gatewayChecked
-        ? 'Gateway is still starting. Final readiness checks are in progress.'
+        ? `Gateway startup checks are still running${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
         : 'Gateway checks begin as soon as instance networking is available.'
+  const networkDetail = hasNetwork
+    ? [
+        runtimeStatus.publicIp ? `Public: ${runtimeStatus.publicIp}` : null,
+        runtimeStatus.privateIp ? `Private: ${runtimeStatus.privateIp}` : null,
+      ].filter((value): value is string => Boolean(value)).join(' | ')
+    : 'Waiting for network routes before installation continues.'
 
   return [
     {
@@ -1313,9 +1372,7 @@ function buildSetupLiveSignals(runtimeStatus: SetupRuntimeStatusSnapshot): Setup
     {
       id: 'network',
       label: 'Network routing',
-      detail: hasNetwork
-        ? 'Network addresses are assigned and reachable.'
-        : 'Waiting for network routes before installation continues.',
+      detail: networkDetail,
       state: hasNetwork ? 'ready' : hasInstance ? 'active' : 'pending',
     },
     {
@@ -4038,6 +4095,10 @@ export default function ChatPage() {
       }
 
       const poll = async () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          return
+        }
+
         try {
           const headers = await buildTenantRequestHeaders(tid)
           const res = await fetch(`${backendUrl}/api/v1/daemons/${tid}/status`, {
@@ -4154,6 +4215,8 @@ export default function ChatPage() {
             instanceId,
             instanceState,
             setupComplete,
+            publicIp,
+            privateIp,
             hasPublicIp: Boolean(publicIp),
             hasPrivateIp: Boolean(privateIp),
             gatewayProbe: {
@@ -4535,6 +4598,8 @@ export default function ChatPage() {
                 instanceId,
                 instanceState,
                 setupComplete,
+                publicIp,
+                privateIp,
                 hasPublicIp: Boolean(publicIp),
                 hasPrivateIp: Boolean(privateIp),
                 gatewayProbe: {
@@ -4667,10 +4732,21 @@ export default function ChatPage() {
       return
     }
 
-    void refreshChannelStatus(tenantId, {
-      probe: true,
-      timeoutMs: CHANNEL_STATUS_PROBE_TIMEOUT_MS,
-    })
+    const setupInProgress = setupPhase !== null && setupPhase !== 'ready'
+    if (setupInProgress) {
+      if (channelsPollRef.current) {
+        clearInterval(channelsPollRef.current)
+        channelsPollRef.current = null
+      }
+      return
+    }
+
+    if (typeof document === 'undefined' || !document.hidden) {
+      void refreshChannelStatus(tenantId, {
+        probe: true,
+        timeoutMs: CHANNEL_STATUS_PROBE_TIMEOUT_MS,
+      })
+    }
 
     if (channelsPollRef.current) {
       clearInterval(channelsPollRef.current)
@@ -4693,7 +4769,7 @@ export default function ChatPage() {
         channelsPollRef.current = null
       }
     }
-  }, [checkingSession, refreshChannelStatus, tenantId])
+  }, [checkingSession, refreshChannelStatus, setupPhase, tenantId])
 
   function handleTemplateChipsPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (!showAllComposerTemplates) return

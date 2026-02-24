@@ -392,12 +392,30 @@ function isOpenAIOAuthAuthorizeUrl(value: string): boolean {
 }
 
 function resolveOAuthPendingFromRuntimeModelConfig(input: {
-  modelAuthMethod: 'api-key' | 'oauth' | null
-  modelOauthConnected: boolean | null
+  currentModelId: string | null
+  storedModelConfig: {
+    modelProviderId: string | null
+    modelId: string | null
+    modelAuthMethod: 'api-key' | 'oauth' | null
+    modelOauthConnected: boolean | null
+  } | null
 } | null): boolean | null {
-  if (!input) return null
-  if (input.modelAuthMethod !== 'oauth') return false
-  return input.modelOauthConnected !== true
+  const stored = input?.storedModelConfig
+  if (!stored) return null
+
+  const providerId = stored.modelProviderId?.trim().toLowerCase() ?? ''
+  const modelId = (stored.modelId ?? input?.currentModelId ?? '').trim().toLowerCase()
+  const requiresOpenAIOAuth =
+    providerId === 'openai-codex'
+    || providerId === 'openai'
+    || modelId.startsWith('openai-codex/')
+    || modelId.startsWith('openai/')
+  if (!requiresOpenAIOAuth) return false
+
+  if (stored.modelAuthMethod !== null && stored.modelAuthMethod !== 'oauth') {
+    return false
+  }
+  return stored.modelOauthConnected !== true
 }
 
 function isRecoverableOAuthWorkspaceError(message: string): boolean {
@@ -446,6 +464,22 @@ function normalizeDeploymentFingerprint(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function buildDeploymentFingerprint(input: {
+  instanceId: string | null
+  runtimeResourceId: string | null
+  daemonUpdatedAt: string | null
+}): string | null {
+  const instanceFingerprint = normalizeDeploymentFingerprint(input.instanceId)
+  const runtimeFingerprint = normalizeDeploymentFingerprint(input.runtimeResourceId)
+  const updatedAtFingerprint = normalizeDeploymentFingerprint(input.daemonUpdatedAt)
+  const baseFingerprint = instanceFingerprint ?? runtimeFingerprint
+
+  if (baseFingerprint && updatedAtFingerprint) {
+    return `${baseFingerprint}@${updatedAtFingerprint}`
+  }
+  return baseFingerprint ?? updatedAtFingerprint
 }
 
 function readPersistedSetupStartedAt(tenantId: string): PersistedSetupStartState | null {
@@ -1289,6 +1323,7 @@ function SetupProgressView({
   steps,
   runtimeStatus,
   startedAt,
+  issueMessage,
   timedOut,
   oauthRequired,
   oauthConnected,
@@ -1309,6 +1344,7 @@ function SetupProgressView({
   steps: SetupStep[]
   runtimeStatus: SetupRuntimeStatusSnapshot
   startedAt: number
+  issueMessage: string
   timedOut: boolean
   oauthRequired: boolean
   oauthConnected: boolean
@@ -1503,6 +1539,9 @@ function SetupProgressView({
 
           <div className="mt-5 flex flex-col items-center gap-3 text-center">
             <p className="text-sm text-muted-foreground">Elapsed: {elapsed}</p>
+            {issueMessage ? (
+              <p className="max-w-xl text-sm text-destructive">{issueMessage}</p>
+            ) : null}
             {timedOut ? (
               <>
                 <p className="text-sm text-amber-600">This is taking longer than expected.</p>
@@ -1740,6 +1779,7 @@ export default function ChatPage() {
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
   const [setupStartedAt, setSetupStartedAt] = useState<number>(0)
   const [setupTimedOut, setSetupTimedOut] = useState(false)
+  const [setupIssue, setSetupIssue] = useState('')
   const [setupRuntimeStatus, setSetupRuntimeStatus] = useState<SetupRuntimeStatusSnapshot>(EMPTY_SETUP_RUNTIME_STATUS)
   const [oauthRequired, setOauthRequired] = useState(false)
   const [oauthConnected, setOauthConnected] = useState(false)
@@ -3341,8 +3381,11 @@ export default function ChatPage() {
   const recoverConnectedOAuthState = useCallback(async (): Promise<boolean> => {
     if (!tenantId) return false
     try {
-      const runtimeModels = await listRuntimeModels(tenantId, { syncRuntime: true })
-      const oauthPending = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels.storedModelConfig)
+      const runtimeModels = await listRuntimeModels(tenantId, {
+        syncRuntime: true,
+        includeModels: false,
+      })
+      const oauthPending = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels)
       if (oauthPending !== false) {
         return false
       }
@@ -3611,8 +3654,13 @@ export default function ChatPage() {
             }
             stopPolling()
             if (oauthRequiredRef.current && !oauthConnectedRef.current) {
-              setSetupPhase('oauth')
-              setOauthStatus('OAuth is required before chat can start.')
+              void recoverConnectedOAuthState().then((recovered) => {
+                if (recovered) {
+                  return
+                }
+                setSetupPhase('oauth')
+                setOauthStatus('OAuth is required before chat can start.')
+              })
             } else {
               writePersistedSetupStartedAt(tid, null)
               setSetupPhase('ready')
@@ -3789,6 +3837,7 @@ export default function ChatPage() {
       persistMessage,
       resetConnectionStability,
       resetTypingState,
+      recoverConnectedOAuthState,
       resolvePendingResponse,
       scrollToBottom,
       setShowConnectionIssue,
@@ -3808,6 +3857,7 @@ export default function ChatPage() {
       stopPolling()
       setSetupPhase('checking')
       setSetupTimedOut(false)
+      setSetupIssue('')
       setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
 
       let activeDeploymentFingerprint = normalizeDeploymentFingerprint(options.deploymentFingerprint)
@@ -3845,6 +3895,18 @@ export default function ChatPage() {
       scheduleSetupTimeout(startedAt)
 
       let wsAttempted = false
+      const attemptWebSocketWarmup = () => {
+        if (wsAttempted) {
+          return
+        }
+        wsAttempted = true
+        // Give the daemon a short warm-up window, then connect. If it is not
+        // ready yet, the WebSocket onclose retry loop handles retries.
+        wsInitialConnectTimeoutRef.current = setTimeout(() => {
+          connectWebSocket(tid, activeSessionKeyRef.current ?? undefined)
+          wsInitialConnectTimeoutRef.current = null
+        }, WS_INITIAL_CONNECT_DELAY_MS)
+      }
 
       const poll = async () => {
         try {
@@ -3854,10 +3916,40 @@ export default function ChatPage() {
           })
 
           if (!res.ok) {
+            let errorCode = ''
+            let errorMessage = ''
+            try {
+              const payload = await res.json() as { error?: unknown; message?: unknown }
+              if (typeof payload.error === 'string') {
+                errorCode = payload.error.trim()
+              }
+              if (typeof payload.message === 'string') {
+                errorMessage = payload.message.trim()
+              }
+            } catch {
+              // Ignore malformed/non-JSON error payloads.
+            }
+
+            if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED') {
+              setSetupIssue(errorMessage || 'DigitalOcean credentials are invalid. Rotate DO_API_TOKEN and retry.')
+              setSetupTimedOut(true)
+              stopPolling()
+              return
+            }
+            if (errorCode === 'RUNTIME_INSTANCE_MISSING') {
+              setSetupIssue(errorMessage || 'OpenClaw instance is missing in DigitalOcean. Retry deployment.')
+              setSetupTimedOut(true)
+              stopPolling()
+              return
+            }
+
             // Daemon might not exist yet — keep as provisioning
             setSetupPhase('provisioning')
+            attemptWebSocketWarmup()
             return
           }
+
+          setSetupIssue('')
 
           const data = (await res.json()) as {
             daemon?: { runtimeMode?: string }
@@ -3871,6 +3963,7 @@ export default function ChatPage() {
           const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
           const instanceId = readRecordString(instanceRecord, 'instanceId')
           const runtimeResourceId = readRecordString(daemonRecord, 'runtimeResourceId')
+          const daemonUpdatedAt = readRecordString(daemonRecord, 'updatedAt')
           const publicIp = readRecordString(instanceRecord, 'publicIp')
           const privateIp = readRecordString(instanceRecord, 'privateIp')
           const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
@@ -3884,9 +3977,11 @@ export default function ChatPage() {
           const gatewayReachableVia = readRecordString(gatewayProbeRecord, 'reachableVia')
           const publicProbeError = readRecordString(gatewayProbeRecord, 'publicProbeError')
           const privateProbeError = readRecordString(gatewayProbeRecord, 'privateProbeError')
-          const observedDeploymentFingerprint =
-            normalizeDeploymentFingerprint(instanceId)
-            ?? normalizeDeploymentFingerprint(runtimeResourceId)
+          const observedDeploymentFingerprint = buildDeploymentFingerprint({
+            instanceId,
+            runtimeResourceId,
+            daemonUpdatedAt,
+          })
 
           if (
             observedDeploymentFingerprint
@@ -3900,6 +3995,7 @@ export default function ChatPage() {
               const restartedAt = Date.now()
               setSetupStartedAt(restartedAt)
               setSetupTimedOut(false)
+              setSetupIssue('')
               writePersistedSetupStartedAt(tid, {
                 startedAt: restartedAt,
                 deploymentFingerprint: observedDeploymentFingerprint,
@@ -3934,27 +4030,18 @@ export default function ChatPage() {
           if (!instanceState || instanceState === 'new') {
             setSetupPhase('provisioning')
           } else if (instanceState === 'active') {
-            if (!setupComplete) {
-              setSetupPhase('installing')
-            } else if (!wsAttempted) {
-              setSetupPhase('starting')
-              // Mark immediately so repeated poll ticks don't queue duplicate timers.
-              wsAttempted = true
-              // Give the daemon a short warm-up window, then connect. If it is not
-              // ready yet, the WebSocket onclose retry loop handles retries.
-              wsInitialConnectTimeoutRef.current = setTimeout(() => {
-                setSetupPhase('starting')
-                connectWebSocket(tid, activeSessionKeyRef.current ?? undefined)
-                wsInitialConnectTimeoutRef.current = null
-              }, WS_INITIAL_CONNECT_DELAY_MS)
-            }
+            setSetupPhase('starting')
+            attemptWebSocketWarmup()
           } else if (instanceState === 'bootstrapping') {
             setSetupPhase('installing')
+            attemptWebSocketWarmup()
           } else {
             setSetupPhase('starting')
+            attemptWebSocketWarmup()
           }
         } catch {
-          // Network error — keep polling
+          // Network error — keep polling while warming up websocket in parallel.
+          attemptWebSocketWarmup()
         }
       }
 
@@ -4119,8 +4206,11 @@ export default function ChatPage() {
 
         let oauthPending = false
         try {
-          const runtimeModels = await listRuntimeModels(tid, { syncRuntime: true })
-          const oauthPendingFromRuntime = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels.storedModelConfig)
+          const runtimeModels = await listRuntimeModels(tid, {
+            syncRuntime: true,
+            includeModels: false,
+          })
+          const oauthPendingFromRuntime = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels)
           if (oauthPendingFromRuntime !== null) {
             oauthPending = oauthPendingFromRuntime
             if (!oauthPendingFromRuntime) {
@@ -4219,6 +4309,7 @@ export default function ChatPage() {
           setSetupPhase(null)
           setSetupStartedAt(0)
           setSetupTimedOut(false)
+          setSetupIssue('')
           setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
           if (!oauthPending) {
             writePersistedSetupStartedAt(tid, null)
@@ -4232,6 +4323,24 @@ export default function ChatPage() {
               headers,
             })
 
+            if (!res.ok) {
+              let errorCode = ''
+              try {
+                const payload = await res.json() as { error?: unknown }
+                if (typeof payload.error === 'string') {
+                  errorCode = payload.error.trim()
+                }
+              } catch {
+                // Ignore malformed/non-JSON error payloads.
+              }
+
+              if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED' || errorCode === 'RUNTIME_INSTANCE_MISSING') {
+                setCheckingSession(false)
+                startSetupPolling(tid, { forceReset: true })
+                return
+              }
+            }
+
             if (res.ok) {
               const data = (await res.json()) as {
                 daemon?: { runtimeMode?: string; status?: string }
@@ -4244,6 +4353,7 @@ export default function ChatPage() {
               const setupComplete = readRecordBool(instanceRecord, 'setupComplete') === true
               const instanceId = readRecordString(instanceRecord, 'instanceId')
               const runtimeResourceId = readRecordString(daemonRecord, 'runtimeResourceId')
+              const daemonUpdatedAt = readRecordString(daemonRecord, 'updatedAt')
               const publicIp = readRecordString(instanceRecord, 'publicIp')
               const privateIp = readRecordString(instanceRecord, 'privateIp')
               const gatewayPortFromString = readRecordString(gatewayProbeRecord, 'gatewayPort')
@@ -4268,9 +4378,11 @@ export default function ChatPage() {
                 },
               })
               const isInstanceReady = instanceState === 'active' && setupComplete
-              const deploymentFingerprint =
-                normalizeDeploymentFingerprint(instanceId)
-                ?? normalizeDeploymentFingerprint(runtimeResourceId)
+              const deploymentFingerprint = buildDeploymentFingerprint({
+                instanceId,
+                runtimeResourceId,
+                daemonUpdatedAt,
+              })
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
                 setCheckingSession(false)
@@ -4931,6 +5043,7 @@ export default function ChatPage() {
         steps={steps}
         runtimeStatus={setupRuntimeStatus}
         startedAt={startedAtForView}
+        issueMessage={setupIssue}
         timedOut={setupTimedOut}
         oauthRequired={oauthRequired}
         oauthConnected={oauthConnected}

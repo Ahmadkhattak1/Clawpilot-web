@@ -3,7 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import { getSupabaseAuthClient } from '@/lib/supabase-auth'
 import {
   deriveTenantIdFromUserId,
+  fetchTenantDaemonRecord,
   fetchTenantDaemonStatus,
+  tenantHasPersistedDaemon,
   tenantHasProvisionedInstance,
 } from '@/lib/tenant-instance'
 
@@ -94,6 +96,12 @@ export async function isOnboardingComplete(
     return true
   }
   if (!options.backfillFromProvisionedTenant) return false
+
+  const daemonRecord = await fetchTenantDaemonRecord(tenantId)
+  if (tenantHasPersistedDaemon(daemonRecord)) {
+    await markOnboardingComplete(session)
+    return true
+  }
 
   const daemonStatus = await fetchTenantDaemonStatus(tenantId)
   if (!tenantHasProvisionedInstance(daemonStatus)) return false

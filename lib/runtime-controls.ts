@@ -1040,7 +1040,7 @@ async function runtimeRequest<T>(
         headers,
       })
     } catch (error) {
-      runtimeDebugLog('error', 'request:network-error', {
+      runtimeDebugLog('warn', 'request:network-error', {
         tenantId,
         method,
         path,

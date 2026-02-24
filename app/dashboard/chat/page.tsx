@@ -74,7 +74,7 @@ import {
 import { getBrowserAccessToken } from '@/lib/backend-auth'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
-import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
+import { deriveTenantIdFromUserId, fetchTenantDaemonPresence } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 
@@ -4449,8 +4449,11 @@ export default function ChatPage() {
 
         const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         if (!complete) {
-          router.replace('/dashboard')
-          return
+          const daemonPresence = await fetchTenantDaemonPresence(tid)
+          if (daemonPresence === 'missing') {
+            router.replace('/dashboard')
+            return
+          }
         }
 
         const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>

@@ -1212,11 +1212,14 @@ export async function deleteRuntimeSession(
 
 export async function listRuntimeModels(
   tenantId: string,
-  options: { syncRuntime?: boolean } = {},
+  options: { syncRuntime?: boolean; includeModels?: boolean } = {},
 ): Promise<RuntimeModelsData> {
   const query = new URLSearchParams()
   if (options.syncRuntime) {
     query.set('syncRuntime', 'true')
+  }
+  if (options.includeModels === false) {
+    query.set('includeModels', 'false')
   }
 
   const path = query.size > 0 ? `/runtime/models?${query.toString()}` : '/runtime/models'

@@ -1310,55 +1310,33 @@ function formatRelativeProbeTime(checkedAt: string | null): string | null {
 function formatGatewayProbeIssue(runtimeStatus: SetupRuntimeStatusSnapshot): string | null {
   const publicError = runtimeStatus.gatewayProbe.publicProbeError
   const privateError = runtimeStatus.gatewayProbe.privateProbeError
-  const parts: string[] = []
+  const errors = [publicError, privateError].filter(
+    (value): value is string => Boolean(value && value !== 'public_ip_missing' && value !== 'private_ip_missing'),
+  )
 
-  if (publicError && publicError !== 'public_ip_missing') {
-    const label = publicError === 'ECONNREFUSED'
-      ? 'public endpoint not accepting connections yet'
-      : publicError === 'timeout'
-        ? 'public endpoint still timing out'
-        : `public probe: ${publicError}`
-    parts.push(label)
+  if (errors.length === 0) return null
+  if (errors.some((error) => error === 'ECONNREFUSED')) {
+    return 'Gateway process is still starting'
   }
-
-  if (privateError && privateError !== 'private_ip_missing') {
-    const label = privateError === 'ECONNREFUSED'
-      ? 'private endpoint not accepting connections yet'
-      : privateError === 'timeout'
-        ? 'private endpoint still timing out'
-        : `private probe: ${privateError}`
-    parts.push(label)
+  if (errors.every((error) => error === 'timeout')) {
+    return 'Gateway checks are still timing out'
   }
-
-  if (parts.length === 0) return null
-  return parts.join(' | ')
+  return 'Gateway checks are still in progress'
 }
 
 function buildSetupLiveSignals(runtimeStatus: SetupRuntimeStatusSnapshot): SetupLiveSignal[] {
   const hasInstance = Boolean(runtimeStatus.instanceId || runtimeStatus.instanceState)
-  const hasNetwork = runtimeStatus.hasPublicIp || runtimeStatus.hasPrivateIp
   const gatewayReady = runtimeStatus.gatewayProbe.ready === true
   const gatewayChecked = Boolean(runtimeStatus.gatewayProbe.checkedAt)
   const gatewayProbeIssue = formatGatewayProbeIssue(runtimeStatus)
   const lastGatewayCheck = formatRelativeProbeTime(runtimeStatus.gatewayProbe.checkedAt)
-  const reachableVia = runtimeStatus.gatewayProbe.reachableVia?.trim()
-  const reachabilityHint = reachableVia
-    ? `via ${reachableVia === 'public' ? 'public IP' : reachableVia === 'private' ? 'private IP' : reachableVia}`
-    : 'from instance probes'
-  const gatewayPort = runtimeStatus.gatewayProbe.gatewayPort ?? 18789
   const gatewayDetail = gatewayReady
-    ? `Reachable ${reachabilityHint} on port ${gatewayPort}${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
+    ? `Gateway is online${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
     : gatewayProbeIssue
-      ? `Waiting for gateway on port ${gatewayPort}${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}. ${gatewayProbeIssue}.`
+      ? `${gatewayProbeIssue}${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
       : gatewayChecked
         ? `Gateway startup checks are still running${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
-        : 'Gateway checks begin as soon as instance networking is available.'
-  const networkDetail = hasNetwork
-    ? [
-        runtimeStatus.publicIp ? `Public: ${runtimeStatus.publicIp}` : null,
-        runtimeStatus.privateIp ? `Private: ${runtimeStatus.privateIp}` : null,
-      ].filter((value): value is string => Boolean(value)).join(' | ')
-    : 'Waiting for network routes before installation continues.'
+        : 'Gateway checks begin as soon as server startup reaches the runtime stage.'
 
   return [
     {
@@ -1368,12 +1346,6 @@ function buildSetupLiveSignals(runtimeStatus: SetupRuntimeStatusSnapshot): Setup
         ? `State: ${formatInstanceStateLabel(runtimeStatus.instanceState)}`
         : 'Allocating your dedicated server.',
       state: hasInstance ? 'ready' : 'active',
-    },
-    {
-      id: 'network',
-      label: 'Network routing',
-      detail: networkDetail,
-      state: hasNetwork ? 'ready' : hasInstance ? 'active' : 'pending',
     },
     {
       id: 'gateway',
@@ -1532,12 +1504,12 @@ function SetupProgressView({
                 {steps.map((step) => (
                   <div
                     key={step.label}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
+                    className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
                   >
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex min-w-0 items-start gap-2.5">
                       <div
                         className={cn(
-                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+                          'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
                           step.status === 'done'
                             ? 'border-emerald-500/30 bg-emerald-500/10'
                             : step.status === 'active'
@@ -1553,7 +1525,10 @@ function SetupProgressView({
                           <Circle className="h-2.5 w-2.5 text-muted-foreground/50" />
                         )}
                       </div>
-                      <p className="truncate text-sm font-medium text-foreground">{step.label}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{step.label}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{step.description}</p>
+                      </div>
                     </div>
                     <span
                       className={cn(
@@ -1570,9 +1545,6 @@ function SetupProgressView({
                   </div>
                 ))}
               </div>
-              {activeStep ? (
-                <p className="mt-3 text-xs text-muted-foreground">{activeStep.description}</p>
-              ) : null}
             </section>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -5261,16 +5233,22 @@ export default function ChatPage() {
   if (shouldShowSetupProgress) {
     const setupPhaseForView = (setupPhase ?? 'starting') as Exclude<SetupPhase, null>
     const startedAtForView = setupStartedAt > 0 ? setupStartedAt : Date.now()
-    const hasNetwork =
+    const hasRouting =
       setupRuntimeStatus.hasPublicIp ||
       setupRuntimeStatus.hasPrivateIp
+    const hasInstanceAllocated = Boolean(setupRuntimeStatus.instanceId || setupRuntimeStatus.instanceState)
+    const instanceStateLabel = formatInstanceStateLabel(setupRuntimeStatus.instanceState)
+    const gatewayReady = setupRuntimeStatus.gatewayProbe.ready === true
+    const gatewayIssue = formatGatewayProbeIssue(setupRuntimeStatus)
+    const gatewayChecked = Boolean(setupRuntimeStatus.gatewayProbe.checkedAt)
+    const lastGatewayCheck = formatRelativeProbeTime(setupRuntimeStatus.gatewayProbe.checkedAt)
     const needsOAuthStep = oauthRequired || setupPhaseForView === 'oauth'
     const steps: SetupStep[] = [
       {
         label: 'Launching instance',
-        description: hasNetwork
-          ? 'Cloud server is online and network routes are assigned.'
-          : 'Allocating your dedicated cloud server and networking.',
+        description: hasInstanceAllocated
+          ? `Your cloud server is allocated and currently ${instanceStateLabel}.`
+          : 'Requesting and allocating your dedicated cloud server.',
         status:
           setupPhaseForView === 'checking' || setupPhaseForView === 'provisioning'
             ? 'active'
@@ -5278,9 +5256,12 @@ export default function ChatPage() {
       },
       {
         label: 'Installing OpenClaw',
-        description: hasNetwork
-          ? 'Installing assistant services, model integrations, and channel connectors.'
-          : 'Waiting for network setup before installation continues.',
+        description:
+          setupPhaseForView === 'starting' || setupPhaseForView === 'oauth' || setupPhaseForView === 'ready'
+            ? 'OpenClaw is installed and workspace setup is complete.'
+            : hasRouting
+              ? 'Installing OpenClaw and preparing your assistant workspace.'
+              : 'Waiting for server initialization before installation begins.',
         status:
           setupPhaseForView === 'installing'
             ? 'active'
@@ -5291,9 +5272,13 @@ export default function ChatPage() {
       {
         label: 'Starting your assistant',
         description:
-          setupRuntimeStatus.gatewayProbe.ready === true
-            ? 'Gateway is reachable. Running final startup checks.'
-            : 'Starting secure runtime gateway and validating readiness.',
+          gatewayReady
+            ? `Runtime gateway is online${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
+            : gatewayIssue
+              ? `${gatewayIssue}. We keep retrying automatically${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
+              : gatewayChecked
+                ? `Gateway startup checks are running${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
+                : 'Gateway startup checks begin after installation finishes.',
         status:
           setupPhaseForView === 'starting'
             ? 'active'

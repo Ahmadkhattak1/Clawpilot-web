@@ -86,6 +86,70 @@ function isTableMissingError(error: unknown): boolean {
   return false
 }
 
+function isAuthOrPermissionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+
+  const code = 'code' in error ? (error as { code?: unknown }).code : undefined
+  if (typeof code === 'string') {
+    const normalizedCode = code.trim().toUpperCase()
+    if (
+      normalizedCode === '42501' // postgres insufficient_privilege / RLS denied
+      || normalizedCode === 'PGRST301' // JWT missing/invalid
+      || normalizedCode === 'PGRST302'
+      || normalizedCode === 'PGRST303'
+    ) {
+      return true
+    }
+  }
+
+  const status = 'status' in error ? (error as { status?: unknown }).status : undefined
+  if (typeof status === 'number' && (status === 401 || status === 403)) {
+    return true
+  }
+
+  const name = 'name' in error ? (error as { name?: unknown }).name : undefined
+  if (typeof name === 'string' && /AuthSessionMissingError|Unauthorized/i.test(name)) {
+    return true
+  }
+
+  const message = 'message' in error ? (error as { message?: unknown }).message : undefined
+  if (
+    typeof message === 'string'
+    && /row-level security|rls|permission denied|unauthorized|forbidden|jwt|session missing|not authenticated/i.test(message)
+  ) {
+    return true
+  }
+
+  const details = 'details' in error ? (error as { details?: unknown }).details : undefined
+  if (
+    typeof details === 'string'
+    && /row-level security|rls|permission denied|unauthorized|forbidden|jwt|session missing|not authenticated/i.test(details)
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function isIgnorablePersistenceError(error: unknown): boolean {
+  return isTableMissingError(error) || isAuthOrPermissionError(error)
+}
+
+function isMissingSupabaseEnvError(error: unknown): boolean {
+  return error instanceof Error && /Missing Supabase environment variables/i.test(error.message)
+}
+
+function getRuntimePersistenceClient() {
+  try {
+    return getSupabaseAuthClient()
+  } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return null
+    }
+    throw error
+  }
+}
+
 function normalizeSessionRows(rows: PersistedSessionRow[] | null): PersistedRuntimeSession[] {
   if (!rows?.length) return []
   return rows
@@ -103,7 +167,8 @@ export async function listPersistedRuntimeSessions(
   tenantId: string,
 ): Promise<PersistedRuntimeSession[]> {
   if (!userId || !tenantId) return []
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return []
 
   const { data, error } = await supabase
     .from(SESSIONS_TABLE)
@@ -113,7 +178,7 @@ export async function listPersistedRuntimeSessions(
     .order('last_seen_at', { ascending: false })
 
   if (error) {
-    if (isTableMissingError(error)) {
+    if (isIgnorablePersistenceError(error)) {
       return []
     }
     throw error
@@ -128,7 +193,8 @@ export async function upsertPersistedRuntimeSession(input: UpsertSessionInput): 
     return
   }
 
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return
   const nowIso = new Date().toISOString()
   const isActive = input.isActive ?? false
   const touchLastSeen = input.touchLastSeen ?? false
@@ -146,6 +212,9 @@ export async function upsertPersistedRuntimeSession(input: UpsertSessionInput): 
       .neq('session_key', normalizedKey)
 
     if (deactivateError && !isTableMissingError(deactivateError)) {
+      if (isIgnorablePersistenceError(deactivateError)) {
+        return
+      }
       throw deactivateError
     }
   }
@@ -159,7 +228,7 @@ export async function upsertPersistedRuntimeSession(input: UpsertSessionInput): 
     .limit(1)
 
   if (existingError) {
-    if (isTableMissingError(existingError)) {
+    if (isIgnorablePersistenceError(existingError)) {
       return
     }
     throw existingError
@@ -185,7 +254,7 @@ export async function upsertPersistedRuntimeSession(input: UpsertSessionInput): 
       .eq('session_key', normalizedKey)
 
     if (updateError) {
-      if (isTableMissingError(updateError)) {
+      if (isIgnorablePersistenceError(updateError)) {
         return
       }
       throw updateError
@@ -208,7 +277,7 @@ export async function upsertPersistedRuntimeSession(input: UpsertSessionInput): 
     .insert(insertPayload)
 
   if (insertError) {
-    if (isTableMissingError(insertError)) {
+    if (isIgnorablePersistenceError(insertError)) {
       return
     }
     throw insertError
@@ -220,7 +289,8 @@ export async function upsertPersistedRuntimeProfile(input: UpsertProfileInput): 
     return
   }
 
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return
   const nowIso = new Date().toISOString()
 
   const { error } = await supabase
@@ -241,7 +311,7 @@ export async function upsertPersistedRuntimeProfile(input: UpsertProfileInput): 
     )
 
   if (error) {
-    if (isTableMissingError(error)) {
+    if (isIgnorablePersistenceError(error)) {
       return
     }
     throw error
@@ -253,7 +323,8 @@ export async function getPersistedRuntimeProfile(
   tenantId: string,
 ): Promise<PersistedRuntimeProfile | null> {
   if (!userId || !tenantId) return null
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return null
 
   const { data, error } = await supabase
     .from(PROFILE_TABLE)
@@ -263,7 +334,7 @@ export async function getPersistedRuntimeProfile(
     .maybeSingle()
 
   if (error) {
-    if (isTableMissingError(error)) {
+    if (isIgnorablePersistenceError(error)) {
       return null
     }
     throw error
@@ -290,7 +361,8 @@ export async function listPersistedRuntimeMessages(
     return []
   }
 
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return []
   const { data, error } = await supabase
     .from(MESSAGES_TABLE)
     .select('role,content,message_ts')
@@ -300,7 +372,7 @@ export async function listPersistedRuntimeMessages(
     .order('message_ts', { ascending: true })
 
   if (error) {
-    if (isTableMissingError(error)) {
+    if (isIgnorablePersistenceError(error)) {
       return []
     }
     throw error
@@ -322,7 +394,8 @@ export async function insertPersistedRuntimeMessage(input: InsertMessageInput): 
     return
   }
 
-  const supabase = getSupabaseAuthClient()
+  const supabase = getRuntimePersistenceClient()
+  if (!supabase) return
   const messageTimestamp = input.timestamp ?? new Date().toISOString()
   const parsedMessageTs = Date.parse(messageTimestamp)
   const dedupeSinceIso = Number.isFinite(parsedMessageTs)
@@ -343,7 +416,7 @@ export async function insertPersistedRuntimeMessage(input: InsertMessageInput): 
       .limit(1)
 
     if (existingError) {
-      if (isTableMissingError(existingError)) {
+      if (isIgnorablePersistenceError(existingError)) {
         return
       }
       throw existingError
@@ -366,7 +439,7 @@ export async function insertPersistedRuntimeMessage(input: InsertMessageInput): 
     })
 
   if (error) {
-    if (isTableMissingError(error)) {
+    if (isIgnorablePersistenceError(error)) {
       return
     }
     throw error

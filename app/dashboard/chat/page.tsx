@@ -113,10 +113,11 @@ interface SetupStep {
   status: 'done' | 'active' | 'pending'
 }
 
-interface SetupTerminalLine {
+interface SetupLiveSignal {
   id: string
-  text: string
-  tone: 'idle' | 'ok' | 'active'
+  label: string
+  detail: string
+  state: 'ready' | 'active' | 'pending'
 }
 
 const INPUT_LINE_HEIGHT = 24
@@ -545,6 +546,29 @@ function isGatewayUnavailableError(message: string): boolean {
   return /gateway_starting|bootstrapping|gateway_unavailable|gateway.*unavailable|gateway host unavailable|host unavailable|not running/i.test(
     message.trim(),
   )
+}
+
+function isRuntimeConfigMissingError(input: {
+  errorCode?: string
+  message?: string
+}): boolean {
+  const code = input.errorCode?.trim().toUpperCase() ?? ''
+  if (code === 'TENANT_RUNTIME_CONFIG_MISSING' || code === 'TENANT_RUNTIME_CONFIG_INVALID') {
+    return true
+  }
+
+  const message = input.message?.trim().toUpperCase() ?? ''
+  return (
+    message.includes('TENANT_RUNTIME_CONFIG_MISSING') ||
+    message.includes('TENANT_RUNTIME_CONFIG_INVALID')
+  )
+}
+
+function shouldHideRuntimeConfigSystemMessage(message: ChatMessage): boolean {
+  if (message.role !== 'system') {
+    return false
+  }
+  return isRuntimeConfigMissingError({ message: message.content })
 }
 
 function toChatAlertMessage(message: string): string {
@@ -1247,75 +1271,60 @@ function MarkdownMessage({ content }: { content: string }) {
   )
 }
 
-function buildSetupTerminalLines(
-  steps: SetupStep[],
-  runtimeStatus: SetupRuntimeStatusSnapshot,
-): SetupTerminalLine[] {
-  const stageLines: SetupTerminalLine[] = steps.map((step) => ({
-    id: `stage-${step.label}`,
-    text: `[deploy] ${step.label.toLowerCase()}${step.status === 'done' ? ' complete' : step.status === 'active' ? ' running' : ''}`,
-    tone: step.status === 'done' ? 'ok' : step.status === 'active' ? 'active' : 'idle',
-  }))
-
-  if (runtimeStatus.setupComplete) {
-    stageLines.push({
-      id: 'runtime-ready',
-      text: '[deploy] assistant startup complete',
-      tone: 'ok',
-    })
-  } else if (steps.some((step) => step.status === 'active')) {
-    stageLines.push({
-      id: 'runtime-wait',
-      text: '[deploy] waiting for assistant startup',
-      tone: 'active',
-    })
-  }
-
-  return stageLines
+function toTitleCaseToken(value: string): string {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return ''
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
 }
 
-function SetupTerminal({
-  lines,
-  running,
-}: {
-  lines: SetupTerminalLine[]
-  running: boolean
-}) {
-  return (
-    <section className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-lg shadow-primary/10">
-      <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-        </div>
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">deploy.log</p>
-      </div>
-      <div className="max-h-64 overflow-auto px-4 py-3 font-mono text-[11px] leading-6">
-        {lines.map((line) => (
-          <p
-            key={line.id}
-            className={
-              line.tone === 'ok'
-                ? 'text-emerald-700'
-                : line.tone === 'active'
-                  ? 'text-amber-700'
-                  : 'text-muted-foreground'
-            }
-          >
-            {line.text}
-          </p>
-        ))}
-        {running ? (
-          <motion.span
-            className="mt-1 inline-block h-4 w-2 bg-foreground"
-            animate={{ opacity: [1, 0.1, 1] }}
-            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        ) : null}
-      </div>
-    </section>
-  )
+function formatInstanceStateLabel(instanceState: string | null): string {
+  if (!instanceState) {
+    return 'Not assigned yet'
+  }
+  return instanceState
+    .split(/[\s_-]+/)
+    .map((part) => toTitleCaseToken(part))
+    .join(' ')
+}
+
+function buildSetupLiveSignals(runtimeStatus: SetupRuntimeStatusSnapshot): SetupLiveSignal[] {
+  const hasInstance = Boolean(runtimeStatus.instanceId || runtimeStatus.instanceState)
+  const hasNetwork = runtimeStatus.hasPublicIp || runtimeStatus.hasPrivateIp
+  const gatewayReady = runtimeStatus.gatewayProbe.ready === true
+  const gatewayChecked = Boolean(runtimeStatus.gatewayProbe.checkedAt)
+
+  const gatewayDetail = gatewayReady
+    ? `Ready on port ${runtimeStatus.gatewayProbe.gatewayPort ?? 18789}.`
+    : runtimeStatus.gatewayProbe.publicProbeError || runtimeStatus.gatewayProbe.privateProbeError
+      ? 'Startup checks are still running. We keep retrying automatically.'
+      : gatewayChecked
+        ? 'Gateway is still starting. Final readiness checks are in progress.'
+        : 'Gateway checks begin as soon as instance networking is available.'
+
+  return [
+    {
+      id: 'instance',
+      label: 'Cloud instance',
+      detail: hasInstance
+        ? `State: ${formatInstanceStateLabel(runtimeStatus.instanceState)}`
+        : 'Allocating your dedicated server.',
+      state: hasInstance ? 'ready' : 'active',
+    },
+    {
+      id: 'network',
+      label: 'Network routing',
+      detail: hasNetwork
+        ? 'Network addresses are assigned and reachable.'
+        : 'Waiting for network routes before installation continues.',
+      state: hasNetwork ? 'ready' : hasInstance ? 'active' : 'pending',
+    },
+    {
+      id: 'gateway',
+      label: 'Runtime gateway',
+      detail: gatewayDetail,
+      state: gatewayReady ? 'ready' : hasInstance ? 'active' : 'pending',
+    },
+  ]
 }
 
 function SetupProgressView({
@@ -1383,7 +1392,14 @@ function SetupProgressView({
     return () => clearInterval(timer)
   }, [oauthExpiresAt])
 
-  const terminalLines = useMemo(() => buildSetupTerminalLines(steps, runtimeStatus), [runtimeStatus, steps])
+  const activeStep = useMemo(
+    () => steps.find((step) => step.status === 'active') ?? null,
+    [steps],
+  )
+  const setupLiveSignals = useMemo(
+    () => buildSetupLiveSignals(runtimeStatus),
+    [runtimeStatus],
+  )
   const running = phase !== 'ready'
   const activeLennyMessage = useMemo(() => {
     const visibleMessages = getVisibleLennyMessages(elapsedSeconds)
@@ -1412,7 +1428,7 @@ function SetupProgressView({
   }, [oauthAuthUrl, oauthUrlExpired, onStartOauth])
 
   return (
-    <div className="relative min-h-[100svh] overflow-hidden bg-background px-4 py-8 sm:px-6 md:px-10 md:py-12">
+    <div className="relative min-h-[100svh] overflow-hidden bg-background px-4 py-5 sm:px-6 sm:py-6 md:px-10 md:py-8">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,_rgb(214_214_214)_1px,transparent_1px)] [background-size:18px_18px] opacity-55"
@@ -1422,75 +1438,119 @@ function SetupProgressView({
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-6xl flex-col border-border/70 shadow-sm shadow-primary/10">
-        <CardContent className="flex flex-1 flex-col px-5 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-9">
+      <Card className="relative z-10 mx-auto flex w-full max-w-4xl flex-col border-border/70 shadow-sm shadow-primary/10">
+        <CardContent className="flex flex-1 flex-col px-5 pb-5 pt-6 sm:px-8 sm:pb-6 sm:pt-7">
           <div className="flex flex-col items-center text-center">
-            <div className="rounded-full border border-border/70 bg-card p-5">
-              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            <div
+              className={cn(
+                'rounded-full border border-border/70 bg-card p-5',
+                running ? '' : 'border-emerald-500/30 bg-emerald-500/10',
+              )}
+            >
+              {running ? (
+                <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+              ) : (
+                <Check className="h-7 w-7 text-emerald-600" />
+              )}
             </div>
             <h1 className="mt-6 text-3xl font-semibold tracking-tight">Setting up your assistant</h1>
-            <p className="mt-2 max-w-2xl text-base text-muted-foreground">
-              We&apos;re preparing your OpenClaw instance. This usually takes 4-7 minutes.
+            <p className="mt-2 text-sm text-muted-foreground">
+              {running ? (activeStep?.label ?? 'Running final startup checks') : 'Assistant is ready'}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">Usually takes 4-7 minutes.</p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <span className="rounded-full border border-border/70 bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                Status: {running ? 'In progress' : 'Complete'}
+              </span>
+              <span className="rounded-full border border-border/70 bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                Elapsed: {elapsed}
+              </span>
+            </div>
           </div>
 
-          <div className="mt-7 grid flex-1 gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-            <div className="space-y-5">
-              <Card className="border-border/70">
-                <CardContent className="p-5">
-                  <div className="space-y-0">
-                    {steps.map((step, index) => (
-                      <div key={step.label} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div
-                            className={cn(
-                              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
-                              step.status === 'done'
-                                ? 'border-emerald-500/30 bg-emerald-500/10'
-                                : step.status === 'active'
-                                  ? 'border-primary/30 bg-primary/10'
-                                  : 'border-border/70 bg-muted/30',
-                            )}
-                          >
-                            {step.status === 'done' ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
-                            ) : step.status === 'active' ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                            ) : (
-                              <Circle className="h-2.5 w-2.5 text-muted-foreground/40" />
-                            )}
-                          </div>
-                          {index < steps.length - 1 ? (
-                            <div
-                              className={cn(
-                                'my-1 w-px flex-1',
-                                step.status === 'done' ? 'bg-emerald-500/30' : 'bg-border/70',
-                              )}
-                              style={{ minHeight: '16px' }}
-                            />
-                          ) : null}
-                        </div>
-
-                        <div className="pb-4">
-                          <p
-                            className={cn(
-                              'text-base font-medium leading-7',
-                              step.status === 'done'
-                                ? 'text-emerald-600'
-                                : step.status === 'active'
-                                  ? 'text-foreground'
-                                  : 'text-muted-foreground',
-                            )}
-                          >
-                            {step.label}
-                          </p>
-                          <p className="text-sm text-muted-foreground">{step.description}</p>
-                        </div>
+          <div className="mt-7 flex flex-1 flex-col gap-4">
+            <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Setup progress</p>
+              <div className="mt-2.5 space-y-2">
+                {steps.map((step) => (
+                  <div
+                    key={step.label}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div
+                        className={cn(
+                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+                          step.status === 'done'
+                            ? 'border-emerald-500/30 bg-emerald-500/10'
+                            : step.status === 'active'
+                              ? 'border-primary/30 bg-primary/10'
+                              : 'border-border/70 bg-muted/30',
+                        )}
+                      >
+                        {step.status === 'done' ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : step.status === 'active' ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                        ) : (
+                          <Circle className="h-2.5 w-2.5 text-muted-foreground/50" />
+                        )}
                       </div>
-                    ))}
+                      <p className="truncate text-sm font-medium text-foreground">{step.label}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                        step.status === 'done'
+                          ? 'bg-emerald-500/10 text-emerald-700'
+                          : step.status === 'active'
+                            ? 'bg-amber-500/10 text-amber-700'
+                            : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {step.status === 'done' ? 'Done' : step.status === 'active' ? 'In progress' : 'Pending'}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                ))}
+              </div>
+              {activeStep ? (
+                <p className="mt-3 text-xs text-muted-foreground">{activeStep.description}</p>
+              ) : null}
+            </section>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live system status</p>
+                <div className="mt-2.5 grid gap-2.5">
+                  {setupLiveSignals.map((signal) => (
+                    <div
+                      key={signal.id}
+                      className="rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-foreground">{signal.label}</p>
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                            signal.state === 'ready'
+                              ? 'bg-emerald-500/10 text-emerald-700'
+                              : signal.state === 'active'
+                                ? 'bg-amber-500/10 text-amber-700'
+                                : 'bg-muted text-muted-foreground',
+                          )}
+                        >
+                          {signal.state === 'ready'
+                            ? 'Ready'
+                            : signal.state === 'active'
+                              ? 'In progress'
+                              : 'Pending'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{signal.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               <section className="rounded-xl border border-border/70 bg-card/80 p-4">
                 <div className="flex items-center gap-2.5">
@@ -1503,16 +1563,16 @@ function SetupProgressView({
                   />
                   <p className="text-sm font-semibold text-foreground/70">Lenny</p>
                 </div>
-                <div className="mt-3 space-y-2">
-                  <AnimatePresence initial={false}>
+                <div className="mt-3 min-h-[92px]">
+                  <AnimatePresence initial={false} mode="wait">
                     {activeLennyMessage ? (
                       <motion.div
                         key={activeLennyMessage}
                         initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
                         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
                         exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
-                        transition={{ duration: reduceMotion ? 0 : 0.28, ease: 'easeOut' }}
-                        className="max-w-[96%] rounded-2xl border border-border/60 bg-background px-3 py-2 text-[15px] leading-6 text-foreground/85 shadow-sm"
+                        transition={{ duration: reduceMotion ? 0 : 0.24, ease: 'easeOut' }}
+                        className="rounded-2xl border border-border/60 bg-background px-3.5 py-2.5 text-[15px] leading-6 text-foreground/85 shadow-sm"
                       >
                         {activeLennyMessage}
                       </motion.div>
@@ -1521,24 +1581,9 @@ function SetupProgressView({
                 </div>
               </section>
             </div>
-
-            <div className="space-y-4">
-              <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold">Deployment Terminal</p>
-                  <span className="tabular-nums text-xs text-muted-foreground">
-                    {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <SetupTerminal lines={terminalLines} running={running} />
-                </div>
-              </section>
-            </div>
           </div>
 
           <div className="mt-5 flex flex-col items-center gap-3 text-center">
-            <p className="text-sm text-muted-foreground">Elapsed: {elapsed}</p>
             {issueMessage ? (
               <p className="max-w-xl text-sm text-destructive">{issueMessage}</p>
             ) : null}
@@ -1781,8 +1826,8 @@ export default function ChatPage() {
   const [setupTimedOut, setSetupTimedOut] = useState(false)
   const [setupIssue, setSetupIssue] = useState('')
   const [setupRuntimeStatus, setSetupRuntimeStatus] = useState<SetupRuntimeStatusSnapshot>(EMPTY_SETUP_RUNTIME_STATUS)
-  const [oauthRequired, setOauthRequired] = useState(false)
-  const [oauthConnected, setOauthConnected] = useState(false)
+  const [oauthRequired, _setOauthRequired] = useState(false)
+  const [oauthConnected, _setOauthConnected] = useState(false)
   const [oauthModalOpen, setOauthModalOpen] = useState(false)
   const [oauthBusy, setOauthBusy] = useState(false)
   const [oauthSessionId, setOauthSessionId] = useState('')
@@ -1806,6 +1851,34 @@ export default function ChatPage() {
     }
   }, [])
 
+  const setOauthRequired = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof value === 'function') {
+      _setOauthRequired((prev) => {
+        const next = value(prev)
+        oauthRequiredRef.current = next
+        return next
+      })
+      return
+    }
+
+    oauthRequiredRef.current = value
+    _setOauthRequired(value)
+  }, [])
+
+  const setOauthConnected = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof value === 'function') {
+      _setOauthConnected((prev) => {
+        const next = value(prev)
+        oauthConnectedRef.current = next
+        return next
+      })
+      return
+    }
+
+    oauthConnectedRef.current = value
+    _setOauthConnected(value)
+  }, [])
+
   useEffect(() => {
     oauthRequiredRef.current = oauthRequired
   }, [oauthRequired])
@@ -1825,6 +1898,10 @@ export default function ChatPage() {
   const historyPollInFlightRef = useRef(false)
   const wsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsInitialConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressWsReconnectRef = useRef(false)
+  const startSetupPollingRef = useRef<
+    ((tid: string, options?: { deploymentFingerprint?: string | null; forceReset?: boolean }) => void) | null
+  >(null)
   const setupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const accessTokenRef = useRef('')
   const connectionStableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2559,6 +2636,8 @@ export default function ChatPage() {
 
     let cancelled = false
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    const retryDelaysMs = [1500, 2500, 4000, 6000, 9000]
+    let attempt = 0
 
     const run = async () => {
       if (cancelled || hasResolvedBillingPlan) {
@@ -2570,9 +2649,16 @@ export default function ChatPage() {
       if (cancelled || hasResolvedBillingPlan) {
         return
       }
+
+      const nextDelay = retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)]
+      attempt += 1
+      if (attempt >= retryDelaysMs.length) {
+        return
+      }
+
       timeoutHandle = setTimeout(() => {
         void run()
-      }, 1200)
+      }, nextDelay)
     }
 
     void run()
@@ -3142,7 +3228,9 @@ export default function ChatPage() {
             hasPersistedHistory = true
             if (isCurrentRequest()) {
               const persistedMessages = dedupeAndSortMessages(
-                persistedHistory.map((message) => toChatMessage(message)),
+                persistedHistory
+                  .map((message) => toChatMessage(message))
+                  .filter((message) => !shouldHideRuntimeConfigSystemMessage(message)),
               )
               setMessages((prev) => (areMessageListsEquivalent(prev, persistedMessages) ? prev : persistedMessages))
               scrollToBottom({ force: true })
@@ -3176,7 +3264,7 @@ export default function ChatPage() {
       const combinedRuntimeMessages = dedupeAndSortMessages([
         ...mappedMessages,
         ...mappedWhatsAppMessages,
-      ])
+      ].filter((message) => !shouldHideRuntimeConfigSystemMessage(message)))
 
       if (combinedRuntimeMessages.length > 0) {
         if (shouldMerge) {
@@ -3353,7 +3441,6 @@ export default function ChatPage() {
       writePersistedSetupStartedAt(tenantId, null)
     }
     setSetupPhase('ready')
-    setTimeout(() => setSetupPhase(null), 600)
   }, [tenantId, setSetupPhase])
 
   const persistOpenAIOAuthConnected = useCallback(() => {
@@ -3382,7 +3469,6 @@ export default function ChatPage() {
     if (!tenantId) return false
     try {
       const runtimeModels = await listRuntimeModels(tenantId, {
-        syncRuntime: true,
         includeModels: false,
       })
       const oauthPending = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels)
@@ -3494,6 +3580,11 @@ export default function ChatPage() {
           return
         }
       }
+      if (/gateway_starting|bootstrapping|gateway_unavailable|gateway rpc timed out|not running/i.test(message)) {
+        setOauthStatus('Runtime is still starting. Retry Complete OAuth in a few seconds.')
+        setOauthError('')
+        return
+      }
       setOauthError(message)
       setOauthStatus('')
     } finally {
@@ -3514,6 +3605,13 @@ export default function ChatPage() {
     if (!oauthRequired || oauthConnected || oauthModalOpen) return
     handleOpenOauthModal()
   }, [handleOpenOauthModal, oauthConnected, oauthModalOpen, oauthRequired, setupPhase])
+
+  useEffect(() => {
+    if (setupPhase !== 'ready') return
+    if (connectionStatus !== 'connected' || !isConnectionStable) return
+    setSetupPhase(null)
+    setSetupStartedAt(0)
+  }, [connectionStatus, isConnectionStable, setSetupPhase, setupPhase])
 
   const sendSessionSelectionRpc = useCallback((sessionKey: string): boolean => {
     const ws = wsRef.current
@@ -3563,6 +3661,7 @@ export default function ChatPage() {
       setConnectionStatus('connecting')
       resetConnectionStability()
       resetTypingState()
+      suppressWsReconnectRef.current = false
 
       const backendUrl = getBackendUrl()
       const query = new URLSearchParams({ tenantId: tid })
@@ -3583,6 +3682,7 @@ export default function ChatPage() {
 
       ws.onopen = () => {
         hasConnectedOnceRef.current = true
+        suppressWsReconnectRef.current = false
         setShowConnectionIssue(false)
         setSendError('')
       }
@@ -3652,6 +3752,7 @@ export default function ChatPage() {
               hasHydratedSessionsOnConnectRef.current = true
               void loadSessions(tid, { silent: true })
             }
+            const wasSetupFlowActive = setupPhaseRef.current !== null && setupPhaseRef.current !== 'ready'
             stopPolling()
             if (oauthRequiredRef.current && !oauthConnectedRef.current) {
               void recoverConnectedOAuthState().then((recovered) => {
@@ -3663,8 +3764,12 @@ export default function ChatPage() {
               })
             } else {
               writePersistedSetupStartedAt(tid, null)
-              setSetupPhase('ready')
-              setTimeout(() => setSetupPhase(null), 600)
+              if (wasSetupFlowActive) {
+                setSetupPhase('ready')
+              } else {
+                setSetupPhase(null)
+                setSetupStartedAt(0)
+              }
             }
             return
           }
@@ -3778,6 +3883,17 @@ export default function ChatPage() {
               return
             }
 
+            if (isRuntimeConfigMissingError({ errorCode, message: errMsg })) {
+              const message =
+                errMsg?.trim() || 'Tenant runtime config is missing. Re-deploy this tenant first.'
+              suppressWsReconnectRef.current = true
+              setSendError(message)
+              setSetupIssue(message)
+              setConnectionStatus('disconnected')
+              startSetupPollingRef.current?.(tid, { forceReset: true })
+              return
+            }
+
             if (isGatewayUnavailableError(errMsg)) {
               setSendError(toChatAlertMessage(errMsg))
               setShowConnectionIssue(true)
@@ -3805,11 +3921,20 @@ export default function ChatPage() {
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         resetTypingState()
         resetConnectionStability()
-        if (isUnmountingRef.current || paywallStatusRef.current === 'deleted') {
+        if (isUnmountingRef.current || paywallStatusRef.current === 'deleted' || suppressWsReconnectRef.current) {
           setConnectionStatus('disconnected')
+          return
+        }
+        if (event.code === 4006) {
+          const message = 'Tenant runtime config is missing. Re-deploy this tenant first.'
+          suppressWsReconnectRef.current = true
+          setSendError(message)
+          setSetupIssue(message)
+          setConnectionStatus('disconnected')
+          startSetupPollingRef.current?.(tid, { forceReset: true })
           return
         }
         // Silently reconnect in the background — never block the UI.
@@ -3824,6 +3949,10 @@ export default function ChatPage() {
       ws.onerror = () => {
         resetTypingState()
         resetConnectionStability()
+        if (suppressWsReconnectRef.current) {
+          setConnectionStatus('disconnected')
+          return
+        }
         // Keep reconnecting silently — errors surface only when user sends.
         setConnectionStatus('connecting')
       }
@@ -3942,6 +4071,16 @@ export default function ChatPage() {
               stopPolling()
               return
             }
+            if (isRuntimeConfigMissingError({ errorCode, message: errorMessage })) {
+              if (wsInitialConnectTimeoutRef.current) {
+                clearTimeout(wsInitialConnectTimeoutRef.current)
+                wsInitialConnectTimeoutRef.current = null
+              }
+              suppressWsReconnectRef.current = true
+              setSetupPhase('provisioning')
+              setSetupIssue(errorMessage || 'Tenant runtime config is missing. Re-deploy this tenant first.')
+              return
+            }
 
             // Daemon might not exist yet — keep as provisioning
             setSetupPhase('provisioning')
@@ -4053,6 +4192,10 @@ export default function ChatPage() {
     },
     [buildTenantRequestHeaders, connectWebSocket, stopPolling],
   )
+
+  useEffect(() => {
+    startSetupPollingRef.current = startSetupPolling
+  }, [startSetupPolling])
 
   // Use a ref for router to avoid re-triggering the effect on every render
   const routerRef = useRef(router)
@@ -4205,9 +4348,9 @@ export default function ChatPage() {
         const tid = deriveTenantIdFromUserId(session.user.id)
 
         let oauthPending = false
+        let startupRuntimeConfigMissing = false
         try {
           const runtimeModels = await listRuntimeModels(tid, {
-            syncRuntime: true,
             includeModels: false,
           })
           const oauthPendingFromRuntime = resolveOAuthPendingFromRuntimeModelConfig(runtimeModels)
@@ -4229,6 +4372,15 @@ export default function ChatPage() {
             }
           }
         } catch (error) {
+          const runtimeModelsErrorMessage = error instanceof Error ? error.message : String(error ?? '')
+          startupRuntimeConfigMissing = isRuntimeConfigMissingError({ message: runtimeModelsErrorMessage })
+          if (typeof window !== 'undefined') {
+            const setupStore = getStoredProviderSetup()
+            const openaiSetup = setupStore.openai ?? setupStore['openai-codex']
+            if (openaiSetup?.method === 'oauth' && openaiSetup.oauthConnected !== true) {
+              oauthPending = true
+            }
+          }
           console.warn('Failed to resolve runtime model auth state during chat startup', error)
         }
 
@@ -4300,19 +4452,27 @@ export default function ChatPage() {
           setOauthRequired(oauthPending)
           setOauthConnected(!oauthPending)
           setOauthError('')
-          setOauthStatus('')
+          setOauthStatus(oauthPending ? 'OAuth is required before chat can start.' : '')
           setOauthSessionId('')
           setOauthAuthUrl('')
           setOauthExpiresAt(null)
           setOauthCallback('')
           setOauthModalOpen(false)
-          setSetupPhase(null)
-          setSetupStartedAt(0)
-          setSetupTimedOut(false)
-          setSetupIssue('')
-          setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
-          if (!oauthPending) {
+          if (setupPhaseRef.current === null) {
+            setSetupPhase(null)
+            setSetupStartedAt(0)
+            setSetupTimedOut(false)
+            setSetupIssue('')
+            setSetupRuntimeStatus(EMPTY_SETUP_RUNTIME_STATUS)
+          }
+          if (!oauthPending && setupPhaseRef.current === null) {
             writePersistedSetupStartedAt(tid, null)
+          }
+
+          if (startupRuntimeConfigMissing) {
+            setCheckingSession(false)
+            startSetupPolling(tid, { forceReset: true })
+            return
           }
 
           // Check if instance exists and what state it's in
@@ -4325,16 +4485,25 @@ export default function ChatPage() {
 
             if (!res.ok) {
               let errorCode = ''
+              let errorMessage = ''
               try {
-                const payload = await res.json() as { error?: unknown }
+                const payload = await res.json() as { error?: unknown; message?: unknown }
                 if (typeof payload.error === 'string') {
                   errorCode = payload.error.trim()
+                }
+                if (typeof payload.message === 'string') {
+                  errorMessage = payload.message.trim()
                 }
               } catch {
                 // Ignore malformed/non-JSON error payloads.
               }
 
               if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED' || errorCode === 'RUNTIME_INSTANCE_MISSING') {
+                setCheckingSession(false)
+                startSetupPolling(tid, { forceReset: true })
+                return
+              }
+              if (isRuntimeConfigMissingError({ errorCode, message: errorMessage })) {
                 setCheckingSession(false)
                 startSetupPolling(tid, { forceReset: true })
                 return
@@ -4391,6 +4560,19 @@ export default function ChatPage() {
               }
 
               if (data.daemon?.runtimeMode === 'digitalocean' && isInstanceReady) {
+                try {
+                  await listRuntimeChannelsStatus(tid, {
+                    probe: false,
+                    timeoutMs: 3000,
+                  })
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error ?? '')
+                  if (isRuntimeConfigMissingError({ message })) {
+                    setCheckingSession(false)
+                    startSetupPolling(tid, { deploymentFingerprint, forceReset: true })
+                    return
+                  }
+                }
                 setCheckingSession(false)
                 connectWebSocket(tid, storedSessionKey ?? undefined)
                 return
@@ -4431,20 +4613,8 @@ export default function ChatPage() {
         wsRef.current.close()
       }
     }
-  }, [
-    connectWebSocket,
-    loadPersistedSessions,
-    loadSessionHistory,
-    loadSessions,
-    redirectToSignIn,
-    startSetupPolling,
-    startHistoryPolling,
-    clearConnectionStableTimer,
-    stopHistoryPolling,
-    stopPolling,
-    syncSessionKey,
-    updateSessionInUrl,
-  ])
+    // Startup bootstrap should run once per page mount to avoid resetting setup state mid-flight.
+  }, [])
 
   useEffect(() => {
     if (checkingSession || !tenantId || typeof window === 'undefined') {
@@ -5004,42 +5174,66 @@ export default function ChatPage() {
 
   // ─── Setup progress state ─────────────────────────────────────────
 
-  if (setupPhase && setupPhase !== 'ready') {
+  const shouldShowSetupProgress = setupPhase !== null || (
+    setupStartedAt > 0
+    && (connectionStatus !== 'connected' || !isConnectionStable)
+  )
+
+  if (shouldShowSetupProgress) {
+    const setupPhaseForView = (setupPhase ?? 'starting') as Exclude<SetupPhase, null>
     const startedAtForView = setupStartedAt > 0 ? setupStartedAt : Date.now()
+    const hasNetwork =
+      setupRuntimeStatus.hasPublicIp ||
+      setupRuntimeStatus.hasPrivateIp
+    const needsOAuthStep = oauthRequired || setupPhaseForView === 'oauth'
     const steps: SetupStep[] = [
       {
         label: 'Launching instance',
-        description: 'Spinning up your dedicated cloud server',
+        description: hasNetwork
+          ? 'Cloud server is online and network routes are assigned.'
+          : 'Allocating your dedicated cloud server and networking.',
         status:
-          setupPhase === 'checking' || setupPhase === 'provisioning'
+          setupPhaseForView === 'checking' || setupPhaseForView === 'provisioning'
             ? 'active'
             : 'done',
       },
       {
         label: 'Installing OpenClaw',
-        description: 'Installing dependencies and configuring your assistant',
+        description: hasNetwork
+          ? 'Installing assistant services, model integrations, and channel connectors.'
+          : 'Waiting for network setup before installation continues.',
         status:
-          setupPhase === 'installing'
+          setupPhaseForView === 'installing'
             ? 'active'
-            : setupPhase === 'starting' || setupPhase === 'oauth'
+            : setupPhaseForView === 'starting' || setupPhaseForView === 'oauth' || setupPhaseForView === 'ready'
               ? 'done'
               : 'pending',
       },
       {
         label: 'Starting your assistant',
-        description: 'Connecting to the OpenClaw gateway',
+        description:
+          setupRuntimeStatus.gatewayProbe.ready === true
+            ? 'Gateway is reachable. Running final startup checks.'
+            : 'Starting secure runtime gateway and validating readiness.',
         status:
-          setupPhase === 'starting'
+          setupPhaseForView === 'starting'
             ? 'active'
-            : setupPhase === 'oauth'
+            : setupPhaseForView === 'oauth' || setupPhaseForView === 'ready'
               ? 'done'
               : 'pending',
       },
     ]
+    if (needsOAuthStep) {
+      steps.push({
+        label: 'Connecting your OpenAI account',
+        description: 'Authorize OpenAI so your assistant can respond with your selected model.',
+        status: setupPhaseForView === 'oauth' ? 'active' : oauthConnected ? 'done' : 'pending',
+      })
+    }
 
     return (
       <SetupProgressView
-        phase={setupPhase}
+        phase={setupPhaseForView}
         steps={steps}
         runtimeStatus={setupRuntimeStatus}
         startedAt={startedAtForView}

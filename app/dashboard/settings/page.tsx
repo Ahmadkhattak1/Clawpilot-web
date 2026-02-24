@@ -83,7 +83,7 @@ function normalizeErrorMessage(error: unknown, fallback: string): string {
     const normalized = error.message.trim()
     if (/not found/i.test(normalized)) return 'Runtime not ready. Open chat first, then retry.'
     if (/daemon_not_found|daemon not found/i.test(normalized)) return 'Daemon not found. Retry in a moment.'
-    if (/gateway_unavailable|gateway.*unavailable|not running/i.test(normalized)) return 'OpenClaw is starting. Try again in a moment.'
+    if (/gateway_unavailable|gateway.*unavailable|gateway rpc timed out|not running/i.test(normalized)) return 'OpenClaw is starting. Try again in a moment.'
     return normalized
   }
   return fallback

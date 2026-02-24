@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RefreshCw, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -163,6 +163,7 @@ export default function SettingsSubscriptionPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [cancelStep, setCancelStep] = useState<'convince' | 'confirm'>('convince')
   const [cancelLoadingMode, setCancelLoadingMode] = useState<CancelMode | null>(null)
+  const [redeployLoading, setRedeployLoading] = useState(false)
 
   const redirectToSignIn = useCallback(() => {
     const currentPath = typeof window === 'undefined'
@@ -450,6 +451,55 @@ export default function SettingsSubscriptionPage() {
     }
   }, [refreshSubscription, tenantId])
 
+  const redeployManagedInstance = useCallback(async () => {
+    if (!tenantId) {
+      setActionError('Missing tenant context. Refresh and try again.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Re-deploy from scratch? This immediately deletes your current OpenClaw instance and provisions a fresh one.',
+    )
+    if (!confirmed) {
+      return
+    }
+
+    const typed = window.prompt('Type REDEPLOY to confirm.')
+    if (typed?.trim().toUpperCase() !== 'REDEPLOY') {
+      return
+    }
+
+    const backendUrl = getBackendUrl()
+    setRedeployLoading(true)
+    setStatusMessage('')
+    setActionError('')
+
+    try {
+      const headers = await buildTenantAuthHeaders(tenantId, {
+        'content-type': 'application/json',
+      })
+      const response = await fetch(`${backendUrl}/api/v1/daemons/${encodeURIComponent(tenantId)}/redeploy`, {
+        method: 'POST',
+        headers,
+        body: '{}',
+      })
+
+      const payloadText = await response.text()
+      const payload = parseJsonRecord(payloadText)
+      if (!response.ok) {
+        const message = readString(payload?.message) ?? 'Could not re-deploy your instance.'
+        throw new Error(message)
+      }
+
+      setStatusMessage('Re-deploy started. Your old instance was deleted and a fresh instance is now provisioning.')
+      await refreshSubscription(tenantId)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not re-deploy your instance.')
+    } finally {
+      setRedeployLoading(false)
+    }
+  }, [refreshSubscription, tenantId])
+
   const normalizedPlan = normalizeBillingPlan(snapshot?.plan)
   const hasPaidPlan = snapshot?.isPaidPlan === true
   const statusLabel = toDisplayStatus(snapshot)
@@ -676,6 +726,38 @@ export default function SettingsSubscriptionPage() {
             ) : (
               <p className="text-sm text-muted-foreground">
                 No active paid plan to cancel.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base">Instance Maintenance</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Re-deploy removes the current managed instance and rebuilds it from scratch using your saved runtime
+              configuration.
+            </p>
+            {hasPaidPlan ? (
+              <Button
+                variant="destructive"
+                onClick={() => void redeployManagedInstance()}
+                disabled={
+                  redeployLoading ||
+                  loadingSnapshot ||
+                  finalizingCheckout ||
+                  checkoutLoadingPlan !== null ||
+                  cancelLoadingMode !== null
+                }
+              >
+                {redeployLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Re-deploy from scratch
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Active paid plan required to re-deploy from scratch.
               </p>
             )}
           </CardContent>

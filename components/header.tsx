@@ -2,13 +2,19 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { getRecoveredSupabaseSession, getSupabaseAuthClient } from "@/lib/supabase-auth"
+import { Loader2 } from "lucide-react"
+import {
+  buildAuthCallbackUrl,
+  getRecoveredSupabaseSession,
+  getSupabaseAuthClient,
+} from "@/lib/supabase-auth"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading")
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -49,13 +55,27 @@ export function Header() {
     }
   }, [])
 
-  const ctaHref = authStatus === "authenticated" ? "/chat" : "/signin"
-  const ctaLabel =
-    authStatus === "authenticated"
-      ? "Dashboard"
-      : authStatus === "loading"
-        ? "Account"
-        : "Sign in"
+  const onGoogleSignIn = async () => {
+    if (isGoogleLoading || authStatus === "authenticated") return
+
+    setIsGoogleLoading(true)
+    try {
+      const supabase = getSupabaseAuthClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildAuthCallbackUrl("/dashboard/chat"),
+        },
+      })
+
+      if (error) {
+        throw error
+      }
+    } catch {
+      setIsGoogleLoading(false)
+      window.location.assign("/signin")
+    }
+  }
 
   return (
     <header
@@ -66,10 +86,10 @@ export function Header() {
     >
       <nav className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-md overflow-hidden flex items-center justify-center">
+          <div className="h-11 w-11 overflow-hidden rounded-md flex items-center justify-center">
             <img
-              src="/logo.png"
-              alt="ClawPilot Logo"
+              src="/logo.svg"
+              alt="ClawPilot mascot"
               className="w-full h-full object-contain"
             />
           </div>
@@ -78,67 +98,55 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-6">
           <Link
-            href="/openclaw-easy-setup"
+            href="#home"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            Easy setup
+            Home
           </Link>
           <Link
-            href="#simple-idea"
+            href="#problem"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            Idea
+            Problem
           </Link>
           <Link
-            href="#social-proof"
+            href="#agents"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            Proof
+            Agents
           </Link>
           <Link
-            href="#use-cases"
+            href="#why-clawpilot"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            Use cases
-          </Link>
-          <Link
-            href="#channels"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Channels
-          </Link>
-          <Link
-            href="#benefits"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Benefits
-          </Link>
-          <Link
-            href="#control"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Control
+            Why Clawpilot
           </Link>
           <Link
             href="#how-it-works"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            How it works
-          </Link>
-          <Link
-            href="#faq"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            FAQ
+            How It Works
           </Link>
         </div>
 
-        <Link
-          href={ctaHref}
-          className="type-nav rounded-lg bg-foreground px-3 py-1.5 text-background"
-        >
-          {ctaLabel}
-        </Link>
+        {authStatus === "authenticated" ? (
+          <Link
+            href="/dashboard/chat"
+            className="type-nav rounded-lg bg-foreground px-3 py-1.5 text-background"
+          >
+            Dashboard
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onGoogleSignIn}
+            disabled={isGoogleLoading}
+            className="type-nav inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-background disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isGoogleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {isGoogleLoading ? "Connecting..." : "Sign in"}
+          </button>
+        )}
       </nav>
     </header>
   )

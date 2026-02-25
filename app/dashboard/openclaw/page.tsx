@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -24,8 +24,10 @@ import {
   type ProviderSetupMethod,
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
-import { isOnboardingComplete } from '@/lib/onboarding-state'
+import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -54,6 +56,8 @@ function getStoredSetup(): ProviderSetupStorage {
 
 export default function OpenCloudStepPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const forceRestartOnboarding = searchParams.get('restart') === '1'
   const [checkingSession, setCheckingSession] = useState(true)
   const [selectedProviderId, setSelectedProviderId] = useState<ModelProviderId | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
@@ -89,16 +93,33 @@ export default function OpenCloudStepPage() {
           return
         }
 
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        if (complete) {
-          router.replace('/chat')
+        let onboardingComplete = false
+        if (forceRestartOnboarding) {
+          try {
+            await markOnboardingIncomplete(session)
+          } catch (error) {
+            console.warn('Failed to mark onboarding incomplete during restart flow', error)
+          }
+        } else {
+          onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        }
+
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const subscription = await fetchSubscriptionSnapshot(tenantId)
+        if (!hasManagedHostingPlan(subscription)) {
+          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
+          return
+        }
+
+        if (onboardingComplete) {
+          router.replace('/dashboard/chat')
           return
         }
 
         const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
         const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
         if (!isEnabledModelProviderId(providerId) || !isModelSupportedByProvider(providerId, modelId)) {
-          router.replace('/dashboard')
+          router.replace('/dashboard/model')
           return
         }
 
@@ -118,7 +139,7 @@ export default function OpenCloudStepPage() {
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [forceRestartOnboarding, router])
 
   useEffect(() => {
     if (!providerConfig || !selectedProviderId) {
@@ -204,7 +225,7 @@ export default function OpenCloudStepPage() {
         ? saveOAuthSelection(false)
         : saveApiKeySelection(false)
     if (!didSave) return
-    router.push('/dashboard/hooks')
+    router.push(forceRestartOnboarding ? '/dashboard/hooks?restart=1' : '/dashboard/hooks')
   }
 
   if (checkingSession) {
@@ -234,7 +255,7 @@ export default function OpenCloudStepPage() {
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard">
+            <Link href="/dashboard/model">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>

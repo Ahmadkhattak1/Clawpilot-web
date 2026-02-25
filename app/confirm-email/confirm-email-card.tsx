@@ -203,7 +203,7 @@ export function ConfirmEmailCard({ initialEmail, initialNextPath }: ConfirmEmail
 
         <CardFooter className="pt-0">
           <Button variant="link" className="h-auto p-0 text-sm" asChild>
-            <Link href={`/signup?next=${encodeURIComponent(nextPath)}`}>Back to sign up</Link>
+            <Link href={`/signin?next=${encodeURIComponent(nextPath)}`}>Back to sign in</Link>
           </Button>
         </CardFooter>
       </Card>

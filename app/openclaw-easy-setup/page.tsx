@@ -23,14 +23,14 @@ export const metadata: Metadata = {
     title: `${siteName} | OpenClaw Easy Setup`,
     description: pageDescription,
     url: "/openclaw-easy-setup",
-    images: ["/logo.png"],
+    images: ["/logo.svg"],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: `${siteName} | OpenClaw Easy Setup`,
     description: pageDescription,
-    images: ["/logo.png"],
+    images: ["/logo.svg"],
   },
 }
 

@@ -1,132 +1,83 @@
-"use client"
+import Image from "next/image"
 
-import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
-import {
-  CalendarClock,
-  ClipboardList,
-  Inbox,
-  MessageCircleMore,
-  SearchCheck,
-  Send,
-  Workflow,
-} from "lucide-react"
-
-const useCases = [
+const agents = [
   {
-    title: "Inbox support",
-    icon: Inbox,
-    className: "lg:col-span-7",
+    imageSrc: "/site-images/email-funnel.svg",
+    imageAlt: "Outreach pipeline artwork",
+    title: "The Outreach Agent",
+    description:
+      "Finds prospects. Sends cold emails. Reads replies. Books meetings. You show up to the call.",
+    replacement: "Replaces an SDR's daily email grind.",
   },
   {
-    title: "Calendar planning",
-    icon: CalendarClock,
-    className: "lg:col-span-5",
+    imageSrc: "/site-images/reply-agent.svg",
+    imageAlt: "Reply automation artwork",
+    title: "The Support Agent",
+    description:
+      "Lives on your WhatsApp. Answers customers instantly. Escalates when it should.",
+    replacement: "Replaces 1-2 support hires handling the same 40 questions.",
   },
   {
-    title: "Ops checklists",
-    icon: ClipboardList,
-    className: "lg:col-span-4",
+    imageSrc: "/site-images/leads.png",
+    imageAlt: "Lead generation workflow artwork",
+    title: "The Lead Gen Agent",
+    description:
+      "Finds companies, finds decision-makers, verifies emails, scores fit, pushes to your CRM. Full pipeline while you sleep.",
+    replacement: "Replaces a VA doing 20 hours/week of manual prospecting.",
   },
   {
-    title: "Outreach drafts",
-    icon: Send,
-    className: "lg:col-span-4",
+    imageSrc: "/site-images/monitoring.svg",
+    imageAlt: "Competitor monitoring artwork",
+    title: "The Competitor Monitor",
+    description:
+      "Watches pricing, launches, job postings, and social — 24/7. Alerts you the moment something moves.",
+    replacement: "Replaces checking competitor sites every few days and missing everything.",
   },
   {
-    title: "Research summaries",
-    icon: SearchCheck,
-    className: "lg:col-span-4",
-  },
-  {
-    title: "Chat delegation",
-    icon: MessageCircleMore,
-    className: "lg:col-span-6",
-  },
-  {
-    title: "Routine workflows",
-    icon: Workflow,
-    className: "lg:col-span-6",
+    imageSrc: "/site-images/mascot-tools.png",
+    imageAlt: "OpenClaw toolkit artwork",
+    title: "Raw OpenClaw",
+    description:
+      "Full framework, your rules. We handle servers, updates, and uptime. You build whatever you want.",
+    replacement: "For teams that want the power without the DevOps.",
   },
 ]
 
 export function Agents() {
-  const [visible, setVisible] = useState(false)
-  const sectionRef = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setVisible(true)
-          }
-        })
-      },
-      { threshold: 0.2 }
-    )
-
-    if (sectionRef.current) {
-      observer.observe(sectionRef.current)
-    }
-
-    return () => observer.disconnect()
-  }, [])
-
   return (
-    <section
-      id="overview"
-      ref={sectionRef}
-      className="relative px-6 py-20 md:py-24"
-    >
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div
-          id="use-cases"
-          className={`relative overflow-hidden rounded-[28px] border border-border/50 bg-secondary/35 p-6 transition-all duration-700 md:p-8 lg:p-10 ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
-          style={{ transitionDelay: "120ms" }}
-        >
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-foreground/[0.04] blur-3xl" />
-          <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(249,188,116,0.18)_0%,rgba(249,188,116,0)_75%)] blur-3xl" />
+    <section id="agents" className="relative px-6 py-16 md:py-20">
+      <div className="mx-auto max-w-6xl">
+        <h2 className="type-h2 max-w-4xl text-balance">
+          Pick an Agent. It Does One Job. It Does It Every Day.
+        </h2>
 
-          <div className="relative">
-            <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="type-nav text-muted-foreground">Use cases</p>
-                <h3 className="type-h3 mt-2">
-                  What you can use it for
-                </h3>
-              </div>
-              <Link
-                href="https://clawhub.ai"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
+        <div className="mt-8 grid gap-4 md:grid-cols-2">
+          {agents.map((agent) => {
+            return (
+              <article
+                key={agent.title}
+                className="rounded-2xl border border-border/55 bg-secondary/35 p-6"
               >
-                Skills
-              </Link>
-            </div>
-
-            <div className="grid auto-rows-[minmax(88px,_auto)] gap-3 sm:grid-cols-2 lg:grid-cols-12">
-              {useCases.map((item) => (
-                <div
-                  key={item.title}
-                  className={`rounded-2xl border border-border/55 bg-background/75 p-4 transition-colors hover:bg-background/90 md:p-5 ${item.className}`}
-                >
-                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-secondary/60">
-                    <item.icon className="h-4.5 w-4.5 text-foreground/85" />
-                  </div>
-                  <h4 className="text-base font-semibold leading-snug tracking-tight text-foreground md:text-lg">
-                    {item.title}
-                  </h4>
+                <div className="mb-5 overflow-hidden rounded-xl border border-border/60 bg-background/75 p-3">
+                  <Image
+                    src={agent.imageSrc}
+                    alt={agent.imageAlt}
+                    width={1536}
+                    height={1024}
+                    className="h-[170px] w-full object-contain"
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-
+                <h3 className="type-h4">{agent.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-foreground/90 md:text-base">
+                  {agent.description}
+                </p>
+                <p className="mt-3 text-sm font-medium leading-relaxed text-foreground/75">
+                  {agent.replacement}
+                </p>
+              </article>
+            )
+          })}
         </div>
-
       </div>
     </section>
   )

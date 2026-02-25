@@ -2,7 +2,15 @@ import type { MetadataRoute } from "next"
 import { siteUrl } from "@/lib/site"
 
 export default function robots(): MetadataRoute.Robots {
-  const publicPaths = ["/", "/openclaw-easy-setup", "/llms.txt", "/llms-full.txt"]
+  const publicPaths = [
+    "/",
+    "/openclaw-easy-setup",
+    "/terms",
+    "/privacy",
+    "/disclaimer",
+    "/llms.txt",
+    "/llms-full.txt",
+  ]
 
   return {
     rules: [

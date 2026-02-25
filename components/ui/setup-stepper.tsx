@@ -12,7 +12,7 @@ interface SetupStep {
 
 const SETUP_STEPS: readonly SetupStep[] = [
   { id: 'model', label: 'Model' },
-  { id: 'deployment', label: 'Deployment' },
+  { id: 'deployment', label: 'Deploy' },
 ] as const
 
 export type SetupStepId = SetupStep['id']

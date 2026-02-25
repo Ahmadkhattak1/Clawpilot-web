@@ -1,17 +1,12 @@
 {
     "name": "ClawPilot",
     "short_name": "ClawPilot",
-    "description": "OpenClaw easy setup with managed hosting. No servers to manage, no uptime babysitting.",
+    "description": "Deploy OpenClaw agents for outreach, support, lead generation, and competitor monitoring with managed hosting.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#000000",
     "icons": [
-        {
-            "src": "/logo.png",
-            "sizes": "2000x2000",
-            "type": "image/png"
-        },
         {
             "src": "/logo.svg",
             "sizes": "any",

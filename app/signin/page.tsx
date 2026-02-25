@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { SignInPage } from '@/components/ui/sign-in'
 
 export const metadata: Metadata = {
-  title: "Sign in",
+  title: "Sign in with Google",
   robots: {
     index: false,
     follow: false,

@@ -72,7 +72,7 @@ function normalizeErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof Error) || !error.message.trim()) return fallback
   const message = error.message.trim()
   const lower = message.toLowerCase()
-  if (lower.includes('not found')) return 'Runtime not ready. Open chat first, then retry.'
+  if (lower.includes('not found')) return 'Runtime not ready. Open workspace first, then retry.'
   if (lower.includes('daemon_not_found') || lower.includes('daemon not found')) return 'Daemon not found. Retry in a moment.'
   if (lower.includes('not_paired') || lower.includes('pairing required') || lower.includes('device identity required')) return 'Channel bridge is still pairing. Retry shortly.'
   if (lower.includes('control ui requires https') || lower.includes('control ui requires localhost') || lower.includes('secure context')) return 'Bridge setup in progress. Retry shortly.'

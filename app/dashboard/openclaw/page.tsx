@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,7 +54,7 @@ function getStoredSetup(): ProviderSetupStorage {
   }
 }
 
-export default function OpenCloudStepPage() {
+function OpenCloudStepPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const forceRestartOnboarding = searchParams.get('restart') === '1'
@@ -358,5 +358,13 @@ export default function OpenCloudStepPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function OpenCloudStepPage() {
+  return (
+    <Suspense fallback={null}>
+      <OpenCloudStepPageClient />
+    </Suspense>
   )
 }

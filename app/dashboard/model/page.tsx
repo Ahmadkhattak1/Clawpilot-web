@@ -3,7 +3,7 @@
 import { Check, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -106,7 +106,7 @@ function ProviderLogo({
   )
 }
 
-export default function ModelStepPage() {
+function ModelStepPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const forceRestartOnboarding = searchParams.get('restart') === '1'
@@ -406,5 +406,13 @@ export default function ModelStepPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function ModelStepPage() {
+  return (
+    <Suspense fallback={null}>
+      <ModelStepPageClient />
+    </Suspense>
   )
 }

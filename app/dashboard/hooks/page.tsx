@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, Loader2, Rocket } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -176,7 +176,7 @@ function MagicConfetti({ show }: { show: boolean }) {
   )
 }
 
-export default function HooksPage() {
+function HooksPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const forceRestartOnboarding = searchParams.get('restart') === '1'
@@ -515,5 +515,13 @@ export default function HooksPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function HooksPage() {
+  return (
+    <Suspense fallback={null}>
+      <HooksPageClient />
+    </Suspense>
   )
 }

@@ -1,17 +1,11 @@
 import React from "react"
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Analytics as GAAnalytics } from "@/components/analytics"
 import { ThemeProvider } from "@/components/theme-provider"
 import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
 import './globals.css'
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-})
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -78,7 +72,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={inter.variable}>
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}

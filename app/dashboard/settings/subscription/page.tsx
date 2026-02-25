@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Loader2, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -160,7 +160,7 @@ function statusBadgeClass(snapshot: SubscriptionSnapshot | null): string {
   return 'border-border text-foreground'
 }
 
-export default function SettingsSubscriptionPage() {
+function SettingsSubscriptionPageClient() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -988,5 +988,13 @@ export default function SettingsSubscriptionPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function SettingsSubscriptionPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsSubscriptionPageClient />
+    </Suspense>
   )
 }

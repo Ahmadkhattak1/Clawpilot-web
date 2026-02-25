@@ -1,14 +1,27 @@
+import { redirect } from 'next/navigation'
 import type { Metadata } from "next"
-import { SignUpPage } from '@/components/ui/sign-up'
+import { getSafeNextPath } from '@/lib/supabase-auth'
 
 export const metadata: Metadata = {
-  title: "Sign up",
+  title: "Sign in",
   robots: {
     index: false,
     follow: false,
   },
 }
 
-export default function SignUpRoute() {
-  return <SignUpPage />
+type SignUpRouteProps = {
+  searchParams?: Promise<{
+    next?: string | string[]
+  }>
+}
+
+export default async function SignUpRoute({ searchParams }: SignUpRouteProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
+  const rawNext = resolvedSearchParams?.next
+  const nextParam = Array.isArray(rawNext) ? rawNext[0] : rawNext
+  if (nextParam) {
+    redirect(`/signin?next=${encodeURIComponent(getSafeNextPath(nextParam))}`)
+  }
+  redirect('/signin')
 }

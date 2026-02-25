@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Target,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -72,7 +73,8 @@ import {
   type PersistedRuntimeSession,
 } from '@/lib/runtime-persistence'
 import { getBrowserAccessToken } from '@/lib/backend-auth'
-import { isOnboardingComplete } from '@/lib/onboarding-state'
+import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId, fetchTenantDaemonPresence } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
@@ -122,6 +124,55 @@ interface SetupLiveSignal {
   state: 'ready' | 'active' | 'pending'
 }
 
+const SETUP_STEP_LABELS = {
+  launch: 'Launching instance',
+  install: 'Installing OpenClaw',
+  start: 'Starting your assistant',
+  oauth: 'Connecting your OpenAI account',
+} as const
+
+const STEP_PROGRESS_ROTATION_SECONDS = 12
+
+const SETUP_STEP_ACTIVE_MESSAGES: Record<string, readonly string[]> = {
+  [SETUP_STEP_LABELS.launch]: [
+    'Requesting dedicated cloud capacity...',
+    'Capacity reserved. Creating your instance...',
+    'Booting your cloud server...',
+    'Assigning network and secure access...',
+    'Instance is online and initializing...',
+  ],
+  [SETUP_STEP_LABELS.install]: [
+    'Preparing OpenClaw installation...',
+    'Downloading OpenClaw components...',
+    'Installing OpenClaw runtime...',
+    'Applying OpenClaw configuration...',
+    'Creating your assistant workspace...',
+  ],
+  [SETUP_STEP_LABELS.start]: [
+    'Starting runtime gateway...',
+    'Launching assistant services...',
+    'Running startup health checks...',
+    'Verifying internal service connectivity...',
+    'Final startup checks in progress...',
+  ],
+  [SETUP_STEP_LABELS.oauth]: [
+    'Waiting for OpenAI authorization...',
+    'Securely linking your OpenAI account...',
+    'Authorization received. Verifying access...',
+    'Confirming model permissions...',
+    'Finalizing OpenAI connection...',
+  ],
+}
+
+function getSetupStepProgressMessage(stepLabel: string, elapsedSeconds: number): string | null {
+  const messages = SETUP_STEP_ACTIVE_MESSAGES[stepLabel]
+  if (!messages || messages.length === 0) return null
+
+  const safeElapsed = Math.max(0, elapsedSeconds)
+  const messageIndex = Math.min(messages.length - 1, Math.floor(safeElapsed / STEP_PROGRESS_ROTATION_SECONDS))
+  return messages[messageIndex] ?? null
+}
+
 const INPUT_LINE_HEIGHT = 24
 const INPUT_VERTICAL_PADDING = 20
 const INPUT_MIN_HEIGHT = INPUT_LINE_HEIGHT + INPUT_VERTICAL_PADDING
@@ -129,7 +180,7 @@ const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 11 + INPUT_VERTICAL_PADDING
 const ONLINE_STABILITY_MS = 1800
 const ASSISTANT_PROGRESS_TICK_MS = 1000
 const WS_INITIAL_CONNECT_DELAY_MS = 1_500
-const SETUP_MAX_DURATION_MS = 600_000
+const SETUP_MAX_DURATION_MS = 300_000
 const HISTORY_POLL_INTERVAL_MS = 6_000
 const CHANNEL_STATUS_POLL_INTERVAL_MS = 25_000
 const CHANNEL_STATUS_PROBE_TIMEOUT_MS = 6_000
@@ -149,6 +200,7 @@ const PAYWALL_DISCOUNT_STRIKE_DELAY_MS = 500
 const PAYWALL_DISCOUNT_NEW_PRICE_DELAY_MS = 300
 const PAYWALL_DISCOUNT_ANIMATION_MS = 2300
 const SETUP_STARTED_STORAGE_KEY_PREFIX = 'clawpilot:chat-setup-started-at'
+const POST_INSTALL_FINALIZE_STORAGE_KEY_PREFIX = 'clawpilot:onboarding-post-install'
 const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
   { atSecond: 0, text: 'Hi. I am Lenny. I am the lobster they assigned to keep you company while your OpenClaw instance boots up.' },
   { atSecond: 8, text: 'Right now a loud computer in a building that smells like warm electricity is doing important nerd stuff on your behalf.' },
@@ -600,7 +652,7 @@ function getOpenClawStatusLabel({
   isConnectionStable: boolean
 }): string {
   if (setupTimedOut) {
-    return 'delayed'
+    return 'warming up'
   }
 
   if (
@@ -626,6 +678,42 @@ function getOpenClawStatusLabel({
   }
 
   return 'connecting'
+}
+
+function getOpenClawStatusHint({
+  setupPhase,
+  setupTimedOut,
+  openClawStatusLabel,
+}: {
+  setupPhase: SetupPhase
+  setupTimedOut: boolean
+  openClawStatusLabel: string
+}): string {
+  if (openClawStatusLabel === 'online') {
+    return 'Ask anything. Delegate the work.'
+  }
+
+  if (setupPhase === 'provisioning') {
+    return 'Provisioning your cloud runtime.'
+  }
+
+  if (setupPhase === 'installing') {
+    return 'Installing OpenClaw runtime and required system dependencies.'
+  }
+
+  if (setupPhase === 'starting') {
+    return 'Starting OpenClaw gateway and running health checks.'
+  }
+
+  if (setupPhase === 'oauth') {
+    return 'Finalizing model authorization before chat starts.'
+  }
+
+  if (setupTimedOut) {
+    return 'Runtime setup is still in progress. Chat will connect automatically once ready.'
+  }
+
+  return 'Preparing your runtime for chat.'
 }
 
 function getTransientSendNotice(message: string): string | null {
@@ -1291,6 +1379,45 @@ function formatInstanceStateLabel(instanceState: string | null): string {
     .join(' ')
 }
 
+const FAILED_INSTANCE_STATE_TOKENS = ['error', 'fail', 'delet', 'destroy', 'archive'] as const
+
+function normalizeInstanceState(instanceState: string | null): string {
+  return typeof instanceState === 'string' ? instanceState.trim().toLowerCase() : ''
+}
+
+function hasCloudInstanceInRuntimeStatus(runtimeStatus: SetupRuntimeStatusSnapshot): boolean {
+  if (runtimeStatus.instanceId?.trim()) {
+    return true
+  }
+  const normalizedState = normalizeInstanceState(runtimeStatus.instanceState)
+  return Boolean(normalizedState && normalizedState !== 'unknown')
+}
+
+function instanceStateIndicatesFailure(instanceState: string | null): boolean {
+  const normalizedState = normalizeInstanceState(instanceState)
+  if (!normalizedState) {
+    return false
+  }
+  return FAILED_INSTANCE_STATE_TOKENS.some((token) => normalizedState.includes(token))
+}
+
+function shouldShowSetupRetryPrompt(input: {
+  timedOut: boolean
+  issueMessage: string
+  runtimeStatus: SetupRuntimeStatusSnapshot
+}): boolean {
+  if (!input.timedOut) {
+    return false
+  }
+  if (input.issueMessage.trim().length > 0) {
+    return true
+  }
+  if (!hasCloudInstanceInRuntimeStatus(input.runtimeStatus)) {
+    return true
+  }
+  return instanceStateIndicatesFailure(input.runtimeStatus.instanceState)
+}
+
 function formatRelativeProbeTime(checkedAt: string | null): string | null {
   if (!checkedAt) return null
   const checkedAtMs = Date.parse(checkedAt)
@@ -1374,6 +1501,7 @@ function SetupProgressView({
   oauthError,
   oauthStatus,
   onRetry,
+  onRestartOnboarding,
   onStartOauth,
   onCompleteOauth,
   onOauthCallbackChange,
@@ -1395,6 +1523,7 @@ function SetupProgressView({
   oauthError: string
   oauthStatus: string
   onRetry: () => void
+  onRestartOnboarding?: () => void
   onStartOauth: () => void
   onCompleteOauth: () => void
   onOauthCallbackChange: (value: string) => void
@@ -1425,6 +1554,8 @@ function SetupProgressView({
     () => steps.find((step) => step.status === 'active') ?? null,
     [steps],
   )
+  const activeStepLabelRef = useRef<string | null>(null)
+  const activeStepStartedAtRef = useRef<number>(Date.now())
   const setupLiveSignals = useMemo(
     () => buildSetupLiveSignals(runtimeStatus),
     [runtimeStatus],
@@ -1438,6 +1569,22 @@ function SetupProgressView({
   const oauthExpiresAtMs = oauthExpiresAt ? Date.parse(oauthExpiresAt) : null
   const oauthUrlExpired = oauthExpiresAtMs !== null && Number.isFinite(oauthExpiresAtMs) && oauthNowMs >= oauthExpiresAtMs
   const hasOauthSession = oauthSessionId.trim().length > 0 && oauthAuthUrl.trim().length > 0
+  const activeStepElapsedSeconds =
+    activeStep && activeStepLabelRef.current === activeStep.label
+      ? Math.max(0, Math.floor((Date.now() - activeStepStartedAtRef.current) / 1000))
+      : 0
+
+  useEffect(() => {
+    const nextActiveLabel = activeStep?.label ?? null
+    if (!nextActiveLabel) {
+      activeStepLabelRef.current = null
+      return
+    }
+    if (nextActiveLabel !== activeStepLabelRef.current) {
+      activeStepLabelRef.current = nextActiveLabel
+      activeStepStartedAtRef.current = Date.now()
+    }
+  }, [activeStep?.label])
 
   useEffect(() => {
     if (!oauthRequired || oauthConnected || oauthBusy || !oauthExpiresAt) return
@@ -1527,7 +1674,11 @@ function SetupProgressView({
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{step.label}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{step.description}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {step.status === 'active' && activeStep?.label === step.label
+                            ? (getSetupStepProgressMessage(step.label, activeStepElapsedSeconds) ?? step.description)
+                            : step.description}
+                        </p>
                       </div>
                     </div>
                     <span
@@ -1584,7 +1735,7 @@ function SetupProgressView({
               <section className="rounded-xl border border-border/70 bg-card/80 p-4">
                 <div className="flex items-center gap-2.5">
                   <Image
-                    src="/pfp.webp"
+                    src="/pfp.svg"
                     alt="Lenny the lobster"
                     width={36}
                     height={36}
@@ -1619,10 +1770,22 @@ function SetupProgressView({
             {timedOut ? (
               <>
                 <p className="text-sm text-amber-600">This is taking longer than expected.</p>
-                <Button variant="outline" size="sm" onClick={onRetry}>
-                  Retry
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" size="sm" onClick={onRetry}>
+                    Retry
+                  </Button>
+                  {onRestartOnboarding ? (
+                    <Button variant="outline" size="sm" onClick={onRestartOnboarding}>
+                      Restart onboarding
+                    </Button>
+                  ) : null}
+                </div>
               </>
+            ) : null}
+            {!timedOut && issueMessage && onRestartOnboarding ? (
+              <Button variant="outline" size="sm" onClick={onRestartOnboarding}>
+                Restart onboarding
+              </Button>
             ) : null}
           </div>
         </CardContent>
@@ -1701,12 +1864,14 @@ const ChatTimeline = memo(function ChatTimeline({
   isAssistantTyping,
   messages,
   openClawStatusLabel,
+  openClawStatusHint,
 }: {
   assistantProgressStatus: string
   historyReady: boolean
   isAssistantTyping: boolean
   messages: ChatMessage[]
   openClawStatusLabel: string
+  openClawStatusHint: string
 }) {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-7">
@@ -1714,7 +1879,7 @@ const ChatTimeline = memo(function ChatTimeline({
         <div className="flex min-h-[46vh] flex-col items-center justify-center py-10 text-center">
           <span className="inline-flex h-24 w-24 overflow-hidden rounded-full border border-border/70 bg-card sm:h-28 sm:w-28">
             <Image
-              src="/pfp.webp"
+              src="/pfp.svg"
               alt="Lobster"
               width={112}
               height={112}
@@ -1725,7 +1890,7 @@ const ChatTimeline = memo(function ChatTimeline({
             OpenClaw is {openClawStatusLabel}.
           </h1>
           <p className="mt-2 max-w-md text-[13px] text-muted-foreground sm:text-sm">
-            Ask anything. Delegate the work.
+            {openClawStatusHint}
           </p>
         </div>
       ) : null}
@@ -1819,6 +1984,7 @@ export default function ChatPage() {
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [workflowsSidebarOpen, setWorkflowsSidebarOpen] = useState(false)
   const [showSessionsSidebar, setShowSessionsSidebar] = useState(true)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [sendError, setSendError] = useState('')
@@ -1837,7 +2003,8 @@ export default function ChatPage() {
     endsAtMs: number
   } | null>(null)
   const [hasLoadedPaywallState, setHasLoadedPaywallState] = useState(false)
-  const [selectedPaywallPlan, setSelectedPaywallPlan] = useState<PaywallPlan>('yearly')
+  const [selectedPaywallPlan, setSelectedPaywallPlan] = useState<PaywallPlan>('monthly')
+  const [deletedModalPlan, setDeletedModalPlan] = useState<PaywallPlan | null>(null)
   const [discountAnimatedPriceUsd, setDiscountAnimatedPriceUsd] = useState(PAYWALL_MONTHLY_PRICE_USD)
   const [discountAnimationPhase, setDiscountAnimationPhase] = useState<DiscountAnimationPhase>('initial')
   const [isDiscountAnimating, setIsDiscountAnimating] = useState(false)
@@ -1848,6 +2015,7 @@ export default function ChatPage() {
   const [hasResolvedBillingPlan, setHasResolvedBillingPlan] = useState(false)
   const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null)
   const [isOpeningOpenClawUi, setIsOpeningOpenClawUi] = useState(false)
+  const [isRestartingOnboarding, setIsRestartingOnboarding] = useState(false)
 
   // Setup progress state
   const [setupPhase, _setSetupPhase] = useState<SetupPhase>(null)
@@ -2083,6 +2251,8 @@ export default function ChatPage() {
 
       const selectedPlan = options?.plan ?? selectedPaywallPlan
       const applyDiscount = Boolean(options?.applyDiscount && selectedPlan === 'monthly')
+      const resolvedCustomerName =
+        profileName.trim() && profileName.trim().toLowerCase() !== 'account' ? profileName.trim() : undefined
       const backendUrl = getBackendUrl()
 
       const successUrl =
@@ -2107,6 +2277,7 @@ export default function ChatPage() {
             successUrl,
             cancelUrl,
             customerEmail: profileEmail || undefined,
+            customerName: resolvedCustomerName,
           }),
         })
 
@@ -2138,7 +2309,7 @@ export default function ChatPage() {
         setIsCheckoutRedirecting(false)
       }
     },
-    [buildTenantRequestHeaders, isCheckoutRedirecting, profileEmail, selectedPaywallPlan, tenantId],
+    [buildTenantRequestHeaders, isCheckoutRedirecting, profileEmail, profileName, selectedPaywallPlan, tenantId],
   )
 
   const applySubscriptionSnapshotToPaywall = useCallback(
@@ -2432,8 +2603,8 @@ export default function ChatPage() {
     const now = Date.now()
     const existingCountdownEndsAt =
       paywallStatusRef.current === 'countdown' &&
-      typeof paywallCountdownEndsAtMs === 'number' &&
-      paywallCountdownEndsAtMs > now
+        typeof paywallCountdownEndsAtMs === 'number' &&
+        paywallCountdownEndsAtMs > now
         ? paywallCountdownEndsAtMs
         : null
     const countdownEndsAt =
@@ -2561,6 +2732,12 @@ export default function ChatPage() {
     setSelectedPaywallPlan(activeBillingPlan === 'PRO_YEARLY' ? 'yearly' : 'monthly')
     setPaywallModal('plan-pricing')
   }, [activeBillingPlan])
+
+  useEffect(() => {
+    if (paywallModal === 'deleted') {
+      setDeletedModalPlan(null)
+    }
+  }, [paywallModal])
 
   useEffect(() => {
     if (!tenantId) return
@@ -3403,6 +3580,42 @@ export default function ChatPage() {
     historyPollInFlightRef.current = false
   }, [])
 
+  const restartOnboardingFlow = useCallback(async (targetTenantId?: string) => {
+    if (isRestartingOnboarding) {
+      return
+    }
+
+    setIsRestartingOnboarding(true)
+    setSendError('')
+    setSessionsError('')
+    stopPolling()
+    stopHistoryPolling()
+    if (wsRef.current) {
+      wsRef.current.onclose = null
+      wsRef.current.onerror = null
+      wsRef.current.onmessage = null
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    setConnectionStatus('disconnected')
+    const effectiveTenantId = targetTenantId?.trim() || tenantId
+    if (effectiveTenantId) {
+      writePersistedSetupStartedAt(effectiveTenantId, null)
+    }
+
+    try {
+      const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
+      if (session) {
+        await markOnboardingIncomplete(session)
+      }
+    } catch (error) {
+      console.warn('Failed to mark onboarding incomplete before restart', error)
+    } finally {
+      router.replace('/dashboard/model?restart=1')
+      setIsRestartingOnboarding(false)
+    }
+  }, [isRestartingOnboarding, router, stopHistoryPolling, stopPolling, tenantId])
+
   useEffect(() => {
     if (!tenantId || !hasLoadedPaywallState || paywallStatus !== 'deleted') return
     if (paywallDeletionHandledRef.current || paywallDeletionSyncRef.current) return
@@ -3723,12 +3936,12 @@ export default function ChatPage() {
             status?: string
             message?: ChatMessage | string
             error?:
-              | string
-              | {
-                  code?: string
-                  message?: string
-                  paywall?: WsPaywallPayload
-                }
+            | string
+            | {
+              code?: string
+              message?: string
+              paywall?: WsPaywallPayload
+            }
             sessionKey?: string
             reason?: string
             previousSessionKey?: string
@@ -4098,8 +4311,19 @@ export default function ChatPage() {
               stopPolling()
               return
             }
-            if (errorCode === 'RUNTIME_INSTANCE_MISSING') {
-              setSetupIssue(errorMessage || 'OpenClaw instance is missing in DigitalOcean. Retry deployment.')
+            if (errorCode === 'RUNTIME_INSTANCE_MISSING' || errorCode === 'DAEMON_NOT_FOUND') {
+              setSetupIssue(
+                errorCode === 'RUNTIME_INSTANCE_MISSING'
+                  ? (errorMessage || 'OpenClaw instance is missing in DigitalOcean. Restart onboarding to deploy a fresh instance.')
+                  : 'No active OpenClaw instance found. Restart onboarding to deploy a fresh instance.',
+              )
+              setSetupTimedOut(true)
+              stopPolling()
+              void restartOnboardingFlow(tid)
+              return
+            }
+            if (errorCode === 'TENANT_TERMINATED') {
+              setSetupIssue('Tenant access is terminated. Restart onboarding to deploy a fresh instance.')
               setSetupTimedOut(true)
               stopPolling()
               return
@@ -4111,7 +4335,10 @@ export default function ChatPage() {
               }
               suppressWsReconnectRef.current = true
               setSetupPhase('provisioning')
-              setSetupIssue(errorMessage || 'Tenant runtime config is missing. Re-deploy this tenant first.')
+              setSetupIssue(errorMessage || 'Tenant runtime config is missing. Restart onboarding to deploy a fresh instance.')
+              setSetupTimedOut(true)
+              stopPolling()
+              void restartOnboardingFlow(tid)
               return
             }
 
@@ -4225,7 +4452,7 @@ export default function ChatPage() {
       // Poll every 8 seconds
       pollRef.current = setInterval(poll, 8000)
     },
-    [buildTenantRequestHeaders, connectWebSocket, stopPolling],
+    [buildTenantRequestHeaders, connectWebSocket, restartOnboardingFlow, stopPolling],
   )
 
   useEffect(() => {
@@ -4258,12 +4485,12 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to sign out', error)
     } finally {
-      router.replace('/signin')
+      router.replace('/')
     }
   }, [isSigningOut, router])
 
   useEffect(() => {
-    let unsubscribe = () => {}
+    let unsubscribe = () => { }
     try {
       const supabase = getSupabaseAuthClient()
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -4381,6 +4608,14 @@ export default function ChatPage() {
           return
         }
         const tid = deriveTenantIdFromUserId(session.user.id)
+        const [onboardingComplete, subscription] = await Promise.all([
+          isOnboardingComplete(session, { backfillFromProvisionedTenant: true }),
+          fetchSubscriptionSnapshot(tid),
+        ])
+        if (!hasManagedHostingPlan(subscription)) {
+          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
+          return
+        }
 
         let oauthPending = false
         let startupRuntimeConfigMissing = false
@@ -4419,11 +4654,10 @@ export default function ChatPage() {
           console.warn('Failed to resolve runtime model auth state during chat startup', error)
         }
 
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        if (!complete) {
+        if (!onboardingComplete) {
           const daemonPresence = await fetchTenantDaemonPresence(tid)
           if (daemonPresence === 'missing') {
-            router.replace('/dashboard')
+            router.replace('/dashboard/model?restart=1')
             return
           }
         }
@@ -4509,7 +4743,7 @@ export default function ChatPage() {
 
           if (startupRuntimeConfigMissing) {
             setCheckingSession(false)
-            startSetupPolling(tid, { forceReset: true })
+            void restartOnboardingFlow(tid)
             return
           }
 
@@ -4536,14 +4770,19 @@ export default function ChatPage() {
                 // Ignore malformed/non-JSON error payloads.
               }
 
-              if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED' || errorCode === 'RUNTIME_INSTANCE_MISSING') {
+              if (errorCode === 'DAEMON_NOT_FOUND' || errorCode === 'RUNTIME_INSTANCE_MISSING') {
+                setCheckingSession(false)
+                void restartOnboardingFlow(tid)
+                return
+              }
+              if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED') {
                 setCheckingSession(false)
                 startSetupPolling(tid, { forceReset: true })
                 return
               }
               if (isRuntimeConfigMissingError({ errorCode, message: errorMessage })) {
                 setCheckingSession(false)
-                startSetupPolling(tid, { forceReset: true })
+                void restartOnboardingFlow(tid)
                 return
               }
             }
@@ -4587,11 +4826,21 @@ export default function ChatPage() {
                 },
               })
               const isInstanceReady = instanceState === 'active' && setupComplete
+              const hasVerifiedCloudInstance =
+                typeof instanceState === 'string' &&
+                instanceState.trim().length > 0 &&
+                instanceState.trim().toLowerCase() !== 'unknown'
               const deploymentFingerprint = buildDeploymentFingerprint({
                 instanceId,
                 runtimeResourceId,
                 daemonUpdatedAt,
               })
+
+              if (data.daemon?.runtimeMode === 'digitalocean' && !hasVerifiedCloudInstance) {
+                setCheckingSession(false)
+                void restartOnboardingFlow(tid)
+                return
+              }
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
                 setCheckingSession(false)
@@ -4655,6 +4904,80 @@ export default function ChatPage() {
     }
     // Startup bootstrap should run once per page mount to avoid resetting setup state mid-flight.
   }, [])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId || typeof window === 'undefined') {
+      return
+    }
+
+    const storageKey = `${POST_INSTALL_FINALIZE_STORAGE_KEY_PREFIX}:${tenantId}`
+    const alreadyCompleted = window.localStorage.getItem(storageKey)
+    if (alreadyCompleted) {
+      return
+    }
+
+    let cancelled = false
+
+    const runPostInstallFinalize = async () => {
+      try {
+        const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
+        const accessToken = session?.access_token?.trim() ?? ''
+        if (!accessToken) {
+          return
+        }
+
+        const response = await fetch('/api/onboarding/post-install', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            tenantId,
+          }),
+        })
+
+        if (!response.ok) {
+          console.warn('Deferred onboarding finalization request failed', {
+            tenantId,
+            status: response.status,
+          })
+          return
+        }
+
+        let payload: unknown = null
+        try {
+          payload = await response.json()
+        } catch {
+          payload = null
+        }
+
+        if (cancelled) {
+          return
+        }
+
+        const payloadRecord =
+          payload && typeof payload === 'object' && !Array.isArray(payload)
+            ? (payload as Record<string, unknown>)
+            : null
+        const complete = payloadRecord?.complete === true
+        if (complete) {
+          window.localStorage.setItem(storageKey, new Date().toISOString())
+        }
+      } catch (error) {
+        console.warn('Deferred onboarding finalization failed', {
+          tenantId,
+          error,
+        })
+      }
+    }
+
+    void runPostInstallFinalize()
+
+    return () => {
+      cancelled = true
+    }
+  }, [checkingSession, tenantId])
 
   useEffect(() => {
     if (checkingSession || !tenantId || typeof window === 'undefined') {
@@ -5090,6 +5413,12 @@ export default function ChatPage() {
     </div>
   )
 
+  const isTerminatedRuntimeMessage = /tenant_terminated|tenant access has been terminated|trial ended/i.test(
+    `${sessionsError} ${sendError}`.toLowerCase(),
+  )
+  const isInstanceDeleted = paywallStatus === 'deleted'
+  const shouldShowRestartOnboardingAction = isTerminatedRuntimeMessage && !isInstanceDeleted
+
   const conversationsSidebar = (
     <Card className="border-border/70 lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <CardContent className="p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -5113,9 +5442,24 @@ export default function ChatPage() {
         </div>
 
         {sessionsError && (
-          <p className="mx-2 mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">
-            {sessionsError}
-          </p>
+          <div className="mx-2 mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">
+            <p>{sessionsError}</p>
+            {shouldShowRestartOnboardingAction ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 w-full border-destructive/40 bg-background/70 text-[11px] text-destructive hover:bg-background"
+                onClick={() => {
+                  void restartOnboardingFlow()
+                }}
+                disabled={isRestartingOnboarding}
+              >
+                {isRestartingOnboarding ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
+                Restart onboarding
+              </Button>
+            ) : null}
+          </div>
         )}
 
         {/* Session list(s) */}
@@ -5159,6 +5503,11 @@ export default function ChatPage() {
     sendError,
     isConnectionStable,
   })
+  const openClawStatusHint = getOpenClawStatusHint({
+    setupPhase,
+    setupTimedOut,
+    openClawStatusLabel,
+  })
   const transientSendNotice = getTransientSendNotice(sendError)
   const assistantProgressStatus = formatAssistantProgressStatus(assistantWaitSeconds)
   const liveWhatsApp = useMemo(() => extractWhatsAppLiveIdentity(channelStatusSnapshot), [channelStatusSnapshot])
@@ -5190,7 +5539,6 @@ export default function ChatPage() {
         : ''
   const shouldShowSubscriptionWarningBanner =
     !isCountdownActive && subscriptionWarningRemainingMs !== null && subscriptionWarningRemainingMs > 0
-  const isInstanceDeleted = paywallStatus === 'deleted'
   const isComposerDisabled = isInstanceDeleted
   const shouldShowPaywallOverlay = paywallModal !== 'none'
   const activePlanBadgeLabel =
@@ -5242,23 +5590,31 @@ export default function ChatPage() {
     const gatewayIssue = formatGatewayProbeIssue(setupRuntimeStatus)
     const gatewayChecked = Boolean(setupRuntimeStatus.gatewayProbe.checkedAt)
     const lastGatewayCheck = formatRelativeProbeTime(setupRuntimeStatus.gatewayProbe.checkedAt)
+    const showSetupRetryPrompt = shouldShowSetupRetryPrompt({
+      timedOut: setupTimedOut,
+      issueMessage: setupIssue,
+      runtimeStatus: setupRuntimeStatus,
+    })
     const needsOAuthStep = oauthRequired || setupPhaseForView === 'oauth'
     const steps: SetupStep[] = [
       {
-        label: 'Launching instance',
-        description: hasInstanceAllocated
-          ? `Your cloud server is allocated and currently ${instanceStateLabel}.`
-          : 'Requesting and allocating your dedicated cloud server.',
+        label: SETUP_STEP_LABELS.launch,
+        description:
+          setupPhaseForView === 'checking' || setupPhaseForView === 'provisioning'
+            ? hasInstanceAllocated
+              ? `Cloud instance is currently ${instanceStateLabel}.`
+              : 'Requesting and allocating your dedicated cloud server.'
+            : 'Cloud instance is ready.',
         status:
           setupPhaseForView === 'checking' || setupPhaseForView === 'provisioning'
             ? 'active'
             : 'done',
       },
       {
-        label: 'Installing OpenClaw',
+        label: SETUP_STEP_LABELS.install,
         description:
           setupPhaseForView === 'starting' || setupPhaseForView === 'oauth' || setupPhaseForView === 'ready'
-            ? 'OpenClaw is installed and workspace setup is complete.'
+            ? 'OpenClaw installation complete.'
             : hasRouting
               ? 'Installing OpenClaw and preparing your assistant workspace.'
               : 'Waiting for server initialization before installation begins.',
@@ -5270,15 +5626,17 @@ export default function ChatPage() {
               : 'pending',
       },
       {
-        label: 'Starting your assistant',
+        label: SETUP_STEP_LABELS.start,
         description:
-          gatewayReady
-            ? `Runtime gateway is online${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
-            : gatewayIssue
-              ? `${gatewayIssue}. We keep retrying automatically${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
-              : gatewayChecked
-                ? `Gateway startup checks are running${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
-                : 'Gateway startup checks begin after installation finishes.',
+          setupPhaseForView === 'oauth' || setupPhaseForView === 'ready'
+            ? 'Assistant services are running.'
+            : gatewayReady
+              ? `Runtime gateway is online${lastGatewayCheck ? ` (checked ${lastGatewayCheck})` : ''}.`
+              : gatewayIssue
+                ? `${gatewayIssue}. We keep retrying automatically${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
+                : gatewayChecked
+                  ? `Gateway startup checks are running${lastGatewayCheck ? ` (last check ${lastGatewayCheck})` : ''}.`
+                  : 'Gateway startup checks begin after installation finishes.',
         status:
           setupPhaseForView === 'starting'
             ? 'active'
@@ -5289,8 +5647,13 @@ export default function ChatPage() {
     ]
     if (needsOAuthStep) {
       steps.push({
-        label: 'Connecting your OpenAI account',
-        description: 'Authorize OpenAI so your assistant can respond with your selected model.',
+        label: SETUP_STEP_LABELS.oauth,
+        description:
+          setupPhaseForView === 'oauth'
+            ? 'Waiting for OpenAI authorization...'
+            : oauthConnected
+              ? 'OpenAI account connected. Model access confirmed.'
+              : 'Waiting for OpenAI authorization to begin.',
         status: setupPhaseForView === 'oauth' ? 'active' : oauthConnected ? 'done' : 'pending',
       })
     }
@@ -5302,7 +5665,7 @@ export default function ChatPage() {
         runtimeStatus={setupRuntimeStatus}
         startedAt={startedAtForView}
         issueMessage={setupIssue}
-        timedOut={setupTimedOut}
+        timedOut={showSetupRetryPrompt}
         oauthRequired={oauthRequired}
         oauthConnected={oauthConnected}
         oauthBusy={oauthBusy}
@@ -5319,6 +5682,9 @@ export default function ChatPage() {
             writePersistedSetupStartedAt(tenantId, null)
             startSetupPolling(tenantId, { forceReset: true })
           }
+        }}
+        onRestartOnboarding={() => {
+          void restartOnboardingFlow()
         }}
         onStartOauth={handleStartOpenAIOAuth}
         onCompleteOauth={handleCompleteOpenAIOAuth}
@@ -5433,7 +5799,7 @@ export default function ChatPage() {
               </Toggle>
               <span className="inline-flex h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-card p-0.5 sm:h-10 sm:w-10">
                 <Image
-                  src="/logo.png"
+                  src="/logo.svg"
                   alt="ClawPilot"
                   width={40}
                   height={40}
@@ -5479,6 +5845,50 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <Sheet open={workflowsSidebarOpen} onOpenChange={setWorkflowsSidebarOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 text-xs"
+                    type="button"
+                  >
+                    <Target className="mr-1.5 h-3.5 w-3.5" />
+                    Workflows
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[90vw] max-w-sm overflow-y-auto p-0">
+                  <div className="flex h-14 items-center border-b border-border/60 px-5">
+                    <h2 className="text-sm font-semibold text-foreground">Workflows</h2>
+                  </div>
+                  <div className="p-5">
+                    <p className="text-xs text-muted-foreground">Pre-configured agents you can launch when you need them.</p>
+                    <div className="mt-4 rounded-xl border border-border/60 bg-card">
+                      <div className="p-4">
+                        <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
+                          <Target className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">Growth Agent</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Autonomous lead discovery, research, outreach, and reply handling.
+                        </p>
+                      </div>
+                      <div className="border-t border-border/40 px-4 py-3">
+                        <Button
+                          asChild
+                          size="sm"
+                          className="w-full bg-violet-600 text-white hover:bg-violet-700"
+                          onClick={() => setWorkflowsSidebarOpen(false)}
+                        >
+                          <Link href="/dashboard/customer-finder">
+                            Open Growth Agent
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
               <Button
                 variant="outline"
                 size="sm"
@@ -5593,6 +6003,7 @@ export default function ChatPage() {
                 isAssistantTyping={isAssistantTyping}
                 messages={messages}
                 openClawStatusLabel={openClawStatusLabel}
+                openClawStatusHint={openClawStatusHint}
               />
             </section>
           </div>
@@ -5652,13 +6063,26 @@ export default function ChatPage() {
                     ) : (
                       <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive sm:text-sm">
                         <p className="min-w-0 flex-1 truncate sm:whitespace-normal">{sendError}</p>
-                        <button
-                          type="button"
-                          onClick={reconnect}
-                          className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
-                        >
-                          Retry
-                        </button>
+                        {shouldShowRestartOnboardingAction ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void restartOnboardingFlow()
+                            }}
+                            disabled={isRestartingOnboarding}
+                            className="shrink-0 font-medium underline underline-offset-2 hover:no-underline disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isRestartingOnboarding ? 'Restarting...' : 'Restart onboarding'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={reconnect}
+                            className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+                          >
+                            Retry
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5847,7 +6271,7 @@ export default function ChatPage() {
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
                   <Button
                     onClick={() => {
-                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                      void activateFrontendUpgrade({ plan: 'monthly' })
                     }}
                     disabled={isCheckoutRedirecting}
                   >
@@ -6170,17 +6594,66 @@ export default function ChatPage() {
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Your OpenClaw instance has been deleted. Upgrade to launch a new one.
                 </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletedModalPlan('monthly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      deletedModalPlan === 'monthly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={deletedModalPlan === 'monthly'}
+                  >
+                    <p className={cn('text-xs font-medium uppercase tracking-wide', deletedModalPlan === 'monthly' ? 'text-primary' : 'text-muted-foreground')}>
+                      Monthly
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_MONTHLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/mo</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletedModalPlan('yearly')}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition-colors sm:p-5',
+                      deletedModalPlan === 'yearly'
+                        ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 bg-background/60 hover:border-border',
+                    )}
+                    aria-pressed={deletedModalPlan === 'yearly'}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={cn('text-xs font-medium uppercase tracking-wide', deletedModalPlan === 'yearly' ? 'text-primary' : 'text-muted-foreground')}>
+                        Yearly
+                      </p>
+                      <span className="rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Save 20%
+                      </span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_YEARLY_PRICE_USD)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">/year</p>
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">Select a plan to continue.</p>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
                   <Button variant="outline" onClick={() => setPaywallModal('later-upgrade')}>
                     Redeploy OpenClaw
                   </Button>
                   <Button
                     onClick={() => {
-                      void activateFrontendUpgrade({ plan: selectedPaywallPlan })
+                      if (!deletedModalPlan) return
+                      void activateFrontendUpgrade({ plan: deletedModalPlan })
                     }}
-                    disabled={isCheckoutRedirecting}
+                    disabled={isCheckoutRedirecting || !deletedModalPlan}
                   >
-                    {isCheckoutRedirecting ? 'Redirecting...' : 'Upgrade'}
+                    {isCheckoutRedirecting
+                      ? 'Redirecting...'
+                      : deletedModalPlan === 'yearly'
+                        ? 'Upgrade (Yearly)'
+                        : deletedModalPlan === 'monthly'
+                          ? 'Upgrade (Monthly)'
+                          : 'Select a plan'}
                   </Button>
                 </div>
               </div>

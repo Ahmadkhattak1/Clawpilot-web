@@ -4,13 +4,12 @@ import type { Session } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, Loader2, Rocket } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SetupStepper } from '@/components/ui/setup-stepper'
-import { buildTenantAuthHeaders } from '@/lib/backend-auth'
 import {
   MODEL_PROVIDER_SETUP_STORAGE_KEY,
   type ProviderSetupRecord,
@@ -19,15 +18,13 @@ import {
 import {
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
-  getProviderModelOption,
   isModelSupportedByProvider,
 } from '@/lib/model-providers'
-import { isOnboardingComplete, markOnboardingComplete } from '@/lib/onboarding-state'
-import { getBackendUrl } from '@/lib/runtime-controls'
+import { isOnboardingComplete, markOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
 import { SKILLS_CONFIG_STORAGE_KEY, SKILLS_STORAGE_KEY, type SkillConfigStorage } from '@/lib/skill-options'
+import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
-import { cn } from '@/lib/utils'
 
 function getStoredProviderSetup(): ProviderSetupStorage {
   if (typeof window === 'undefined') return {}
@@ -72,57 +69,6 @@ function getStoredSkillConfig(): SkillConfigStorage {
   } catch {
     return {}
   }
-}
-
-function readErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim()
-  }
-  return fallback
-}
-
-const PAYWALL_MONTHLY_PRICE_USD = 25
-const PAYWALL_YEARLY_PRICE_USD = 240
-
-type UpgradePlan = 'monthly' | 'yearly'
-const USD_NO_CENTS = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-})
-
-function formatUsd(value: number): string {
-  return USD_NO_CENTS.format(value)
-}
-
-function readRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  return value as Record<string, unknown>
-}
-
-function readString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-
-function toIsoTimestampMs(value: unknown): number | null {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    return null
-  }
-
-  const parsed = Date.parse(value)
-  if (!Number.isFinite(parsed)) {
-    return null
-  }
-
-  return parsed
 }
 
 const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
@@ -232,6 +178,8 @@ function MagicConfetti({ show }: { show: boolean }) {
 
 export default function HooksPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const forceRestartOnboarding = searchParams.get('restart') === '1'
   const [checkingSession, setCheckingSession] = useState(true)
   const [tenantId, setTenantId] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -246,12 +194,6 @@ export default function HooksPage() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [hasDeployStarted, setHasDeployStarted] = useState(() => readPersistedDeployStartedAt() !== null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
-  const [upgradeRequired, setUpgradeRequired] = useState(false)
-  const [upgradeCheckoutLoading, setUpgradeCheckoutLoading] = useState(false)
-  const [postCheckoutSuccess, setPostCheckoutSuccess] = useState(false)
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
-  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<UpgradePlan>('monthly')
-  const [checkoutSessionId, setCheckoutSessionId] = useState('')
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function resetDeployProgress() {
@@ -275,15 +217,30 @@ export default function HooksPage() {
         const providerSetupStore = getStoredProviderSetup()
         const selectedSetup = providerId ? providerSetupStore[providerId] ?? null : null
 
-        const complete = await isOnboardingComplete(session, {
-          backfillFromProvisionedTenant: true,
-        })
-        if (complete) {
-          router.replace('/chat')
-          return
+        let onboardingComplete = false
+        if (forceRestartOnboarding) {
+          try {
+            await markOnboardingIncomplete(session)
+          } catch (error) {
+            console.warn('Failed to mark onboarding incomplete during restart flow', error)
+          }
+        } else {
+          onboardingComplete = await isOnboardingComplete(session, {
+            backfillFromProvisionedTenant: true,
+          })
         }
 
         const derivedTenantId = deriveTenantIdFromUserId(session.user.id)
+        const subscription = await fetchSubscriptionSnapshot(derivedTenantId)
+        if (!hasManagedHostingPlan(subscription)) {
+          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
+          return
+        }
+        if (onboardingComplete) {
+          router.replace('/dashboard/chat')
+          return
+        }
+
         const skillConfigStore = getStoredSkillConfig()
 
         if (!cancelled) {
@@ -313,12 +270,7 @@ export default function HooksPage() {
     return () => {
       cancelled = true
     }
-  }, [router])
-
-  const selectedModelLabel = useMemo(() => {
-    if (!selectedModelProviderId || !selectedModelId) return null
-    return getProviderModelOption(selectedModelProviderId, selectedModelId)?.label ?? selectedModelId
-  }, [selectedModelId, selectedModelProviderId])
+  }, [forceRestartOnboarding, router])
 
   const onboardingChecks = useMemo(() => {
     return [
@@ -346,235 +298,6 @@ export default function HooksPage() {
       }
     }
   }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const checkoutState = new URLSearchParams(window.location.search).get('checkout')
-    const successSessionId = new URLSearchParams(window.location.search).get('session_id') ?? ''
-    if (checkoutState === 'success') {
-      setPostCheckoutSuccess(true)
-      setCheckoutSessionId(successSessionId.trim())
-      setUpgradeRequired(false)
-      setUpgradeModalOpen(false)
-      setStatus('Finalizing payment...')
-      setError('')
-    } else if (checkoutState === 'cancel') {
-      setPostCheckoutSuccess(false)
-      setCheckoutSessionId('')
-      setUpgradeRequired(true)
-      setUpgradeModalOpen(true)
-      setStatus('')
-      setError('Checkout canceled. Upgrade to deploy.')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!postCheckoutSuccess || !tenantId || !checkoutSessionId) {
-      return
-    }
-
-    let cancelled = false
-    void (async () => {
-      setStatus('Finalizing payment...')
-      const upgraded = await confirmStripeCheckoutSession(checkoutSessionId)
-      if (cancelled) {
-        return
-      }
-
-      if (upgraded) {
-        setUpgradeRequired(false)
-        setUpgradeModalOpen(false)
-        setPostCheckoutSuccess(false)
-        setStatus('Payment received. You can deploy now.')
-        setError('')
-
-        if (typeof window !== 'undefined') {
-          const url = new URL(window.location.href)
-          url.searchParams.delete('checkout')
-          url.searchParams.delete('session_id')
-          window.history.replaceState({}, '', url.toString())
-        }
-        return
-      }
-
-      setUpgradeRequired(true)
-      setUpgradeModalOpen(true)
-      setStatus('')
-      setError('Payment is processing. Try again in a few seconds.')
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [checkoutSessionId, postCheckoutSuccess, tenantId])
-
-  async function ensureDeploymentAllowedBySubscription(): Promise<boolean> {
-    if (!tenantId) {
-      return false
-    }
-
-    const backendUrl = getBackendUrl()
-    const attempts = postCheckoutSuccess ? 6 : 1
-
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const headers = await buildTenantAuthHeaders(tenantId)
-        const response = await fetch(`${backendUrl}/api/v1/subscription`, {
-          method: 'GET',
-          headers,
-        })
-
-        const payloadText = await response.text()
-        let payload: Record<string, unknown> | null = null
-        try {
-          payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
-        } catch {
-          payload = null
-        }
-
-        const isPaidPlan = payload?.isPaidPlan === true
-        if (isPaidPlan) {
-          setUpgradeRequired(false)
-          setPostCheckoutSuccess(false)
-          return true
-        }
-
-        const isTerminated = response.status === 403 && readString(payload?.error) === 'TENANT_TERMINATED'
-        if (!isTerminated && (!response.ok || !payload)) {
-          // Do not hard-block deploy if entitlement probe fails unexpectedly.
-          return true
-        }
-
-        const trialEndsAtMs = toIsoTimestampMs(
-          readRecord(payload?.paywall)?.trialEndsAt ?? payload?.trialEndsAt ?? null,
-        )
-        const state = readString(payload?.state)
-        const nowMs = Date.now()
-        const trialExpired = state === 'TERMINATED' || isTerminated || (trialEndsAtMs !== null && trialEndsAtMs <= nowMs)
-
-        if (!trialExpired) {
-          setUpgradeRequired(false)
-          return true
-        }
-
-        if (attempt + 1 < attempts) {
-          await new Promise((resolve) => setTimeout(resolve, 1000 + attempt * 500))
-          continue
-        }
-
-        setUpgradeRequired(true)
-        setError('Your trial ended. Upgrade to deploy.')
-        return false
-      } catch {
-        // If this check fails, let the server-side deploy endpoint enforce the final guard.
-        return true
-      }
-    }
-
-    return true
-  }
-
-  async function startUpgradeCheckout(plan: UpgradePlan = selectedUpgradePlan) {
-    if (!tenantId) {
-      setError('Session error.')
-      return
-    }
-
-    const backendUrl = getBackendUrl()
-    const successUrl =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}/dashboard/hooks?checkout=success&session_id={CHECKOUT_SESSION_ID}`
-        : undefined
-    const cancelUrl =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}/dashboard/hooks?checkout=cancel`
-        : undefined
-
-    setUpgradeCheckoutLoading(true)
-    setError('')
-    setStatus('')
-
-    try {
-      const headers = await buildTenantAuthHeaders(tenantId, {
-        'content-type': 'application/json',
-      })
-
-      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          plan,
-          applyDiscount: false,
-          successUrl,
-          cancelUrl,
-          customerEmail: activeSession?.user.email ?? undefined,
-        }),
-      })
-
-      const payloadText = await response.text()
-      let payload: Record<string, unknown> | null = null
-      try {
-        payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
-      } catch {
-        payload = null
-      }
-
-      if (!response.ok) {
-        const message = readString(payload?.message) ?? 'Could not start checkout.'
-        throw new Error(message)
-      }
-
-      const checkoutUrl = readString(payload?.url)
-      if (!checkoutUrl) {
-        throw new Error('Checkout session was created without a redirect URL.')
-      }
-
-      window.location.assign(checkoutUrl)
-    } catch (checkoutError) {
-      setError(readErrorMessage(checkoutError, 'Could not start checkout.'))
-      setUpgradeCheckoutLoading(false)
-    }
-  }
-
-  async function confirmStripeCheckoutSession(sessionId: string): Promise<boolean> {
-    if (!tenantId || !sessionId) {
-      return false
-    }
-
-    const backendUrl = getBackendUrl()
-    try {
-      const headers = await buildTenantAuthHeaders(tenantId, {
-        'content-type': 'application/json',
-      })
-
-      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/confirm`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          sessionId,
-        }),
-      })
-
-      const payloadText = await response.text()
-      let payload: Record<string, unknown> | null = null
-      try {
-        payload = payloadText ? (JSON.parse(payloadText) as Record<string, unknown>) : null
-      } catch {
-        payload = null
-      }
-
-      if (!response.ok) {
-        return false
-      }
-
-      return payload?.upgraded === true
-    } catch {
-      return false
-    }
-  }
 
   function validateBeforeSubmit() {
     if (!selectedModelProviderId || !selectedModelId || !providerSetup) {
@@ -610,22 +333,13 @@ export default function HooksPage() {
       clearTimeout(redirectTimeoutRef.current)
     }
 
-    redirectTimeoutRef.current = setTimeout(() => {
-      router.push('/chat')
-    }, 1200)
+    router.push('/dashboard/chat')
   }
 
   async function completeSetup() {
     const validationError = validateBeforeSubmit()
     if (validationError) {
       setError(validationError)
-      setStatus('')
-      return
-    }
-
-    setStatus('Checking subscription...')
-    const deploymentAllowed = await ensureDeploymentAllowedBySubscription()
-    if (!deploymentAllowed) {
       setStatus('')
       return
     }
@@ -686,9 +400,7 @@ export default function HooksPage() {
 
         if (isUpgradeRequired) {
           resetDeployProgress()
-          setUpgradeRequired(true)
-          setError(payload.message ?? payload.backend?.message ?? 'Your trial ended. Upgrade to deploy.')
-          setStatus('')
+          router.replace(buildBillingRequiredPath('/dashboard/model'))
           return
         }
 
@@ -698,7 +410,6 @@ export default function HooksPage() {
         return
       }
 
-      setUpgradeRequired(false)
       await finalizeSetupAndRedirect('Deployment started. Opening chat...')
     } catch {
       resetDeployProgress()
@@ -769,37 +480,27 @@ export default function HooksPage() {
               <div className="max-w-2xl flex-1 space-y-1">
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-                {upgradeRequired ? (
-                  <p className="text-xs text-muted-foreground">Trial ended. Upgrade to deploy a managed instance.</p>
-                ) : !allChecksComplete ? (
+                {!allChecksComplete ? (
                   <p className="text-xs text-muted-foreground">Complete checks.</p>
                 ) : null}
               </div>
 
               <Button
                 type="button"
-                onClick={upgradeRequired ? () => setUpgradeModalOpen(true) : completeSetup}
+                onClick={completeSetup}
                 disabled={
                   submitting ||
                   hasDeployStarted ||
                   showConfetti ||
-                  !allChecksComplete ||
-                  upgradeCheckoutLoading
+                  !allChecksComplete
                 }
                 className="self-end sm:ml-auto sm:min-w-28"
               >
-                {upgradeCheckoutLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Redirecting
-                  </>
-                ) : submitting || hasDeployStarted ? (
+                {submitting || hasDeployStarted ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Deploying
                   </>
-                ) : upgradeRequired ? (
-                  'Upgrade to deploy'
                 ) : showConfetti ? (
                   <>
                     <Rocket className="mr-2 h-4 w-4" />
@@ -813,97 +514,6 @@ export default function HooksPage() {
           </div>
         </CardContent>
       </Card>
-
-      {upgradeModalOpen ? (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
-          <button
-            type="button"
-            onClick={() => setUpgradeModalOpen(false)}
-            aria-hidden="true"
-            className="absolute inset-0 h-full w-full cursor-default"
-          />
-          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
-            <p className="text-xl font-semibold text-foreground">Upgrade to keep your OpenClaw running</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              OpenClaw is free. You pay for managed hosting and secure infrastructure.
-            </p>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setSelectedUpgradePlan('monthly')}
-                className={cn(
-                  'rounded-2xl border p-4 text-left transition-colors sm:p-5',
-                  selectedUpgradePlan === 'monthly'
-                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
-                    : 'border-border/70 bg-background/60 hover:border-border',
-                )}
-                aria-pressed={selectedUpgradePlan === 'monthly'}
-              >
-                <p
-                  className={cn(
-                    'text-xs font-medium uppercase tracking-wide',
-                    selectedUpgradePlan === 'monthly' ? 'text-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  Monthly
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_MONTHLY_PRICE_USD)}</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">/mo</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedUpgradePlan('yearly')}
-                className={cn(
-                  'rounded-2xl border p-4 text-left transition-colors sm:p-5',
-                  selectedUpgradePlan === 'yearly'
-                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
-                    : 'border-border/70 bg-background/60 hover:border-border',
-                )}
-                aria-pressed={selectedUpgradePlan === 'yearly'}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p
-                    className={cn(
-                      'text-xs font-medium uppercase tracking-wide',
-                      selectedUpgradePlan === 'yearly' ? 'text-primary' : 'text-muted-foreground',
-                    )}
-                  >
-                    Yearly
-                  </p>
-                  <span className="rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                    Save 20%
-                  </span>
-                </div>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{formatUsd(PAYWALL_YEARLY_PRICE_USD)}</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">/year</p>
-              </button>
-            </div>
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Choose monthly or yearly. No discounts are applied in this flow.
-            </p>
-
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              <Button
-                onClick={() => {
-                  void startUpgradeCheckout(selectedUpgradePlan)
-                }}
-                disabled={upgradeCheckoutLoading}
-              >
-                {upgradeCheckoutLoading
-                  ? 'Redirecting...'
-                  : `Upgrade (${selectedUpgradePlan === 'yearly' ? 'Yearly' : 'Monthly'})`}
-              </Button>
-              <Button variant="outline" onClick={() => setUpgradeModalOpen(false)} disabled={upgradeCheckoutLoading}>
-                Not now
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
     </div>
   )
 }

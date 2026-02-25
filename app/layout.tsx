@@ -16,11 +16,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+    default: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
     template: "%s | ClawPilot",
   },
   description:
-    "ClawPilot is the easy OpenClaw setup: hosted OpenClaw in minutes, no hardware, no terminal setup, and reliable always-on uptime.",
+    "Deploy OpenClaw agents for outreach, lead response, WhatsApp support, and competitor monitoring. ClawPilot handles hosting, workflows, and uptime so you get outcomes, not servers.",
   applicationName: siteName,
   referrer: "origin-when-cross-origin",
   authors: [{ name: siteName }],
@@ -32,28 +32,28 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+    title: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
     description:
-      "Get easy OpenClaw setup with ClawPilot. We host, install, and maintain OpenClaw so you can start fast.",
+      "Deploy OpenClaw agents that handle outreach, leads, support, and competitor monitoring. We run the infrastructure so you can collect results.",
     url: "/",
     siteName,
     locale: "en_US",
     images: [
       {
-        url: "/logo.png",
+        url: "/logo.svg",
         width: 512,
         height: 512,
-        alt: "ClawPilot - hosted OpenClaw with easy setup",
+        alt: "ClawPilot mascot logo",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+    title: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
     description:
-      "Easy OpenClaw setup in minutes. ClawPilot handles hosting and uptime.",
-    images: ["/logo.png"],
+      "OpenClaw agents for outreach, leads, support, and competitor monitoring. Day 1 outcomes, no server work.",
+    images: ["/logo.svg"],
   },
   robots: {
     index: true,

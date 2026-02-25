@@ -20,7 +20,7 @@ export default async function SignUpAliasRoute({ searchParams }: SignUpAliasRout
   const rawNext = resolvedSearchParams?.next
   const nextParam = Array.isArray(rawNext) ? rawNext[0] : rawNext
   if (nextParam) {
-    redirect(`/signup?next=${encodeURIComponent(getSafeNextPath(nextParam))}`)
+    redirect(`/signin?next=${encodeURIComponent(getSafeNextPath(nextParam))}`)
   }
-  redirect('/signup')
+  redirect('/signin')
 }

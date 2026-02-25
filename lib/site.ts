@@ -21,23 +21,31 @@ export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
 
 export const seoKeywords = [
-  "OpenClaw easy setup",
-  "easy OpenClaw setup",
-  "easy open claw setup",
-  "easy open claw",
-  "OpenClaw setup",
-  "OpenClaw setup without server",
+  "OpenClaw agents",
+  "OpenClaw outreach agent",
+  "OpenClaw support agent",
+  "OpenClaw lead gen agent",
+  "OpenClaw competitor monitor",
   "OpenClaw hosting",
   "hosted OpenClaw",
   "managed OpenClaw",
+  "deploy OpenClaw agents",
+  "OpenClaw automation",
+  "WhatsApp support automation",
+  "cold email automation",
+  "competitor monitoring automation",
   "OpenClaw WhatsApp",
   "OpenClaw Telegram",
-  "OpenClaw iMessage",
-  "OpenClaw Slack",
-  "OpenClaw Discord",
-  "OpenClaw Signal",
-  "AI chat assistant",
+  "OpenClaw CRM automation",
+  "AI sales agent",
+  "AI support agent",
   "ClawPilot",
 ]
 
-export const publicMarketingRoutes = ["/", "/openclaw-easy-setup"] as const
+export const publicMarketingRoutes = [
+  "/",
+  "/openclaw-easy-setup",
+  "/terms",
+  "/privacy",
+  "/disclaimer",
+] as const

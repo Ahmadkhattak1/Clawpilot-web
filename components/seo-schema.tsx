@@ -1,4 +1,3 @@
-import { faqItems } from "./faq-data"
 import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
 export function SeoSchema() {
@@ -12,7 +11,7 @@ export function SeoSchema() {
         "@id": `${siteUrl}#organization`,
         name: siteName,
         url: siteUrl,
-        logo: `${siteUrl}/logo.png`,
+        logo: `${siteUrl}/logo.svg`,
       },
       {
         "@type": "WebSite",
@@ -20,7 +19,7 @@ export function SeoSchema() {
         name: siteName,
         url: siteUrl,
         description:
-          "ClawPilot provides easy OpenClaw setup with managed hosting, updates, and uptime.",
+          "ClawPilot deploys OpenClaw agents for outreach, support, lead generation, and competitor monitoring with managed hosting and uptime.",
         inLanguage: "en",
         keywords: keywordText,
         publisher: {
@@ -31,17 +30,18 @@ export function SeoSchema() {
         "@type": "WebPage",
         "@id": `${siteUrl}/#webpage`,
         url: siteUrl,
-        name: "ClawPilot | OpenClaw Easy Setup Without Server Work",
+        name: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
         description:
-          "Easy OpenClaw setup from ClawPilot. Launch hosted OpenClaw without hardware, terminal setup, or maintenance work.",
+          "Deploy OpenClaw agents for outreach, lead response, WhatsApp support, and competitor monitoring. ClawPilot handles hosting, workflows, and uptime.",
         inLanguage: "en",
         isPartOf: {
           "@id": `${siteUrl}#website`,
         },
         keywords: [
-          "OpenClaw easy setup",
-          "easy OpenClaw setup",
-          "easy open claw",
+          "OpenClaw agents",
+          "OpenClaw outreach agent",
+          "OpenClaw support agent",
+          "OpenClaw lead gen agent",
         ],
       },
       {
@@ -53,23 +53,11 @@ export function SeoSchema() {
         isAccessibleForFree: false,
         url: siteUrl,
         description:
-          "Managed OpenClaw hosting that gives teams easy setup and always-on reliability.",
+          "Managed OpenClaw infrastructure that runs production agents for outreach, support, lead generation, and monitoring.",
         brand: {
           "@id": `${siteUrl}#organization`,
         },
         license: "https://github.com/openclaw/openclaw/blob/main/LICENSE",
-      },
-      {
-        "@type": "FAQPage",
-        "@id": `${siteUrl}#faq`,
-        mainEntity: faqItems.map((item) => ({
-          "@type": "Question",
-          name: item.question,
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: item.answer,
-          },
-        })),
       },
     ],
   }

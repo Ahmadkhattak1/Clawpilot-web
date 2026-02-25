@@ -81,7 +81,7 @@ function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
 function normalizeErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     const normalized = error.message.trim()
-    if (/not found/i.test(normalized)) return 'Runtime not ready. Open chat first, then retry.'
+    if (/not found/i.test(normalized)) return 'Runtime not ready. Open workspace first, then retry.'
     if (/daemon_not_found|daemon not found/i.test(normalized)) return 'Daemon not found. Retry in a moment.'
     if (/gateway_unavailable|gateway.*unavailable|gateway rpc timed out|not running/i.test(normalized)) return 'OpenClaw is starting. Try again in a moment.'
     return normalized
@@ -529,7 +529,7 @@ export default function SettingsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/chat">
+            <Link href="/dashboard/chat">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to chat
             </Link>

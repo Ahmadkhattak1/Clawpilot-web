@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
+import { ArrowLeft, ArrowRight, Loader2, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -23,12 +23,10 @@ import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-aut
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
-const PLAN_MONTHLY_PRICE_USD = 25
-const PLAN_YEARLY_PRICE_USD = 240
-
 type BillingPlan = 'FREE' | 'PRO_MONTHLY' | 'PRO_YEARLY'
-type CheckoutPlan = 'monthly' | 'yearly'
-type CancelMode = 'scheduled' | 'immediate'
+type CancelMode = 'immediate'
+const STRIPE_CHECKOUT_SESSION_ID_TOKEN = '{CHECKOUT_SESSION_ID}'
+const STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY = 'clawpilot:last-stripe-checkout-session-id'
 
 interface SubscriptionSnapshot {
   state?: string
@@ -79,6 +77,28 @@ function normalizeBillingPlan(value: unknown): BillingPlan | null {
     return normalized as BillingPlan
   }
   return null
+}
+
+function resolveManagedHostingEntitlement(snapshot: SubscriptionSnapshot | null): boolean {
+  if (!snapshot) {
+    return false
+  }
+  if (typeof snapshot.isPaidPlan === 'boolean') {
+    return snapshot.isPaidPlan
+  }
+
+  const plan = normalizeBillingPlan(snapshot.plan)
+  if (plan !== 'PRO_MONTHLY' && plan !== 'PRO_YEARLY') {
+    return false
+  }
+
+  const state = readString(snapshot.state)?.toUpperCase() ?? ''
+  if (state === 'TERMINATED' || state === 'SUSPENDED') {
+    return false
+  }
+
+  const billingStatus = readString(snapshot.billingStatus)?.toUpperCase() ?? ''
+  return billingStatus === 'ACTIVE' || billingStatus === 'TRIALING' || billingStatus === 'PAST_DUE'
 }
 
 function formatDateTime(value: unknown): string {
@@ -143,19 +163,19 @@ function statusBadgeClass(snapshot: SubscriptionSnapshot | null): string {
 export default function SettingsSubscriptionPage() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
-  const lastHandledCheckoutOutcomeRef = useRef('')
   const [checkingSession, setCheckingSession] = useState(true)
   const [tenantId, setTenantId] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [onboardingComplete, setOnboardingComplete] = useState(false)
 
   const [loadingSnapshot, setLoadingSnapshot] = useState(false)
   const [snapshot, setSnapshot] = useState<SubscriptionSnapshot | null>(null)
   const [snapshotError, setSnapshotError] = useState('')
 
-  const [selectedPlan, setSelectedPlan] = useState<CheckoutPlan>('monthly')
-  const [checkoutLoadingPlan, setCheckoutLoadingPlan] = useState<CheckoutPlan | null>(null)
-  const [finalizingCheckout, setFinalizingCheckout] = useState(false)
+  const [portalRedirecting, setPortalRedirecting] = useState(false)
 
   const [statusMessage, setStatusMessage] = useState('')
   const [actionError, setActionError] = useState('')
@@ -164,6 +184,7 @@ export default function SettingsSubscriptionPage() {
   const [cancelStep, setCancelStep] = useState<'convince' | 'confirm'>('convince')
   const [cancelLoadingMode, setCancelLoadingMode] = useState<CancelMode | null>(null)
   const [redeployLoading, setRedeployLoading] = useState(false)
+  const attemptedRequiredRedirectRef = useRef(false)
 
   const redirectToSignIn = useCallback(() => {
     const currentPath = typeof window === 'undefined'
@@ -200,8 +221,21 @@ export default function SettingsSubscriptionPage() {
           isPaidPlan: false,
         }
         setSnapshot(terminated)
-        setSelectedPlan('monthly')
         return terminated
+      }
+
+      const tenantNotFound =
+        (response.status === 404 && readString(payload?.error) === 'TENANT_NOT_FOUND') ||
+        readString(payload?.message)?.toLowerCase().includes('unknown tenant') === true
+      if (tenantNotFound) {
+        const missing: SubscriptionSnapshot = {
+          state: 'FREE',
+          plan: 'FREE',
+          billingStatus: 'FREE',
+          isPaidPlan: false,
+        }
+        setSnapshot(missing)
+        return missing
       }
 
       if (!response.ok || !payload) {
@@ -212,13 +246,6 @@ export default function SettingsSubscriptionPage() {
       const nextSnapshot = payload as SubscriptionSnapshot
       setSnapshot(nextSnapshot)
 
-      const normalizedPlan = normalizeBillingPlan(nextSnapshot.plan)
-      if (normalizedPlan === 'PRO_YEARLY') {
-        setSelectedPlan('yearly')
-      } else if (normalizedPlan === 'PRO_MONTHLY') {
-        setSelectedPlan('monthly')
-      }
-
       return nextSnapshot
     } catch (error) {
       setSnapshotError(error instanceof Error ? error.message : 'Could not load subscription details.')
@@ -227,6 +254,171 @@ export default function SettingsSubscriptionPage() {
       setLoadingSnapshot(false)
     }
   }, [tenantId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSession() {
+      try {
+        const session = await getRecoveredSupabaseSession()
+        if (!session) {
+          redirectToSignIn()
+          return
+        }
+
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
+        const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : ''
+        const fallbackName = typeof userMetadata.name === 'string' ? userMetadata.name.trim() : ''
+
+        const resolvedTenantId = deriveTenantIdFromUserId(session.user.id)
+        if (cancelled) return
+
+        setTenantId(resolvedTenantId)
+        setCustomerEmail(session.user.email ?? '')
+        setCustomerName(fullName || fallbackName || '')
+        setOnboardingComplete(complete)
+        await refreshSubscription(resolvedTenantId)
+        if (!cancelled) {
+          setCheckingSession(false)
+        }
+      } catch {
+        redirectToSignIn()
+      }
+    }
+
+    void loadSession()
+    return () => {
+      cancelled = true
+    }
+  }, [redirectToSignIn, refreshSubscription])
+
+  const startStripeBillingPortal = useCallback(async () => {
+    if (!tenantId) {
+      setActionError('Missing tenant context. Refresh and try again.')
+      return
+    }
+
+    const backendUrl = getBackendUrl()
+    const returnUrl =
+      typeof window === 'undefined'
+        ? undefined
+        : `${window.location.origin}${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+
+    setPortalRedirecting(true)
+    setStatusMessage('Redirecting to Stripe...')
+    setActionError('')
+
+    try {
+      const headers = await buildTenantAuthHeaders(tenantId, {
+        'content-type': 'application/json',
+      })
+      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/portal/session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          returnUrl,
+          customerEmail: customerEmail || undefined,
+          customerName: customerName || undefined,
+        }),
+      })
+
+      const payloadText = await response.text()
+      const payload = parseJsonRecord(payloadText)
+      if (!response.ok) {
+        const message = readString(payload?.message) ?? 'Could not open Stripe billing.'
+        throw new Error(message)
+      }
+
+      const portalUrl = readString(payload?.url)
+      if (!portalUrl) {
+        throw new Error('Stripe billing URL is missing.')
+      }
+
+      window.location.assign(portalUrl)
+    } catch (error) {
+      setStatusMessage('')
+      setActionError(error instanceof Error ? error.message : 'Could not open Stripe billing.')
+      setPortalRedirecting(false)
+    }
+  }, [customerEmail, customerName, pathname, searchParams, tenantId])
+
+  const startStripeCheckout = useCallback(async () => {
+    if (!tenantId) {
+      setActionError('Missing tenant context. Refresh and try again.')
+      return
+    }
+
+    const backendUrl = getBackendUrl()
+    const successUrl =
+      typeof window === 'undefined'
+        ? undefined
+        : (() => {
+            const params = new URLSearchParams(searchParams.toString())
+            params.set('required', '1')
+            params.set('stripe_return', '1')
+            params.set('checkout', 'success')
+            params.set('session_id', STRIPE_CHECKOUT_SESSION_ID_TOKEN)
+            const builtUrl = `${window.location.origin}${pathname}?${params.toString()}`
+            // Stripe only replaces the literal token, not the URL-encoded version.
+            return builtUrl.replace(encodeURIComponent(STRIPE_CHECKOUT_SESSION_ID_TOKEN), STRIPE_CHECKOUT_SESSION_ID_TOKEN)
+          })()
+    const cancelUrl =
+      typeof window === 'undefined'
+        ? undefined
+        : (() => {
+            const params = new URLSearchParams(searchParams.toString())
+            params.set('required', '1')
+            params.set('stripe_return', '1')
+            params.set('checkout', 'cancel')
+            params.delete('session_id')
+            return `${window.location.origin}${pathname}?${params.toString()}`
+          })()
+
+    setPortalRedirecting(true)
+    setStatusMessage('Redirecting to Stripe checkout...')
+    setActionError('')
+
+    try {
+      const headers = await buildTenantAuthHeaders(tenantId, {
+        'content-type': 'application/json',
+      })
+      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          plan: 'monthly',
+          applyDiscount: false,
+          successUrl,
+          cancelUrl,
+          customerEmail: customerEmail || undefined,
+          customerName: customerName || undefined,
+        }),
+      })
+
+      const payloadText = await response.text()
+      const payload = parseJsonRecord(payloadText)
+      if (!response.ok) {
+        const message = readString(payload?.message) ?? 'Could not open Stripe checkout.'
+        throw new Error(message)
+      }
+
+      const checkoutUrl = readString(payload?.url)
+      if (!checkoutUrl) {
+        throw new Error('Stripe checkout URL is missing.')
+      }
+      const checkoutSessionId = readString(payload?.sessionId)
+      if (typeof window !== 'undefined' && checkoutSessionId) {
+        window.localStorage.setItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY, checkoutSessionId)
+      }
+
+      window.location.assign(checkoutUrl)
+    } catch (error) {
+      setStatusMessage('')
+      setActionError(error instanceof Error ? error.message : 'Could not open Stripe checkout.')
+      setPortalRedirecting(false)
+    }
+  }, [customerEmail, customerName, pathname, searchParams, tenantId])
 
   const confirmStripeCheckoutSession = useCallback(async (targetTenantId: string, sessionId: string): Promise<boolean> => {
     const normalizedTenantId = targetTenantId.trim()
@@ -256,168 +448,14 @@ export default function SettingsSubscriptionPage() {
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadSession() {
-      try {
-        const session = await getRecoveredSupabaseSession()
-        if (!session) {
-          redirectToSignIn()
-          return
-        }
-
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        if (!complete) {
-          router.replace('/dashboard')
-          return
-        }
-
-        const resolvedTenantId = deriveTenantIdFromUserId(session.user.id)
-        if (cancelled) return
-
-        setTenantId(resolvedTenantId)
-        setCustomerEmail(session.user.email ?? '')
-        await refreshSubscription(resolvedTenantId)
-        if (!cancelled) {
-          setCheckingSession(false)
-        }
-      } catch {
-        redirectToSignIn()
-      }
-    }
-
-    void loadSession()
-    return () => {
-      cancelled = true
-    }
-  }, [redirectToSignIn, refreshSubscription, router])
-
-  useEffect(() => {
-    if (checkingSession || !tenantId || typeof window === 'undefined') {
-      return
-    }
-
-    const query = new URLSearchParams(window.location.search)
-    const checkout = query.get('checkout')
-    const checkoutSessionId = query.get('session_id')?.trim() ?? ''
-    if (checkout !== 'success' && checkout !== 'cancel') {
-      return
-    }
-
-    const checkoutOutcomeKey = `${checkout}:${checkoutSessionId || 'none'}`
-    if (lastHandledCheckoutOutcomeRef.current === checkoutOutcomeKey) {
-      return
-    }
-    lastHandledCheckoutOutcomeRef.current = checkoutOutcomeKey
-
-    query.delete('checkout')
-    query.delete('session_id')
-    const nextQuery = query.toString()
-    const nextHref = nextQuery ? `${pathname}?${nextQuery}` : pathname
-    router.replace(nextHref, { scroll: false })
-
-    if (checkout === 'cancel') {
-      setStatusMessage('')
-      setActionError('Checkout canceled.')
-      void refreshSubscription(tenantId)
-      return
-    }
-
-    setFinalizingCheckout(true)
-    setActionError('')
-    setStatusMessage('Finalizing your payment...')
-
-    void (async () => {
-      let confirmedUpgrade = false
-      if (checkoutSessionId) {
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          confirmedUpgrade = await confirmStripeCheckoutSession(tenantId, checkoutSessionId)
-          if (confirmedUpgrade) {
-            break
-          }
-          if (attempt + 1 < 5) {
-            await new Promise((resolve) => setTimeout(resolve, 1000 + attempt * 500))
-          }
-        }
-      }
-
-      const refreshedSnapshot = await refreshSubscription(tenantId)
-      const upgraded = confirmedUpgrade || refreshedSnapshot?.isPaidPlan === true
-      if (upgraded) {
-        setStatusMessage('Subscription active. Managed hosting is unlocked.')
-        setActionError('')
-      } else {
-        setStatusMessage('')
-        setActionError('Payment is processing. Refresh in a few seconds.')
-      }
-      setFinalizingCheckout(false)
-    })()
-  }, [checkingSession, confirmStripeCheckoutSession, pathname, refreshSubscription, router, tenantId])
-
-  const startCheckout = useCallback(async (plan: CheckoutPlan) => {
+  const submitCancellation = useCallback(async () => {
     if (!tenantId) {
       setActionError('Missing tenant context. Refresh and try again.')
       return
     }
 
     const backendUrl = getBackendUrl()
-    const successUrl =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}${pathname}?checkout=success&session_id={CHECKOUT_SESSION_ID}`
-        : undefined
-    const cancelUrl =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}${pathname}?checkout=cancel`
-        : undefined
-
-    setCheckoutLoadingPlan(plan)
-    setStatusMessage('')
-    setActionError('')
-
-    try {
-      const headers = await buildTenantAuthHeaders(tenantId, {
-        'content-type': 'application/json',
-      })
-      const response = await fetch(`${backendUrl}/api/v1/billing/stripe/checkout/session`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          plan,
-          applyDiscount: false,
-          successUrl,
-          cancelUrl,
-          customerEmail: customerEmail || undefined,
-        }),
-      })
-
-      const payloadText = await response.text()
-      const payload = parseJsonRecord(payloadText)
-      if (!response.ok) {
-        const message = readString(payload?.message) ?? 'Could not start checkout.'
-        throw new Error(message)
-      }
-
-      const checkoutUrl = readString(payload?.url)
-      if (!checkoutUrl) {
-        throw new Error('Checkout session was created without a redirect URL.')
-      }
-
-      window.location.assign(checkoutUrl)
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not start checkout.')
-      setCheckoutLoadingPlan(null)
-    }
-  }, [customerEmail, pathname, tenantId])
-
-  const submitCancellation = useCallback(async (mode: CancelMode) => {
-    if (!tenantId) {
-      setActionError('Missing tenant context. Refresh and try again.')
-      return
-    }
-
-    const backendUrl = getBackendUrl()
-    setCancelLoadingMode(mode)
+    setCancelLoadingMode('immediate')
     setStatusMessage('')
     setActionError('')
 
@@ -429,7 +467,7 @@ export default function SettingsSubscriptionPage() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          immediate: mode === 'immediate',
+          immediate: true,
         }),
       })
 
@@ -501,11 +539,36 @@ export default function SettingsSubscriptionPage() {
   }, [refreshSubscription, tenantId])
 
   const normalizedPlan = normalizeBillingPlan(snapshot?.plan)
-  const hasPaidPlan = snapshot?.isPaidPlan === true
+  const hasPaidPlan = resolveManagedHostingEntitlement(snapshot)
+  const requiredBilling = searchParams.get('required') === '1'
+  const stripeReturn = searchParams.get('stripe_return') === '1'
+  const checkoutStatus = searchParams.get('checkout')
+  const checkoutSucceeded = checkoutStatus === 'success'
+  const checkoutCanceled = checkoutStatus === 'cancel'
+  const checkoutSessionId = (searchParams.get('session_id') ?? '').trim()
+  const effectiveCheckoutSessionId = useMemo(() => {
+    const decodedQuerySessionId = decodeURIComponent(checkoutSessionId)
+    const isPlaceholder =
+      !decodedQuerySessionId ||
+      decodedQuerySessionId === STRIPE_CHECKOUT_SESSION_ID_TOKEN ||
+      decodedQuerySessionId.includes('CHECKOUT_SESSION_ID') ||
+      decodedQuerySessionId.startsWith('{') ||
+      decodedQuerySessionId.endsWith('}')
+
+    if (!isPlaceholder) {
+      return decodedQuerySessionId
+    }
+
+    if (typeof window === 'undefined') {
+      return ''
+    }
+    const storedSessionId = window.localStorage.getItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)?.trim() ?? ''
+    return storedSessionId
+  }, [checkoutSessionId])
+  const billingNextPath = '/dashboard/model'
+  const backHref = onboardingComplete ? '/settings' : '/dashboard/model'
   const statusLabel = toDisplayStatus(snapshot)
   const activePlanLabel = toDisplayPlan(normalizedPlan)
-  const currentPlanSelection = normalizedPlan === 'PRO_YEARLY' ? 'yearly' : 'monthly'
-  const isCurrentSelection = selectedPlan === currentPlanSelection
   const periodLabel = snapshot?.cancelAtPeriodEnd ? 'Ends' : hasPaidPlan ? 'Renews' : 'Trial ends'
   const periodValue = useMemo(() => {
     if (snapshot?.cancelAtPeriodEnd) {
@@ -552,6 +615,106 @@ export default function SettingsSubscriptionPage() {
     return null
   }, [deletionDaysRemaining, snapshot?.cancelAtPeriodEnd, snapshot?.state])
 
+  useEffect(() => {
+    if (checkingSession || !tenantId) {
+      return
+    }
+    if (!requiredBilling || !stripeReturn || hasPaidPlan || portalRedirecting || checkoutCanceled) {
+      return
+    }
+
+    let cancelled = false
+    let pendingTimeout: ReturnType<typeof setTimeout> | null = null
+    async function waitForStripeSync() {
+      setStatusMessage('Finalizing your payment...')
+      setActionError('')
+
+      if (checkoutSucceeded && effectiveCheckoutSessionId) {
+        const confirmed = await confirmStripeCheckoutSession(tenantId, effectiveCheckoutSessionId)
+        if (!cancelled && confirmed) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
+          }
+          router.replace(billingNextPath)
+          return
+        }
+      }
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const latestSnapshot = await refreshSubscription(tenantId)
+        if (cancelled) {
+          return
+        }
+
+        const latestHasPaidPlan = resolveManagedHostingEntitlement(latestSnapshot ?? null)
+        if (latestHasPaidPlan) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
+          }
+          router.replace(billingNextPath)
+          return
+        }
+
+        if (attempt < 4) {
+          await new Promise<void>((resolve) => {
+            pendingTimeout = setTimeout(resolve, 1_200)
+          })
+        }
+      }
+
+      if (!cancelled) {
+        setStatusMessage('')
+        setActionError('Payment sync is still pending. Click Reload, then Continue to Stripe only if needed.')
+      }
+    }
+
+    void waitForStripeSync()
+
+    return () => {
+      cancelled = true
+      if (pendingTimeout) {
+        clearTimeout(pendingTimeout)
+      }
+    }
+  }, [billingNextPath, checkingSession, checkoutCanceled, checkoutSucceeded, confirmStripeCheckoutSession, effectiveCheckoutSessionId, hasPaidPlan, portalRedirecting, refreshSubscription, requiredBilling, router, stripeReturn, tenantId])
+
+  useEffect(() => {
+    if (!requiredBilling || !checkoutCanceled) {
+      return
+    }
+    setStatusMessage('')
+    setActionError('Checkout was canceled.')
+  }, [checkoutCanceled, requiredBilling])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId) {
+      return
+    }
+    if (!requiredBilling || hasPaidPlan || portalRedirecting || stripeReturn) {
+      return
+    }
+    if (attemptedRequiredRedirectRef.current) {
+      return
+    }
+
+    attemptedRequiredRedirectRef.current = true
+    void startStripeCheckout()
+  }, [checkingSession, hasPaidPlan, portalRedirecting, requiredBilling, startStripeCheckout, stripeReturn, tenantId])
+
+  useEffect(() => {
+    if (checkingSession || !tenantId) {
+      return
+    }
+    if (!requiredBilling || !hasPaidPlan) {
+      return
+    }
+    if (pathname === billingNextPath) {
+      return
+    }
+
+    router.replace(billingNextPath)
+  }, [billingNextPath, checkingSession, hasPaidPlan, pathname, requiredBilling, router, tenantId])
+
   if (checkingSession) {
     return (
       <div className="grid min-h-[100dvh] place-items-center bg-background">
@@ -563,6 +726,26 @@ export default function SettingsSubscriptionPage() {
     )
   }
 
+  if (requiredBilling && !hasPaidPlan) {
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-background px-4">
+        <div className="w-full max-w-md space-y-4 rounded-xl border border-border/70 bg-card p-6 text-center">
+          <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {stripeReturn ? 'Finalizing payment...' : 'Redirecting to Stripe checkout...'}
+          </p>
+          {statusMessage ? <p className="text-xs text-muted-foreground">{statusMessage}</p> : null}
+          {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+          <Button onClick={() => void startStripeCheckout()} disabled={portalRedirecting} className="w-full">
+            {portalRedirecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Continue to Stripe
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 sm:py-10">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-background to-background/95" />
@@ -570,9 +753,9 @@ export default function SettingsSubscriptionPage() {
       <div className="relative z-10 mx-auto w-full max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/settings">
+            <Link href={backHref}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to settings
+              {onboardingComplete ? 'Back to settings' : 'Back to onboarding'}
             </Link>
           </Button>
           <Button
@@ -648,51 +831,20 @@ export default function SettingsSubscriptionPage() {
 
         <Card className="border-border/70">
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Change plan</CardTitle>
+            <CardTitle className="text-base">Stripe billing</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setSelectedPlan('monthly')}
-                className={cn(
-                  'rounded-xl border p-4 text-left transition-all',
-                  selectedPlan === 'monthly'
-                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/20'
-                    : 'border-border/70 bg-card hover:border-primary/30 hover:bg-muted/30',
-                )}
-              >
-                <p className="text-xs text-muted-foreground">Monthly</p>
-                <p className="mt-1 text-xl font-semibold">${PLAN_MONTHLY_PRICE_USD}/mo</p>
-                <p className="mt-1 text-xs text-muted-foreground">Billed monthly</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedPlan('yearly')}
-                className={cn(
-                  'rounded-xl border p-4 text-left transition-all',
-                  selectedPlan === 'yearly'
-                    ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/20'
-                    : 'border-border/70 bg-card hover:border-primary/30 hover:bg-muted/30',
-                )}
-              >
-                <p className="text-xs text-muted-foreground">Yearly</p>
-                <p className="mt-1 text-xl font-semibold">${PLAN_YEARLY_PRICE_USD}/year</p>
-                <p className="mt-1 text-xs text-muted-foreground">Billed yearly</p>
-              </button>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              We send you directly to Stripe checkout for purchase.
+            </p>
 
             <Button
-              onClick={() => void startCheckout(selectedPlan)}
-              disabled={checkoutLoadingPlan !== null || finalizingCheckout}
+              onClick={() => void (hasPaidPlan ? startStripeBillingPortal() : startStripeCheckout())}
+              disabled={portalRedirecting}
               className="w-full"
             >
-              {checkoutLoadingPlan === selectedPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {hasPaidPlan
-                ? isCurrentSelection
-                  ? 'Checkout current plan'
-                  : 'Switch plan in checkout'
-                : 'Upgrade in checkout'}
+              {portalRedirecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {hasPaidPlan ? 'Manage in Stripe' : 'Continue to Stripe checkout'}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
@@ -720,7 +872,7 @@ export default function SettingsSubscriptionPage() {
                     setCancelStep('convince')
                   }}
                 >
-                  Manage cancellation
+                  Cancel subscription
                 </Button>
               </>
             ) : (
@@ -747,8 +899,7 @@ export default function SettingsSubscriptionPage() {
                 disabled={
                   redeployLoading ||
                   loadingSnapshot ||
-                  finalizingCheckout ||
-                  checkoutLoadingPlan !== null ||
+                  portalRedirecting ||
                   cancelLoadingMode !== null
                 }
               >
@@ -804,30 +955,21 @@ export default function SettingsSubscriptionPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <TriangleAlert className="h-4 w-4" />
-                  Choose cancellation type
+                  Confirm cancellation
                 </DialogTitle>
                 <DialogDescription>
-                  One final step so this action is explicit.
+                  Canceling will immediately end billing access and delete the managed instance.
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-2">
                 <Button
                   className="w-full justify-start"
-                  variant="outline"
-                  onClick={() => void submitCancellation('scheduled')}
-                  disabled={cancelLoadingMode !== null}
-                >
-                  {cancelLoadingMode === 'scheduled' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Schedule cancellation
-                </Button>
-                <Button
-                  className="w-full justify-start"
                   variant="destructive"
-                  onClick={() => void submitCancellation('immediate')}
+                  onClick={() => void submitCancellation()}
                   disabled={cancelLoadingMode !== null}
                 >
-                  {cancelLoadingMode === 'immediate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  {cancelLoadingMode === 'immediate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <TriangleAlert className="h-4 w-4" />}
                   Cancel now
                 </Button>
               </div>

@@ -80,7 +80,7 @@ export default function SkillsSetupPage() {
 
         const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         if (complete) {
-          router.replace('/chat')
+          router.replace('/dashboard/chat')
           return
         }
 

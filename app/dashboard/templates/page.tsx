@@ -75,29 +75,47 @@ export default function WorkflowTemplatesPage() {
         </Button>
 
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Agentic Workflow Templates</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Agents and Workflows</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Launch pre-configured workflow systems when you need them.
+            Pre-configured agents and workflows that are coming soon.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card className="border-border/70">
-            <CardHeader>
-              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
-                <Target className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-              </div>
-              <CardTitle className="text-base">Growth Agent</CardTitle>
-              <CardDescription>
-                Customer finding workflow template for discovery, research, outreach, and reply handling.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full bg-violet-600 text-white hover:bg-violet-700">
-                <Link href="/dashboard/customer-finder">Open Growth Agent</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          {[
+            {
+              name: 'Lead Gen workflow',
+              description: 'Autonomous lead discovery, research, outreach, and reply handling.',
+            },
+            {
+              name: 'Outreach Agent',
+              description: 'Handles personalized outbound outreach and follow-up sequencing.',
+            },
+            {
+              name: 'Competitor Monitoring Support Agent',
+              description: 'Tracks competitor activity and summarizes changes for your team.',
+            },
+          ].map((workflow) => (
+            <Card key={workflow.name} className="border-border/70">
+              <CardHeader>
+                <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                  <Target className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">{workflow.name}</CardTitle>
+                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Coming Soon
+                  </span>
+                </div>
+                <CardDescription>{workflow.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button className="w-full" variant="outline" disabled>
+                  Coming Soon
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     </div>

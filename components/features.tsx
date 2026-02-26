@@ -23,8 +23,7 @@ export function Features() {
         </div>
 
         <p className="mt-6 text-sm leading-relaxed text-foreground/85 md:text-base">
-          One price. Hosting, config, workflows, monitoring — all included. No API key juggling. No
-          surprise token bills.
+          One price. Hosting, config, workflows, monitoring — all included. No surprise token bills.
         </p>
       </div>
     </section>

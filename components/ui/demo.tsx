@@ -78,8 +78,9 @@ export function Hero() {
       className="relative flex min-h-screen items-center overflow-hidden px-4 pb-14 pt-20 sm:px-6 sm:pb-16 sm:pt-24 md:pb-20 md:pt-24"
     >
       <div className="relative z-10 mx-auto max-w-5xl px-5 py-5 sm:px-8 md:px-10 md:py-7">
-        <h1 className="mx-auto max-w-4xl text-balance text-center text-[40px] font-semibold leading-[0.95] tracking-tight sm:text-[56px] md:text-[68px]">
-          Everyone Else Sells You a Server. We Sell You Employees.
+        <h1 className="mx-auto max-w-5xl text-center text-[40px] font-semibold leading-[0.95] tracking-tight sm:text-[56px] md:text-[68px]">
+          <span className="block">Everyone Else Sells You a Server.</span>
+          <span className="block">We Sell You Employees.</span>
         </h1>
         <p className="type-body mx-auto mt-6 max-w-3xl px-2 text-center sm:mt-7">
           OpenClaw agents that send outreach, reply to leads, handle WhatsApp support, and monitor

@@ -632,3 +632,43 @@
 .cf-connector-dot {
   animation: cf-connector-dot-kf 1.5s ease-in-out infinite;
 }
+
+/* ── Workflows sidebar animations ─────────────────────── */
+
+@keyframes wf-shimmer-kf {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.wf-shimmer {
+  animation: wf-shimmer-kf 2.5s ease-in-out infinite;
+}
+
+@keyframes wf-gradient-sweep-kf {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.wf-gradient-sweep {
+  background-size: 200% 200%;
+  animation: wf-gradient-sweep-kf 4s ease-in-out infinite;
+}
+
+/* Workflow card staggered entrance */
+.wf-card-enter {
+  animation: cf-pipeline-card-enter-kf 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}

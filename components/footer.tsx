@@ -3,48 +3,20 @@ import Link from "next/link"
 
 export function Footer() {
   return (
-    <footer className="border-t border-border/40 py-8 px-6">
-      <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Logo */}
+    <footer className="border-t border-border/40 px-6 py-8">
+      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 md:flex-row">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-10 w-10 overflow-hidden rounded-md flex items-center justify-center">
-            <Image
-              src="/logo.svg"
-              alt="ClawPilot mascot"
-              width={40}
-              height={40}
-              className="h-full w-full object-contain"
-            />
-          </div>
-          <span className="type-brand ml-1">ClawPilot</span>
+          <Image
+            src="/logo.svg"
+            alt="ClawPilot"
+            width={32}
+            height={32}
+            className="h-8 w-8 object-contain"
+          />
+          <span className="type-brand">ClawPilot</span>
         </Link>
 
-        {/* Links */}
-        <div className="flex flex-wrap items-center justify-center gap-4 text-muted-foreground">
-          <Link
-            href="#home"
-            className="type-nav transition-colors hover:text-foreground"
-          >
-            Home
-          </Link>
-          <Link
-            href="#agents"
-            className="type-nav transition-colors hover:text-foreground"
-          >
-            Agents
-          </Link>
-          <Link
-            href="#why-clawpilot"
-            className="type-nav transition-colors hover:text-foreground"
-          >
-            Why Clawpilot
-          </Link>
-          <Link
-            href="#how-it-works"
-            className="type-nav transition-colors hover:text-foreground"
-          >
-            How It Works
-          </Link>
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-muted-foreground">
           <Link
             href="/terms"
             className="type-nav transition-colors hover:text-foreground"
@@ -65,19 +37,9 @@ export function Footer() {
           </Link>
         </div>
 
-        {/* Copyright */}
-        <div className="flex items-center gap-2">
-          <p className="type-nav text-muted-foreground">
-            Made with OpenClaw
-          </p>
-          <Image
-            src="/logo.svg"
-            alt="OpenClaw mascot"
-            width={40}
-            height={40}
-            className="-translate-y-1 h-10 w-10 object-contain"
-          />
-        </div>
+        <p className="type-nav text-muted-foreground/60">
+          Built on OpenClaw
+        </p>
       </div>
     </footer>
   )

@@ -10,11 +10,11 @@ import './globals.css'
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
+    default: "ClawPilot | Your Own OpenClaw in the Cloud",
     template: "%s | ClawPilot",
   },
   description:
-    "Deploy OpenClaw agents for outreach, lead response, WhatsApp support, and competitor monitoring. ClawPilot handles hosting, workflows, and uptime so you get outcomes, not servers.",
+    "Get a private OpenClaw instance running in minutes. ClawPilot handles hosting, updates, and uptime. No servers, no Docker, no terminal.",
   applicationName: siteName,
   referrer: "origin-when-cross-origin",
   authors: [{ name: siteName }],
@@ -26,9 +26,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
+    title: "ClawPilot | Your Own OpenClaw in the Cloud",
     description:
-      "Deploy OpenClaw agents that handle outreach, leads, support, and competitor monitoring. We run the infrastructure so you can collect results.",
+      "Get a private OpenClaw instance running in minutes. No servers, no Docker, no terminal. Just sign up and go.",
     url: "/",
     siteName,
     locale: "en_US",
@@ -44,9 +44,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
+    title: "ClawPilot | Your Own OpenClaw in the Cloud",
     description:
-      "OpenClaw agents for outreach, leads, support, and competitor monitoring. Day 1 outcomes, no server work.",
+      "A private OpenClaw instance running in minutes. No servers, no Docker, no terminal.",
     images: ["/logo.svg"],
   },
   robots: {

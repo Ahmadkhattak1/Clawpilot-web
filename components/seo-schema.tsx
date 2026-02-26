@@ -19,7 +19,7 @@ export function SeoSchema() {
         name: siteName,
         url: siteUrl,
         description:
-          "ClawPilot deploys OpenClaw agents for outreach, support, lead generation, and competitor monitoring with managed hosting and uptime.",
+          "ClawPilot provides managed OpenClaw hosting. Get your own private OpenClaw instance in the cloud with no servers, no Docker, and no terminal.",
         inLanguage: "en",
         keywords: keywordText,
         publisher: {
@@ -30,18 +30,18 @@ export function SeoSchema() {
         "@type": "WebPage",
         "@id": `${siteUrl}/#webpage`,
         url: siteUrl,
-        name: "ClawPilot | Deploy OpenClaw Agents That Work on Day 1",
+        name: "ClawPilot | Your Own OpenClaw in the Cloud",
         description:
-          "Deploy OpenClaw agents for outreach, lead response, WhatsApp support, and competitor monitoring. ClawPilot handles hosting, workflows, and uptime.",
+          "Get a private OpenClaw instance running in minutes. ClawPilot handles hosting, updates, and uptime so you can focus on what your AI assistant does.",
         inLanguage: "en",
         isPartOf: {
           "@id": `${siteUrl}#website`,
         },
         keywords: [
-          "OpenClaw agents",
-          "OpenClaw outreach agent",
-          "OpenClaw support agent",
-          "OpenClaw lead gen agent",
+          "OpenClaw hosting",
+          "managed OpenClaw",
+          "OpenClaw cloud",
+          "private OpenClaw instance",
         ],
       },
       {
@@ -53,7 +53,7 @@ export function SeoSchema() {
         isAccessibleForFree: false,
         url: siteUrl,
         description:
-          "Managed OpenClaw infrastructure that runs production agents for outreach, support, lead generation, and monitoring.",
+          "Managed OpenClaw hosting. A private, always-on OpenClaw instance in the cloud with no server setup required.",
         brand: {
           "@id": `${siteUrl}#organization`,
         },

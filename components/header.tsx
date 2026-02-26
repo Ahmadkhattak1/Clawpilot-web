@@ -86,40 +86,22 @@ export function Header() {
     >
       <nav className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="h-11 w-11 overflow-hidden rounded-md flex items-center justify-center">
+          <div className="h-9 w-9 overflow-hidden rounded-md flex items-center justify-center">
             <img
               src="/logo.svg"
               alt="ClawPilot mascot"
               className="w-full h-full object-contain"
             />
           </div>
-          <span className="type-brand ml-1">ClawPilot</span>
+          <span className="type-brand">ClawPilot</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-6">
           <Link
-            href="#home"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Home
-          </Link>
-          <Link
-            href="#problem"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Problem
-          </Link>
-          <Link
-            href="#agents"
-            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Agents
-          </Link>
-          <Link
             href="#why-clawpilot"
             className="type-nav text-muted-foreground transition-colors hover:text-foreground"
           >
-            Why Clawpilot
+            Why ClawPilot
           </Link>
           <Link
             href="#how-it-works"
@@ -132,7 +114,7 @@ export function Header() {
         {authStatus === "authenticated" ? (
           <Link
             href="/dashboard/chat"
-            className="type-nav rounded-lg bg-foreground px-3 py-1.5 text-background"
+            className="type-nav rounded-lg bg-foreground px-3.5 py-1.5 text-background transition-opacity hover:opacity-90"
           >
             Dashboard
           </Link>
@@ -141,10 +123,10 @@ export function Header() {
             type="button"
             onClick={onGoogleSignIn}
             disabled={isGoogleLoading}
-            className="type-nav inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-background disabled:cursor-not-allowed disabled:opacity-70"
+            className="type-nav inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isGoogleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {isGoogleLoading ? "Connecting..." : "Sign in"}
+            {isGoogleLoading ? "Connecting..." : "Get Started"}
           </button>
         )}
       </nav>

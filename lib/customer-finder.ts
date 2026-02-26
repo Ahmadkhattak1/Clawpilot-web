@@ -294,7 +294,7 @@ export interface CustomerFinderLeadsResponse {
 }
 
 export interface CustomerFinderLeadManagementResponse {
-  action: 'start_fresh' | 'discard' | 'export' | 'export_discard'
+  action: 'start_fresh' | 'discard' | 'export' | 'export_discard' | 'approve_outreach'
   run?: {
     runId: string
     name: string
@@ -305,6 +305,8 @@ export interface CustomerFinderLeadManagementResponse {
   runId?: string | null
   scopedLeadCount?: number
   discarded?: number
+  approved?: number
+  remainingReady?: number
   export?: {
     format: 'csv' | 'json'
     fileName: string
@@ -417,7 +419,7 @@ export function createDefaultCustomerFinderConfig(): CustomerFinderConfig {
       allowFollowUps: true,
       maxFollowUpsPerLead: 2,
       cta: 'Would you be open to a quick 15-minute call this week?',
-      signature: 'Growth Team',
+      signature: 'Lead Gen Team',
       blockedTerms: [],
     },
     replyPolicy: {
@@ -662,7 +664,7 @@ export async function updateCustomerFinderLeadStage(
 export async function manageCustomerFinderLeads(
   tenantId: string,
   input: {
-    action: 'start_fresh' | 'discard' | 'export' | 'export_discard'
+    action: 'start_fresh' | 'discard' | 'export' | 'export_discard' | 'approve_outreach'
     runId?: string
     runName?: string
     includeAllRuns?: boolean

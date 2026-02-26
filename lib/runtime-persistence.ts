@@ -19,6 +19,7 @@ type PersistedProfileRow = {
 }
 
 type PersistedMessageRow = {
+  id: string
   role: 'user' | 'assistant' | 'system'
   content: string
   message_ts: string | null
@@ -39,6 +40,7 @@ export interface PersistedRuntimeProfile {
 }
 
 export interface PersistedRuntimeMessage {
+  id: string | null
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string | null
@@ -365,7 +367,7 @@ export async function listPersistedRuntimeMessages(
   if (!supabase) return []
   const { data, error } = await supabase
     .from(MESSAGES_TABLE)
-    .select('role,content,message_ts')
+    .select('id,role,content,message_ts')
     .eq('user_id', userId)
     .eq('tenant_id', tenantId)
     .eq('session_key', normalizedSessionKey)
@@ -380,6 +382,7 @@ export async function listPersistedRuntimeMessages(
 
   return ((data ?? []) as PersistedMessageRow[])
     .map((row) => ({
+      id: typeof row.id === 'string' && row.id.trim() ? row.id.trim() : null,
       role: row.role,
       content: row.content,
       timestamp: row.message_ts,
@@ -396,13 +399,14 @@ export async function insertPersistedRuntimeMessage(input: InsertMessageInput): 
 
   const supabase = getRuntimePersistenceClient()
   if (!supabase) return
-  const messageTimestamp = input.timestamp ?? new Date().toISOString()
-  const parsedMessageTs = Date.parse(messageTimestamp)
-  const dedupeSinceIso = Number.isFinite(parsedMessageTs)
-    ? new Date(parsedMessageTs - 60_000).toISOString()
-    : null
+  const parsedInputTimestamp = input.timestamp ? Date.parse(input.timestamp) : Number.NaN
+  const parsedMessageTs = Number.isFinite(parsedInputTimestamp) ? parsedInputTimestamp : Date.now()
+  const messageTimestamp = new Date(parsedMessageTs).toISOString()
+  const dedupeWindowMs = 5_000
+  const dedupeSinceIso = new Date(parsedMessageTs - dedupeWindowMs).toISOString()
+  const dedupeUntilIso = new Date(parsedMessageTs + dedupeWindowMs).toISOString()
 
-  if (dedupeSinceIso) {
+  if (dedupeSinceIso && dedupeUntilIso) {
     const { data: existingRows, error: existingError } = await supabase
       .from(MESSAGES_TABLE)
       .select('message_ts')
@@ -412,6 +416,7 @@ export async function insertPersistedRuntimeMessage(input: InsertMessageInput): 
       .eq('role', input.role)
       .eq('content', normalizedContent)
       .gte('message_ts', dedupeSinceIso)
+      .lte('message_ts', dedupeUntilIso)
       .order('message_ts', { ascending: false })
       .limit(1)
 

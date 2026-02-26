@@ -30,18 +30,48 @@ export interface RuntimeSessionsListOptions {
   spawnedBy?: string
   agentId?: string
   search?: string
+  syncRuntime?: boolean
+}
+
+export interface RuntimeAgentSummary {
+  id: string
+  name: string
+  enabled: boolean
+  raw: Record<string, unknown>
+}
+
+export interface RuntimeAgentsData {
+  agents: RuntimeAgentSummary[]
+  raw: unknown
 }
 
 export interface RuntimeChatHistoryMessage {
+  id: string | null
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string | null
+  toolEvent: RuntimeToolEvent | null
   raw: Record<string, unknown>
 }
 
 export interface RuntimeChatHistoryData {
   messages: RuntimeChatHistoryMessage[]
   raw: unknown
+}
+
+export type RuntimeToolEventKind = 'tool' | 'exec' | 'process'
+
+export interface RuntimeToolEvent {
+  kind: RuntimeToolEventKind
+  title: string
+  summary: string
+  toolName: string | null
+  command: string | null
+  status: string | null
+  pid: string | null
+  error: string | null
+  output: string | null
+  raw: Record<string, unknown>
 }
 
 export interface RuntimeModelSummary {
@@ -385,7 +415,7 @@ function isValidRuntimeSessionKey(value: string): boolean {
 }
 
 function isUserFacingRuntimeSessionKey(value: string): boolean {
-  return isValidRuntimeSessionKey(value) && value.startsWith('agent:main:')
+  return isValidRuntimeSessionKey(value)
 }
 
 function parseSessionItem(item: unknown, keyFallback?: string): RuntimeSessionSummary | null {
@@ -446,13 +476,17 @@ function parseSessions(result: unknown): RuntimeSessionsData {
 
   const objectValue = toObject(result)
   if (parsed.length === 0 && objectValue) {
+    const hasStructuredSessionContainer = ['sessions', 'items', 'data', 'list', 'results'].some((key) =>
+      Object.prototype.hasOwnProperty.call(objectValue, key),
+    )
     const fallbackCollection =
       toObject(objectValue.sessions) ??
       toObject(objectValue.items) ??
       toObject(objectValue.data) ??
       (
+        !hasStructuredSessionContainer &&
         Object.keys(objectValue).length > 0 &&
-        Object.keys(objectValue).every((key) => isUserFacingRuntimeSessionKey(key.trim()))
+        Object.keys(objectValue).some((key) => isUserFacingRuntimeSessionKey(key.trim()))
           ? objectValue
           : null
       )
@@ -477,23 +511,24 @@ function parseChatHistoryMessage(item: unknown): RuntimeChatHistoryMessage | nul
     return null
   }
 
-  const roleValue = readString(record, ['role', 'type'])?.toLowerCase()
-  if (roleValue !== 'user' && roleValue !== 'assistant' && roleValue !== 'system') {
+  const toolEvent = extractToolLikeHistoryEvent(record)
+  const roleValue = normalizeHistoryMessageRole(readString(record, ['role', 'type'])?.toLowerCase() ?? null)
+  const resolvedRole = roleValue ?? (toolEvent ? 'system' : null)
+  if (!resolvedRole) {
     return null
   }
 
-  const directContent = readString(record, ['content', 'text'])
-  const nestedMessage = toObject(record.message)
-  const nestedContent = nestedMessage ? readString(nestedMessage, ['content', 'text']) : null
-  const content = directContent ?? nestedContent
+  const content = toolEvent?.summary ?? extractHistoryMessageContent(record)
   if (!content) {
     return null
   }
 
   return {
-    role: roleValue,
+    id: extractHistoryMessageId(record),
+    role: toolEvent ? 'system' : resolvedRole,
     content,
     timestamp: readString(record, ['timestamp', 'createdAt', 'updatedAt', 'time']),
+    toolEvent,
     raw: record,
   }
 }
@@ -529,6 +564,330 @@ function parseChatHistory(result: unknown): RuntimeChatHistoryData {
     messages: parsed,
     raw: result,
   }
+}
+
+function normalizeHistoryMessageRole(
+  value: string | null,
+): RuntimeChatHistoryMessage['role'] | null {
+  if (!value) {
+    return null
+  }
+  if (value === 'user' || value === 'assistant' || value === 'system') {
+    return value
+  }
+  if (value === 'tool' || value === 'function' || value === 'event' || value === 'observation') {
+    return 'system'
+  }
+  return null
+}
+
+function extractHistoryMessageId(record: Record<string, unknown>): string | null {
+  const direct = readString(record, [
+    'id',
+    'messageId',
+    'message_id',
+    'eventId',
+    'event_id',
+    'requestId',
+    'request_id',
+    'uuid',
+  ])
+  if (direct) {
+    return direct
+  }
+
+  const nestedCandidates = [
+    toObject(record.message),
+    toObject(record.payload),
+    toObject(record.data),
+    toObject(record.result),
+  ]
+  for (const candidate of nestedCandidates) {
+    if (!candidate) {
+      continue
+    }
+    const nested = readString(candidate, [
+      'id',
+      'messageId',
+      'message_id',
+      'eventId',
+      'event_id',
+      'requestId',
+      'request_id',
+      'uuid',
+    ])
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+function truncateToolTitleValue(value: string, maxLength = 80): string {
+  const normalized = value.trim()
+  if (!normalized) {
+    return ''
+  }
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`
+}
+
+function extractToolTextFromUnknown(value: unknown, depth = 0): string | null {
+  if (depth > 5 || value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && depth < 4) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        const nested = extractToolTextFromUnknown(parsed, depth + 1)
+        if (nested) {
+          return nested
+        }
+      } catch {
+        // Fall through.
+      }
+    }
+    return trimmed
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => extractToolTextFromUnknown(item, depth + 1))
+      .filter((item): item is string => Boolean(item))
+    if (parts.length === 0) {
+      return null
+    }
+    return parts.join('\n').trim()
+  }
+
+  const record = toObject(value)
+  if (!record) {
+    return null
+  }
+
+  const direct = readString(record, ['text', 'content', 'message', 'error', 'output', 'result', 'stdout', 'stderr'])
+  if (direct) {
+    return direct
+  }
+
+  for (const key of ['content', 'text', 'message', 'error', 'output', 'result', 'stdout', 'stderr', 'details', 'data', 'payload']) {
+    const nested = extractToolTextFromUnknown(record[key], depth + 1)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+function extractToolLikeHistoryEvent(record: Record<string, unknown>): RuntimeToolEvent | null {
+  const rawRole = readString(record, ['role', 'type'])?.toLowerCase() ?? null
+  const processRecord = toObject(record.process)
+  const toolName = readString(record, ['tool', 'toolName', 'name'])
+  const processName =
+    readString(record, ['processName']) ??
+    (typeof record.process === 'string' && record.process.trim() ? record.process.trim() : null) ??
+    (processRecord ? readString(processRecord, ['name', 'label']) : null)
+  const command = readString(record, ['command', 'cmd'])
+  const status = readString(record, ['status', 'state'])
+  const pid = readString(record, ['pid', 'processId']) ?? (processRecord ? readString(processRecord, ['pid', 'id']) : null)
+  const error =
+    readString(record, ['error']) ??
+    extractToolTextFromUnknown(record.error) ??
+    (
+      status && /(error|failed|timeout|denied|rejected|unavailable)/i.test(status)
+        ? (readString(record, ['message', 'reason']) ?? extractToolTextFromUnknown(record.message))
+        : null
+    )
+
+  const outputCandidates = [record.output, record.result, record.stdout, record.stderr, record.details]
+  let output: string | null = null
+  for (const candidate of outputCandidates) {
+    const extracted = extractToolTextFromUnknown(candidate)
+    if (extracted) {
+      output = extracted
+      break
+    }
+  }
+
+  const hasToolSignal =
+    rawRole === 'tool'
+    || rawRole === 'function'
+    || rawRole === 'event'
+    || rawRole === 'observation'
+    || Boolean(toolName || processName || command || pid || error || output)
+
+  if (!hasToolSignal) {
+    return null
+  }
+
+  let kind: RuntimeToolEventKind = 'tool'
+  if (command) {
+    kind = 'exec'
+  } else if (processName || pid || rawRole === 'process') {
+    kind = 'process'
+  }
+
+  let title = 'Tool event'
+  if (kind === 'exec' && command) {
+    title = `Ran ${truncateToolTitleValue(command)} command`
+  } else if (kind === 'process') {
+    if (processName && pid) {
+      title = `Process ${processName} (#${pid})`
+    } else if (processName) {
+      title = `Process ${processName}`
+    } else if (pid) {
+      title = `Process #${pid}`
+    }
+  } else if (toolName) {
+    title = status ? `Tool ${toolName} (${status})` : `Tool ${toolName}`
+  } else if (status) {
+    title = `Tool event (${status})`
+  }
+
+  const summaryLines: string[] = [title]
+  if (status && !title.toLowerCase().includes(status.toLowerCase())) {
+    summaryLines.push(`Status: ${status}`)
+  }
+  if (error) {
+    summaryLines.push(`Error: ${error}`)
+  }
+
+  return {
+    kind,
+    title,
+    summary: summaryLines.join('\n').trim(),
+    toolName: toolName ?? processName ?? null,
+    command: command ?? null,
+    status: status ?? null,
+    pid: pid ?? null,
+    error: error ?? null,
+    output: output ?? null,
+    raw: record,
+  }
+}
+
+function extractHistoryMessageContent(record: Record<string, unknown>): string | null {
+  const directContent = readString(record, ['content', 'text'])
+  if (directContent) {
+    return directContent
+  }
+
+  const nestedMessage = toObject(record.message)
+  const nestedContent = nestedMessage ? readString(nestedMessage, ['content', 'text']) : null
+  if (nestedContent) {
+    return nestedContent
+  }
+
+  const structuredCandidates = [
+    record.content,
+    record.message,
+    record.payload,
+    record.data,
+    record.result,
+    record.details,
+    record.error,
+  ]
+
+  for (const candidate of structuredCandidates) {
+    const extracted = extractHistoryMessageContentFromUnknown(candidate)
+    if (extracted) {
+      return extracted
+    }
+  }
+
+  const fallbackToolSummary = summarizeToolLikeHistoryRecord(record)
+  return fallbackToolSummary
+}
+
+function extractHistoryMessageContentFromUnknown(value: unknown, depth = 0): string | null {
+  if (depth > 5 || value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && depth < 4) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        const nested = extractHistoryMessageContentFromUnknown(parsed, depth + 1)
+        if (nested) {
+          return nested
+        }
+      } catch {
+        // Fall back to returning original string.
+      }
+    }
+    return trimmed
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => extractHistoryMessageContentFromUnknown(item, depth + 1))
+      .filter((item): item is string => Boolean(item))
+    if (parts.length === 0) {
+      return null
+    }
+    return parts.join('\n').trim()
+  }
+
+  const record = toObject(value)
+  if (!record) {
+    return null
+  }
+
+  const direct = readString(record, ['text', 'content', 'message', 'error', 'output', 'result', 'stdout', 'stderr'])
+  if (direct) {
+    return direct
+  }
+
+  const toolSummary = summarizeToolLikeHistoryRecord(record)
+  if (toolSummary) {
+    return toolSummary
+  }
+
+  const nestedKeys = ['content', 'text', 'message', 'error', 'output', 'result', 'stdout', 'stderr', 'details', 'data', 'payload']
+  for (const key of nestedKeys) {
+    const nested = extractHistoryMessageContentFromUnknown(record[key], depth + 1)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+function summarizeToolLikeHistoryRecord(record: Record<string, unknown>): string | null {
+  const toolEvent = extractToolLikeHistoryEvent(record)
+  if (!toolEvent) {
+    return null
+  }
+
+  const lines: string[] = []
+  lines.push(toolEvent.title)
+  if (toolEvent.command) {
+    lines.push(`Command: ${toolEvent.command}`)
+  }
+  if (toolEvent.error) {
+    lines.push(`Error: ${toolEvent.error}`)
+  }
+  if (toolEvent.output) {
+    lines.push(toolEvent.output)
+  }
+
+  return lines.join('\n').trim() || null
 }
 
 function parseModelItem(item: unknown): RuntimeModelSummary | null {
@@ -700,6 +1059,155 @@ function parseSkills(result: unknown): RuntimeSkillsData {
 
   return {
     skills: dedupeByKey(parsed),
+    raw: result,
+  }
+}
+
+function isValidRuntimeAgentId(value: string): boolean {
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(value)
+}
+
+function parseRuntimeConfigDocument(result: unknown): Record<string, unknown> | null {
+  const root = extractObjectCandidate(result, ['config', 'agents', 'agent'])
+  if (!root) {
+    return null
+  }
+
+  const directConfig = toObject(root.config)
+  if (directConfig) {
+    return directConfig
+  }
+
+  if (typeof root.config === 'string') {
+    try {
+      const parsed = JSON.parse(root.config) as unknown
+      const record = toObject(parsed)
+      if (record) {
+        return record
+      }
+    } catch {
+      // Ignore invalid config JSON and fall back to the object payload.
+    }
+  }
+
+  if (toObject(root.agents) || Array.isArray(root.agents) || toObject(root.agent) || Array.isArray(root.agent)) {
+    return root
+  }
+
+  return null
+}
+
+function parseAgentItem(item: unknown, idFallback?: string): RuntimeAgentSummary | null {
+  if (typeof item === 'string' && item.trim()) {
+    const id = item.trim()
+    if (!isValidRuntimeAgentId(id)) {
+      return null
+    }
+    return {
+      id,
+      name: id,
+      enabled: true,
+      raw: { id },
+    }
+  }
+
+  const record = toObject(item)
+  if (!record) {
+    return null
+  }
+
+  const id = readString(record, ['id', 'agentId', 'agent_id', 'key']) ?? idFallback?.trim() ?? null
+  if (!id || !isValidRuntimeAgentId(id)) {
+    return null
+  }
+
+  const enabledValue = readBoolean(record, ['enabled', 'active'])
+  const disabledValue = readBoolean(record, ['disabled'])
+  const enabled = enabledValue ?? (disabledValue === null ? true : !disabledValue)
+
+  return {
+    id,
+    name: readString(record, ['name', 'label', 'title', 'displayName']) ?? id,
+    enabled,
+    raw: record,
+  }
+}
+
+function dedupeAgentsById(agents: RuntimeAgentSummary[]): RuntimeAgentSummary[] {
+  const byId = new Map<string, RuntimeAgentSummary>()
+  for (const agent of agents) {
+    if (byId.has(agent.id)) {
+      continue
+    }
+    byId.set(agent.id, agent)
+  }
+  return Array.from(byId.values())
+}
+
+function parseAgents(result: unknown): RuntimeAgentsData {
+  const parsed: RuntimeAgentSummary[] = []
+  const config = parseRuntimeConfigDocument(result)
+  if (!config) {
+    return {
+      agents: [],
+      raw: result,
+    }
+  }
+
+  const addItem = (item: unknown, fallbackId?: string) => {
+    const normalized = parseAgentItem(item, fallbackId)
+    if (normalized) {
+      parsed.push(normalized)
+    }
+  }
+
+  const addArray = (items: unknown[]) => {
+    for (const item of items) {
+      addItem(item)
+    }
+  }
+
+  const singularAgent = toObject(config.agent)
+  if (singularAgent && config.agents === undefined) {
+    addItem(singularAgent, 'main')
+  } else {
+    const agentsValue = config.agents ?? config.agent
+    if (Array.isArray(agentsValue)) {
+      addArray(agentsValue)
+    } else {
+      const agentsRecord = toObject(agentsValue)
+      if (agentsRecord) {
+        const listItems = extractArrayCandidates(agentsRecord, ['list', 'items', 'results', 'data', 'agents'])
+        if (listItems.length > 0) {
+          addArray(listItems)
+        }
+
+        if (parsed.length === 0) {
+          const ignoredMapKeys = new Set(['defaults', 'default', 'list', 'items', 'results', 'data', 'agents'])
+          for (const [key, value] of Object.entries(agentsRecord)) {
+            if (ignoredMapKeys.has(key)) {
+              continue
+            }
+            addItem(value, key)
+          }
+        }
+      }
+    }
+  }
+
+  const hasMain = parsed.some((agent) => agent.id === 'main')
+  const defaults = toObject(toObject(config.agents)?.defaults)
+  if (!hasMain && defaults) {
+    parsed.unshift({
+      id: 'main',
+      name: 'main',
+      enabled: true,
+      raw: { id: 'main' },
+    })
+  }
+
+  return {
+    agents: dedupeAgentsById(parsed),
     raw: result,
   }
 }
@@ -1119,12 +1627,20 @@ export async function listRuntimeSessions(
   if (options?.spawnedBy) query.set('spawnedBy', options.spawnedBy)
   if (options?.agentId) query.set('agentId', options.agentId)
   if (options?.search) query.set('search', options.search)
+  if (options?.syncRuntime !== undefined) query.set('syncRuntime', String(options.syncRuntime))
   const queryString = query.toString()
   const path = queryString
     ? `/runtime/sessions?${queryString}`
     : '/runtime/sessions'
   const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, path)
   return parseSessions(payload.result)
+}
+
+export async function listRuntimeAgents(
+  tenantId: string,
+): Promise<RuntimeAgentsData> {
+  const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/config')
+  return parseAgents(payload.result)
 }
 
 export async function terminateManagedDaemon(tenantId: string): Promise<{ terminated: boolean }> {
@@ -1149,6 +1665,7 @@ export async function listRuntimeChatHistory(
   const query = new URLSearchParams({
     sessionKey,
     limit: String(limit),
+    syncRuntime: 'true',
   })
   try {
     const payload = await runtimeRequest<RuntimeEnvelope>(tenantId, `/runtime/chat/history?${query.toString()}`)

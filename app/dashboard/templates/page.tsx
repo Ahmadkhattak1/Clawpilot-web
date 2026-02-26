@@ -64,6 +64,21 @@ export default function WorkflowTemplatesPage() {
     )
   }
 
+  const workflows = [
+    {
+      name: 'Outreach Agent',
+      description: 'Draft and review personalized outreach from the chat workspace.',
+      href: '/dashboard/chat',
+      ctaLabel: 'Open chat workspace',
+    },
+    {
+      name: 'Competitor Monitoring Support Agent',
+      description: 'Run competitor monitoring from chat while dedicated templates are being expanded.',
+      href: '/dashboard/chat',
+      ctaLabel: 'Open chat workspace',
+    },
+  ] as const
+
   return (
     <div className="min-h-[100dvh] bg-background px-4 py-8 sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -77,41 +92,23 @@ export default function WorkflowTemplatesPage() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Agents and Workflows</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pre-configured agents and workflows that are coming soon.
+            Open the workflow you need and run it directly.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              name: 'Lead Gen workflow',
-              description: 'Autonomous lead discovery, research, outreach, and reply handling.',
-            },
-            {
-              name: 'Outreach Agent',
-              description: 'Handles personalized outbound outreach and follow-up sequencing.',
-            },
-            {
-              name: 'Competitor Monitoring Support Agent',
-              description: 'Tracks competitor activity and summarizes changes for your team.',
-            },
-          ].map((workflow) => (
+          {workflows.map((workflow) => (
             <Card key={workflow.name} className="border-border/70">
               <CardHeader>
                 <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
                   <Target className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">{workflow.name}</CardTitle>
-                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Coming Soon
-                  </span>
-                </div>
+                <CardTitle className="text-base">{workflow.name}</CardTitle>
                 <CardDescription>{workflow.description}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button className="w-full" variant="outline" disabled>
-                  Coming Soon
+                <Button className="w-full" variant="outline" asChild>
+                  <Link href={workflow.href}>{workflow.ctaLabel}</Link>
                 </Button>
               </CardContent>
             </Card>

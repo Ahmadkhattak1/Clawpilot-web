@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, ExternalLink, Key, Loader2, RefreshCw, Sparkles, Wallet } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -139,7 +139,15 @@ const MANAGE_CHANNEL_INLINE_LOGOS = (() => {
   return icons
 })()
 
-export default function SettingsPage() {
+export default function SettingsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="grid min-h-[100svh] place-items-center bg-background"><p className="text-sm text-muted-foreground">Loading settings...</p></div>}>
+      <SettingsPage />
+    </Suspense>
+  )
+}
+
+function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [checkingSession, setCheckingSession] = useState(true)

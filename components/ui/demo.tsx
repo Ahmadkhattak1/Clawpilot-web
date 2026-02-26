@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { ArrowRight, Loader2 } from "lucide-react"
 
 import {
   buildAuthCallbackUrl,
@@ -75,55 +75,78 @@ export function Hero() {
   return (
     <section
       id="home"
-      className="relative flex min-h-screen items-center overflow-hidden px-4 pb-14 pt-20 sm:px-6 sm:pb-16 sm:pt-24 md:pb-20 md:pt-24"
+      className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-24"
     >
-      <div className="relative z-10 mx-auto max-w-5xl px-5 py-5 sm:px-8 md:px-10 md:py-7">
-        <h1 className="mx-auto max-w-5xl text-center text-[40px] font-semibold leading-[0.95] tracking-tight sm:text-[56px] md:text-[68px]">
-          <span className="block">Everyone Else Sells You a Server.</span>
-          <span className="block">We Sell You Employees.</span>
-        </h1>
-        <p className="type-body mx-auto mt-6 max-w-3xl px-2 text-center sm:mt-7">
-          OpenClaw agents that send outreach, reply to leads, handle WhatsApp support, and monitor
-          competitors. Working on Day 1.
-        </p>
+      {/* Subtle ambient glow */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-1/2 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(179,33,40,0.04),transparent_70%)]"
+      />
 
-        <div className="mx-auto mt-8 flex justify-center">
-          <div className="relative h-[150px] w-[150px] sm:h-[180px] sm:w-[180px] md:h-[210px] md:w-[210px]">
-            <Image
-              src="/logo.svg"
-              alt="Flying ClawPilot mascot"
-              fill
-              priority
-              sizes="(max-width: 768px) 150px, 210px"
-              className="object-contain drop-shadow-[0_14px_28px_rgba(0,0,0,0.12)]"
-            />
-          </div>
+      <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center text-center">
+        {/* Mascot */}
+        <div className="relative mb-10">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 scale-[2] rounded-full bg-[radial-gradient(circle,rgba(0,0,0,0.03),transparent_70%)]"
+          />
+          <Image
+            src="/logo.svg"
+            alt="ClawPilot mascot"
+            width={120}
+            height={120}
+            priority
+            className="relative h-[100px] w-[100px] object-contain drop-shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-[120px] sm:w-[120px]"
+          />
         </div>
 
-        <div className="mt-10 flex flex-col items-center gap-3">
+        {/* Headline */}
+        <h1 className="text-[36px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[48px] md:text-[56px]">
+          Your own OpenClaw.
+          <br />
+          <span className="text-muted-foreground">Running in minutes.</span>
+        </h1>
+
+        {/* Subheadline */}
+        <p className="mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground sm:text-base">
+          ClawPilot gives you a private OpenClaw instance in the cloud.
+          No servers. No Docker. No terminal. Just sign up and go.
+        </p>
+
+        {/* CTA */}
+        <div className="mt-9 flex flex-col items-center gap-3">
           {authStatus === "authenticated" ? (
             <Link
               href="/dashboard/chat"
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90"
             >
-              Deploy Your First Agent →
+              Go to Dashboard
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
           ) : (
             <button
               type="button"
               onClick={onGoogleSignIn}
               disabled={isGoogleLoading || authStatus === "loading"}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isGoogleLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : null}
-              {authStatus === "loading" ? "Checking account..." : "Deploy Your First Agent →"}
+              {authStatus === "loading"
+                ? "Loading..."
+                : "Get Started Free"}
+              {!isGoogleLoading && authStatus !== "loading" ? (
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              ) : null}
             </button>
           )}
           {authError ? (
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
+          <p className="text-xs text-muted-foreground/60">
+            For less than a candy bar a day &middot; Cancel anytime
+          </p>
         </div>
       </div>
     </section>

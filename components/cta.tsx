@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Loader2 } from "lucide-react"
+import { ArrowRight, Loader2 } from "lucide-react"
 import {
   buildAuthCallbackUrl,
   getRecoveredSupabaseSession,
@@ -69,34 +69,40 @@ export function CTA() {
   }, [])
 
   return (
-    <section id="final-cta" className="relative px-6 py-16 md:py-20">
-      <div className="mx-auto max-w-4xl rounded-2xl border border-border/60 bg-secondary/35 p-8 text-center md:p-10">
-        <h2 className="type-h2 text-balance">
-          Stop buying servers you have to figure out. Get agents that work.
+    <section className="relative px-6 py-16 md:py-20">
+      <div className="mx-auto max-w-2xl text-center">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Ready to try OpenClaw?
         </h2>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Your private instance is a few clicks away. No credit card required to start.
+        </p>
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-col items-center gap-3">
           {authStatus === "authenticated" ? (
             <Link
               href="/dashboard/chat"
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90"
             >
-              Deploy Your First Agent →
+              Go to Dashboard
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
           ) : (
             <button
               type="button"
               onClick={onGoogleSignIn}
               disabled={isGoogleLoading || authStatus === "loading"}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {authStatus === "loading" ? "Checking account..." : "Deploy Your First Agent →"}
+              {authStatus === "loading" ? "Loading..." : "Get Started Free"}
+              {!isGoogleLoading && authStatus !== "loading" ? (
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              ) : null}
             </button>
           )}
+          {authError ? <p className="text-sm text-destructive">{authError}</p> : null}
         </div>
-
-        {authError ? <p className="mt-3 text-sm text-destructive">{authError}</p> : null}
       </div>
     </section>
   )

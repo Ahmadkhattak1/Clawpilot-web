@@ -3115,19 +3115,47 @@ export default function ChatPage() {
     }
   }, [])
 
-  const updateSessionInUrl = useCallback((sessionKey: string) => {
-    if (!pathname) return
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    params.set('session', sessionKey)
-    const query = params.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }, [pathname, router])
+  const updateSessionInUrl = useCallback(
+    (
+      sessionKey: string,
+      options?: {
+        force?: boolean
+      },
+    ) => {
+      if (!pathname) return
+      if (typeof window === 'undefined') return
+      const normalizedSessionKey = sessionKey.trim()
+      if (!normalizedSessionKey) return
+
+      const params = new URLSearchParams(window.location.search)
+      const currentSessionInUrl = params.get('session')?.trim() ?? ''
+      const hasSessionInUrl = currentSessionInUrl.length > 0
+      if (!options?.force && !hasSessionInUrl) {
+        return
+      }
+      if (hasSessionInUrl && currentSessionInUrl === normalizedSessionKey) {
+        return
+      }
+
+      params.set('session', normalizedSessionKey)
+      const query = params.toString()
+      const nextHref = query ? `${pathname}?${query}` : pathname
+      const currentHref = `${pathname}${window.location.search || ''}`
+      if (nextHref === currentHref) {
+        return
+      }
+      router.replace(nextHref, { scroll: false })
+    },
+    [pathname, router],
+  )
 
   const clearSessionInUrl = useCallback(() => {
     if (!pathname) return
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
+    if (!params.has('session')) {
+      return
+    }
     params.delete('session')
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
@@ -4602,7 +4630,7 @@ export default function ChatPage() {
 
     async function loadSession() {
       try {
-        const session = await getRecoveredSupabaseSession()
+        const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
         if (!session) {
           redirectToSignIn()
           return
@@ -4721,6 +4749,7 @@ export default function ChatPage() {
 
         if (!cancelled) {
           setTenantId(tid)
+          setCheckingSession(false)
           setOauthRequired(oauthPending)
           setOauthConnected(!oauthPending)
           setOauthError('')
@@ -4742,7 +4771,6 @@ export default function ChatPage() {
           }
 
           if (startupRuntimeConfigMissing) {
-            setCheckingSession(false)
             void restartOnboardingFlow(tid)
             return
           }
@@ -4771,17 +4799,14 @@ export default function ChatPage() {
               }
 
               if (errorCode === 'DAEMON_NOT_FOUND' || errorCode === 'RUNTIME_INSTANCE_MISSING') {
-                setCheckingSession(false)
                 void restartOnboardingFlow(tid)
                 return
               }
               if (errorCode === 'RUNTIME_PROVIDER_AUTH_FAILED') {
-                setCheckingSession(false)
                 startSetupPolling(tid, { forceReset: true })
                 return
               }
               if (isRuntimeConfigMissingError({ errorCode, message: errorMessage })) {
-                setCheckingSession(false)
                 void restartOnboardingFlow(tid)
                 return
               }
@@ -4837,13 +4862,11 @@ export default function ChatPage() {
               })
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !hasVerifiedCloudInstance) {
-                setCheckingSession(false)
                 void restartOnboardingFlow(tid)
                 return
               }
 
               if (data.daemon?.runtimeMode === 'digitalocean' && !isInstanceReady) {
-                setCheckingSession(false)
                 startSetupPolling(tid, { deploymentFingerprint })
                 return
               }
@@ -4857,12 +4880,10 @@ export default function ChatPage() {
                 } catch (error) {
                   const message = error instanceof Error ? error.message : String(error ?? '')
                   if (isRuntimeConfigMissingError({ message })) {
-                    setCheckingSession(false)
                     startSetupPolling(tid, { deploymentFingerprint, forceReset: true })
                     return
                   }
                 }
-                setCheckingSession(false)
                 connectWebSocket(tid, storedSessionKey ?? undefined)
                 return
               }
@@ -4872,7 +4893,6 @@ export default function ChatPage() {
           }
 
           // Default: connect WebSocket directly when no daemon status is available yet.
-          setCheckingSession(false)
           connectWebSocket(tid, storedSessionKey ?? undefined)
         }
       } catch {
@@ -5274,7 +5294,7 @@ export default function ChatPage() {
     }
     const selected = chatSessions.find((session) => session.key === normalized)
     syncSessionKey(tenantId, normalized, selected?.label ?? null)
-    updateSessionInUrl(normalized)
+    updateSessionInUrl(normalized, { force: true })
     setHistoryReady(false)
     void loadSessionHistory(tenantId, normalized)
     startHistoryPolling(tenantId, normalized)
@@ -5298,7 +5318,7 @@ export default function ChatPage() {
       persist: true,
       storeInLocalStorage: true,
     })
-    updateSessionInUrl(newSessionKey)
+    updateSessionInUrl(newSessionKey, { force: true })
 
     // Add to session list right away so it's visible and active in the sidebar.
     const nowIso = new Date().toISOString()
@@ -5854,37 +5874,50 @@ export default function ChatPage() {
                     type="button"
                   >
                     <Target className="mr-1.5 h-3.5 w-3.5" />
-                    Workflows
+                    Agents and Workflows
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-[90vw] max-w-sm overflow-y-auto p-0">
                   <div className="flex h-14 items-center border-b border-border/60 px-5">
-                    <h2 className="text-sm font-semibold text-foreground">Workflows</h2>
+                    <h2 className="text-sm font-semibold text-foreground">Agents and Workflows</h2>
                   </div>
                   <div className="p-5">
-                    <p className="text-xs text-muted-foreground">Pre-configured agents you can launch when you need them.</p>
-                    <div className="mt-4 rounded-xl border border-border/60 bg-card">
-                      <div className="p-4">
-                        <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
-                          <Target className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
+                    <p className="text-xs text-muted-foreground">Pre-configured agents and workflows that are coming soon.</p>
+                    <div className="mt-4 space-y-3">
+                      {[
+                        {
+                          name: 'Lead Gen workflow',
+                          description: 'Autonomous lead discovery, research, outreach, and reply handling.',
+                        },
+                        {
+                          name: 'Outreach Agent',
+                          description: 'Handles personalized outbound outreach and follow-up sequencing.',
+                        },
+                        {
+                          name: 'Competitor Monitoring Support Agent',
+                          description: 'Tracks competitor activity and summarizes changes for your team.',
+                        },
+                      ].map((workflow) => (
+                        <div key={workflow.name} className="rounded-xl border border-border/60 bg-card">
+                          <div className="p-4">
+                            <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
+                              <Target className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-foreground">{workflow.name}</p>
+                              <span className="inline-flex items-center rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                Coming Soon
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">{workflow.description}</p>
+                          </div>
+                          <div className="border-t border-border/40 px-4 py-3">
+                            <Button size="sm" variant="outline" className="w-full" disabled>
+                              Coming Soon
+                            </Button>
+                          </div>
                         </div>
-                        <p className="text-sm font-semibold text-foreground">Growth Agent</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Autonomous lead discovery, research, outreach, and reply handling.
-                        </p>
-                      </div>
-                      <div className="border-t border-border/40 px-4 py-3">
-                        <Button
-                          asChild
-                          size="sm"
-                          className="w-full bg-violet-600 text-white hover:bg-violet-700"
-                          onClick={() => setWorkflowsSidebarOpen(false)}
-                        >
-                          <Link href="/dashboard/customer-finder">
-                            Open Growth Agent
-                          </Link>
-                        </Button>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 </SheetContent>

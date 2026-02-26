@@ -963,7 +963,7 @@ export default function CustomerFinderDashboardPage() {
               </Button>
             )}
             <Button variant="ghost" size="sm" asChild className="gap-1.5 text-xs">
-              <Link href="/chat">
+              <Link href="/dashboard/chat">
                 <MessageSquare className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Open Chat</span>
               </Link>

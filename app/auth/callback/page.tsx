@@ -88,6 +88,19 @@ export default function AuthCallbackPage() {
           throw new Error('Session could not be restored. Please sign in again.')
         }
 
+        // Fire Google Ads conversion for new signups
+        const createdAt = session.user?.created_at
+        if (createdAt) {
+          const ageMs = Date.now() - new Date(createdAt).getTime()
+          if (ageMs < 60_000 && typeof window.gtag === 'function') {
+            window.gtag('event', 'conversion', {
+              send_to: 'AW-752447569/evJ-CLC8v_8bENHg5eYC',
+              value: 1.0,
+              currency: 'PKR',
+            })
+          }
+        }
+
         if (!cancelled) router.replace(nextPath)
       } catch (authError) {
         if (!cancelled) setError(getErrorMessage(authError))

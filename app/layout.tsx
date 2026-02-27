@@ -1,4 +1,5 @@
 import React from "react"
+import Script from "next/script"
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
 import { Analytics as GAAnalytics } from "@/components/analytics"
@@ -73,6 +74,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-752447569"
+          strategy="afterInteractive"
+        />
+        <Script id="google-ads-gtag" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'AW-752447569');`}
+        </Script>
+      </head>
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}

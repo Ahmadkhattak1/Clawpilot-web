@@ -8,6 +8,7 @@ export default function robots(): MetadataRoute.Robots {
     "/terms",
     "/privacy",
     "/disclaimer",
+    "/signin",
     "/llms.txt",
     "/llms-full.txt",
   ]
@@ -24,7 +25,6 @@ export default function robots(): MetadataRoute.Robots {
           "/channels",
           "/skills",
           "/settings",
-          "/signin",
           "/signup",
           "/sign-in",
           "/sign-up",

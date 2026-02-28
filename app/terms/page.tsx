@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { siteName, siteUrl } from "@/lib/site"
 
-const pageTitle = "Terms of Service"
+const pageTitle = "Terms of Service for Managed OpenClaw Hosting"
 const pageDescription =
   "Terms for using ClawPilot-managed OpenClaw agents, including safety, acceptable use, and risk allocation."
 

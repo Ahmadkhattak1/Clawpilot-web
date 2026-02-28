@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { siteName, siteUrl } from "@/lib/site"
 
-const pageTitle = "Privacy Policy"
+const pageTitle = "Privacy Policy for Managed OpenClaw Hosting"
 const pageDescription =
   "How ClawPilot handles account, usage, and integration data when running managed OpenClaw agents."
 

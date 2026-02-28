@@ -109,6 +109,12 @@ export function Header() {
           >
             How It Works
           </Link>
+          <Link
+            href="/blog"
+            className="type-nav text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Blog
+          </Link>
         </div>
 
         {authStatus === "authenticated" ? (

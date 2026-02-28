@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next"
+import { getAllBlogPosts } from "@/lib/blog-posts"
 import { publicMarketingRoutes, siteUrl } from "@/lib/site"
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -25,5 +26,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ]
 
-  return [...pageEntries, ...llmEntries]
+  const blogEntries = getAllBlogPosts().map((post) => ({
+    url: `${siteUrl}/blog/${post.slug}`,
+    lastModified: new Date(post.publishedAt),
+    changeFrequency: "weekly" as const,
+    priority: 0.8,
+  }))
+
+  return [...pageEntries, ...blogEntries, ...llmEntries]
 }

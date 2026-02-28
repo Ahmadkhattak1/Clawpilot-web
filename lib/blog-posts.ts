@@ -1,8 +1,13 @@
+import { siteUrl } from "@/lib/site"
+
 export type BlogPost = {
   slug: string
   title: string
   description: string
   publishedAt: string
+  updatedAt?: string
+  authorName?: string
+  authorUrl?: string
   readMinutes: number
   primaryKeyword: string
   content: string
@@ -1099,10 +1104,17 @@ A 2-4 week pilot with clear KPIs is usually enough for a first decision.
   },
 ]
 
-const bySlug = new Map(blogPosts.map((post) => [post.slug, post]))
+const normalizedBlogPosts: BlogPost[] = blogPosts.map((post) => ({
+  ...post,
+  updatedAt: post.updatedAt ?? post.publishedAt,
+  authorName: post.authorName ?? "ClawPilot Editorial Team",
+  authorUrl: post.authorUrl ?? siteUrl,
+}))
+
+const bySlug = new Map(normalizedBlogPosts.map((post) => [post.slug, post]))
 
 export function getAllBlogPosts(): BlogPost[] {
-  return blogPosts
+  return normalizedBlogPosts
 }
 
 export function getBlogPostBySlug(slug: string): BlogPost | null {
@@ -1110,5 +1122,53 @@ export function getBlogPostBySlug(slug: string): BlogPost | null {
 }
 
 export function getBlogPostSlugs(): string[] {
-  return blogPosts.map((post) => post.slug)
+  return normalizedBlogPosts.map((post) => post.slug)
+}
+
+function keywordTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter(Boolean)
+}
+
+function scoreRelatedness(seed: BlogPost, candidate: BlogPost): number {
+  const stopWords = new Set(["the", "and", "for", "with", "guide", "teams", "business"])
+  const seedTokens = new Set(keywordTokens(`${seed.primaryKeyword} ${seed.title}`).filter((token) => !stopWords.has(token)))
+  const candidateTokens = keywordTokens(`${candidate.primaryKeyword} ${candidate.title}`).filter(
+    (token) => !stopWords.has(token)
+  )
+
+  let score = 0
+  for (const token of candidateTokens) {
+    if (seedTokens.has(token)) {
+      score += 1
+    }
+  }
+
+  return score
+}
+
+export function getRelatedBlogPosts(slug: string, limit = 3): BlogPost[] {
+  const seed = getBlogPostBySlug(slug)
+  if (!seed) return []
+
+  const candidates = normalizedBlogPosts.filter((post) => post.slug !== slug)
+  const ranked = candidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreRelatedness(seed, candidate),
+    }))
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score
+      }
+
+      return new Date(b.candidate.updatedAt ?? b.candidate.publishedAt).getTime() -
+        new Date(a.candidate.updatedAt ?? a.candidate.publishedAt).getTime()
+    })
+    .map((entry) => entry.candidate)
+
+  return ranked.slice(0, Math.max(1, limit))
 }

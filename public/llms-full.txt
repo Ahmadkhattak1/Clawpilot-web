@@ -23,7 +23,11 @@ ClawPilot provides the managed layer for OpenClaw:
 ## Canonical URLs
 
 - Homepage: https://clawpilot.app
-- Easy setup page: https://clawpilot.app/openclaw-easy-setup
+- Blog: https://clawpilot.app/blog
+- OpenClaw hosting: https://clawpilot.app/openclaw-hosting
+- Managed OpenClaw: https://clawpilot.app/managed-openclaw
+- OpenClaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
+- OpenClaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
 - LLM summary: https://clawpilot.app/llms.txt
 
 ## Features

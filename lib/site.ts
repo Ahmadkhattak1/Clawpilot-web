@@ -19,6 +19,7 @@ function normalizeSiteUrl(value?: string): string {
 
 export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
+export const siteLastUpdatedAt = "2026-03-01"
 
 export const seoKeywords = [
   "OpenClaw agents",
@@ -27,15 +28,22 @@ export const seoKeywords = [
   "OpenClaw lead gen agent",
   "OpenClaw competitor monitor",
   "OpenClaw hosting",
+  "OpenClaw cloud hosting",
   "hosted OpenClaw",
   "managed OpenClaw",
+  "OpenClaw managed service",
+  "OpenClaw VPS hosting",
+  "OpenClaw VPS setup",
   "deploy OpenClaw agents",
   "OpenClaw automation",
   "WhatsApp support automation",
+  "OpenClaw WhatsApp automation",
   "cold email automation",
   "competitor monitoring automation",
   "OpenClaw WhatsApp",
   "OpenClaw Telegram",
+  "OpenClaw Discord",
+  "OpenClaw Slack",
   "OpenClaw CRM automation",
   "AI sales agent",
   "AI support agent",
@@ -45,6 +53,10 @@ export const seoKeywords = [
 export const publicMarketingRoutes = [
   "/",
   "/blog",
+  "/openclaw-hosting",
+  "/managed-openclaw",
+  "/openclaw-vps-hosting",
+  "/openclaw-whatsapp-automation",
   "/terms",
   "/privacy",
   "/disclaimer",

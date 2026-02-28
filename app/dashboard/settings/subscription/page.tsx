@@ -27,6 +27,7 @@ type BillingPlan = 'FREE' | 'PRO_MONTHLY' | 'PRO_YEARLY'
 type CancelMode = 'immediate'
 const STRIPE_CHECKOUT_SESSION_ID_TOKEN = '{CHECKOUT_SESSION_ID}'
 const STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY = 'clawpilot:last-stripe-checkout-session-id'
+const SUBSCRIPTION_SUCCESS_PATH = '/dashboard/settings/subscription/success'
 
 interface SubscriptionSnapshot {
   state?: string
@@ -77,6 +78,17 @@ function normalizeBillingPlan(value: unknown): BillingPlan | null {
     return normalized as BillingPlan
   }
   return null
+}
+
+function buildSubscriptionSuccessPath(sessionId: string): string {
+  const normalizedSessionId = sessionId.trim()
+  if (!normalizedSessionId) {
+    return SUBSCRIPTION_SUCCESS_PATH
+  }
+
+  const params = new URLSearchParams()
+  params.set('session_id', normalizedSessionId)
+  return `${SUBSCRIPTION_SUCCESS_PATH}?${params.toString()}`
 }
 
 function resolveManagedHostingEntitlement(snapshot: SubscriptionSnapshot | null): boolean {
@@ -632,10 +644,7 @@ function SettingsSubscriptionPageClient() {
       if (checkoutSucceeded && effectiveCheckoutSessionId) {
         const confirmed = await confirmStripeCheckoutSession(tenantId, effectiveCheckoutSessionId)
         if (!cancelled && confirmed) {
-          if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
-          }
-          router.replace(billingNextPath)
+          router.replace(buildSubscriptionSuccessPath(effectiveCheckoutSessionId))
           return
         }
       }
@@ -648,10 +657,7 @@ function SettingsSubscriptionPageClient() {
 
         const latestHasPaidPlan = resolveManagedHostingEntitlement(latestSnapshot ?? null)
         if (latestHasPaidPlan) {
-          if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
-          }
-          router.replace(billingNextPath)
+          router.replace(buildSubscriptionSuccessPath(effectiveCheckoutSessionId))
           return
         }
 
@@ -708,12 +714,13 @@ function SettingsSubscriptionPageClient() {
     if (!requiredBilling || !hasPaidPlan) {
       return
     }
-    if (pathname === billingNextPath) {
-      return
-    }
+    const destinationPath =
+      stripeReturn && checkoutSucceeded
+        ? buildSubscriptionSuccessPath(effectiveCheckoutSessionId)
+        : billingNextPath
 
-    router.replace(billingNextPath)
-  }, [billingNextPath, checkingSession, hasPaidPlan, pathname, requiredBilling, router, tenantId])
+    router.replace(destinationPath)
+  }, [billingNextPath, checkingSession, checkoutSucceeded, effectiveCheckoutSessionId, hasPaidPlan, requiredBilling, router, stripeReturn, tenantId])
 
   if (checkingSession) {
     return (

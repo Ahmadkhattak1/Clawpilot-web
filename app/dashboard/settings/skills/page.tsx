@@ -66,6 +66,13 @@ import {
   type RuntimeWorkspaceFileVersionSummary,
 } from '@/lib/runtime-controls'
 import { getSkillOptionById, type SkillConfigField, type SkillOption } from '@/lib/skill-options'
+import {
+  affectsWorkspaceHealthSummary,
+  getPathFileName,
+  isCriticalWorkspaceFile,
+  isValidRelativeMdPath,
+  workspaceFileRisk,
+} from '@/lib/workspace-md-utils'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
@@ -580,81 +587,9 @@ function choosePrimarySensitiveField(
     ?? null
 }
 
-function isValidRelativeMdPath(value: string): boolean {
-  const normalized = value.trim()
-  if (!normalized) return false
-  if (normalized.startsWith('/')) return false
-  if (normalized.includes('..')) return false
-  return /^[A-Za-z0-9._/-]+\.md$/i.test(normalized)
-}
-
-function affectsWorkspaceHealthSummary(relativePath: string): boolean {
-  const normalized = relativePath.trim().toLowerCase()
-  if (!normalized) return false
-  if (normalized.includes('/')) return false
-  return normalized === 'memory.md' || normalized === 'boot.md' || normalized === 'agents.md'
-}
-
-function getPathFileName(relativePath: string): string {
-  const normalized = relativePath.trim()
-  if (!normalized) return ''
-  const segments = normalized.split('/')
-  return segments[segments.length - 1] ?? normalized
-}
-
 function resolveWorkspaceMarkdownPath(markdownFiles: string[], canonicalRelativePath: string): string {
   const normalized = canonicalRelativePath.trim().toLowerCase()
   return markdownFiles.find((path) => path.trim().toLowerCase() === normalized) ?? canonicalRelativePath
-}
-
-function isCriticalWorkspaceFile(relativePath: string): boolean {
-  const normalized = relativePath.trim().toLowerCase()
-  if (!normalized || normalized.includes('/')) {
-    return false
-  }
-
-  return [
-    'agents.md',
-    'soul.md',
-    'user.md',
-    'identity.md',
-    'tools.md',
-    'heartbeat.md',
-    'boot.md',
-    'bootstrap.md',
-    'memory.md',
-  ].includes(normalized)
-}
-
-function workspaceFileRisk(
-  relativePath: string,
-): {
-  level: 'critical' | 'operational' | 'normal'
-  label: string
-  message: string
-} {
-  if (isCriticalWorkspaceFile(relativePath)) {
-    return {
-      level: 'critical',
-      label: 'Critical',
-      message: 'Changing this file can alter startup behavior, memory, or core assistant behavior.',
-    }
-  }
-
-  const normalized = relativePath.trim().toLowerCase()
-  if (normalized.startsWith('memory/') || normalized.endsWith('/skill.md')) {
-    return {
-      level: 'operational',
-      label: 'Operational',
-      message: 'This file influences memory or skills. Changes can impact assistant quality.',
-    }
-  }
-
-  return {
-    level: 'normal',
-    label: 'Normal',
-    message: 'Standard markdown file.',
-  }
 }
 
 function buildAbsoluteWorkspaceFilePath(workspaceDir: string | null | undefined, relativePath: string): string | null {

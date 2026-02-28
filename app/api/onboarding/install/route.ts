@@ -6,95 +6,6 @@ import { toOpenClawProviderId } from '@/lib/model-providers'
 import { getBackendUrl } from '@/lib/runtime-controls'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
-const CustomerFinderConfigSchema = z.object({
-  leadSources: z.object({
-    linkedin: z.boolean().default(true),
-    webSearch: z.boolean().default(true),
-    directories: z.boolean().default(true),
-    social: z.boolean().default(false),
-    manualImport: z.boolean().default(true),
-    discoveryProvider: z.enum(['duckduckgo-html', 'web-search-api']).default('duckduckgo-html'),
-    webSearchApi: z.object({
-      provider: z.enum(['none', 'brave', 'perplexity', 'gemini']).default('none'),
-      apiKey: z.string().trim().max(500).default(''),
-      baseUrl: z.string().trim().max(500).default(''),
-      model: z.string().trim().max(200).default(''),
-      maxResults: z.coerce.number().int().min(1).max(10).default(5),
-      timeoutSeconds: z.coerce.number().int().min(5).max(120).default(30),
-    }).default({
-      provider: 'none',
-      apiKey: '',
-      baseUrl: '',
-      model: '',
-      maxResults: 5,
-      timeoutSeconds: 30,
-    }),
-    browserAutomation: z.object({
-      enabled: z.boolean().default(true),
-      defaultProfile: z.string().trim().min(1).max(80).default('openclaw'),
-      headless: z.boolean().default(false),
-    }).default({
-      enabled: true,
-      defaultProfile: 'openclaw',
-      headless: false,
-    }),
-  }),
-  outreachChannels: z.object({
-    email: z.boolean().default(true),
-    linkedin: z.boolean().default(true),
-    x: z.boolean().default(false),
-    phone: z.boolean().default(false),
-  }),
-  outreachSetup: z.object({
-    email: z.object({
-      provider: z.enum(['none', 'gmail', 'smtp']).default('none'),
-      fromEmail: z.string().trim().max(320).default(''),
-      fromName: z.string().trim().max(120).default(''),
-      replyTo: z.string().trim().max(320).default(''),
-      gmailAppPassword: z.string().trim().max(200).default(''),
-      smtpHost: z.string().trim().max(255).default(''),
-      smtpPort: z.coerce.number().int().min(1).max(65_535).default(587),
-      smtpSecure: z.boolean().default(true),
-      smtpUsername: z.string().trim().max(255).default(''),
-      smtpPassword: z.string().trim().max(255).default(''),
-    }),
-  }),
-  targeting: z.object({
-    industries: z.array(z.string()).default([]),
-    locations: z.array(z.string()).default([]),
-    includeKeywords: z.array(z.string()).default([]),
-    excludeKeywords: z.array(z.string()).default([]),
-    competitors: z.array(z.string()).default([]),
-    intent: z.enum(['companies', 'owners', 'both']).default('companies'),
-    contactRoles: z.array(z.string()).default([]),
-  }),
-  guardrails: z.object({
-    doNotContactDomains: z.array(z.string()).default([]),
-    doNotContactCompanies: z.array(z.string()).default([]),
-    blockPersonalEmails: z.boolean().default(true),
-    maxDailyOutreach: z.coerce.number().int().min(1).max(20_000).default(50),
-    requireHumanApproval: z.boolean().default(true),
-  }),
-  dataFields: z.object({
-    companyName: z.boolean().default(true),
-    contactName: z.boolean().default(true),
-    email: z.boolean().default(true),
-    phone: z.boolean().default(false),
-    website: z.boolean().default(true),
-    pageTitle: z.boolean().default(true),
-    contactPageUrl: z.boolean().default(true),
-  }),
-  execution: z.object({
-    autoResearch: z.boolean().default(true),
-    autoDraftReplies: z.boolean().default(true),
-    autoStageProgression: z.boolean().default(false),
-    autopilotEnabled: z.boolean().default(false),
-    autopilotIntervalMinutes: z.coerce.number().int().min(1).max(240).default(10),
-    autopilotLeadLimit: z.coerce.number().int().min(1).max(200).default(25),
-    autopilotIncludeContactPages: z.boolean().default(true),
-  }),
-})
-
 const RequestBodySchema = z.object({
   tenantId: z
     .string()
@@ -123,7 +34,6 @@ const RequestBodySchema = z.object({
       .optional(),
     skillIds: z.array(z.string()).default([]),
     skillConfigs: z.record(z.string(), z.record(z.string())).default({}),
-    customerFinder: CustomerFinderConfigSchema.optional(),
   }),
 })
 
@@ -289,7 +199,6 @@ export async function POST(request: Request) {
       channelCredentials: body.onboarding.channelSetup?.values ?? {},
       skillIds: body.onboarding.skillIds,
       skillConfigs: body.onboarding.skillConfigs,
-      customerFinder: body.onboarding.customerFinder,
     }
 
     const daemonResponse = await backendRequest<{ daemon?: unknown; error?: string }>({

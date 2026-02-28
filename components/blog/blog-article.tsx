@@ -7,6 +7,7 @@ import type { BlogPost } from "@/lib/blog-posts"
 
 type BlogArticleProps = {
   post: BlogPost
+  relatedPosts: BlogPost[]
 }
 
 function formatDate(value: string): string {
@@ -52,7 +53,7 @@ const markdownComponents: Components = {
   ),
 }
 
-export function BlogArticle({ post }: BlogArticleProps) {
+export function BlogArticle({ post, relatedPosts }: BlogArticleProps) {
   return (
     <section className="relative px-6 pb-20 pt-28">
       <article className="mx-auto max-w-3xl">
@@ -77,6 +78,24 @@ export function BlogArticle({ post }: BlogArticleProps) {
             {post.content}
           </ReactMarkdown>
         </div>
+
+        {relatedPosts.length > 0 ? (
+          <aside className="mt-12 rounded-2xl border border-border/60 bg-secondary/20 p-6">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">Related posts</h2>
+            <ul className="mt-4 space-y-2 text-sm">
+              {relatedPosts.map((relatedPost) => (
+                <li key={relatedPost.slug}>
+                  <Link
+                    href={`/blog/${relatedPost.slug}`}
+                    className="underline underline-offset-4 hover:no-underline"
+                  >
+                    {relatedPost.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        ) : null}
       </article>
     </section>
   )

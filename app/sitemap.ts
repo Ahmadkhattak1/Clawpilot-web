@@ -1,37 +1,43 @@
 import type { MetadataRoute } from "next"
 import { getAllBlogPosts } from "@/lib/blog-posts"
-import { publicMarketingRoutes, siteUrl } from "@/lib/site"
+import { publicMarketingRoutes, siteLastUpdatedAt, siteUrl } from "@/lib/site"
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date()
+  const siteLastModified = new Date(siteLastUpdatedAt)
   const pageEntries = publicMarketingRoutes.map((path) => ({
     url: path === "/" ? siteUrl : `${siteUrl}${path}`,
-    lastModified: now,
+    lastModified: siteLastModified,
     changeFrequency: path === "/" ? "daily" : "weekly",
     priority: path === "/" ? 1 : 0.9,
   })) satisfies MetadataRoute.Sitemap
 
-  const llmEntries = [
+  const machineReadableEntries = [
     {
       url: `${siteUrl}/llms.txt`,
-      lastModified: now,
+      lastModified: siteLastModified,
       changeFrequency: "monthly" as const,
       priority: 0.7,
     },
     {
       url: `${siteUrl}/llms-full.txt`,
-      lastModified: now,
+      lastModified: siteLastModified,
       changeFrequency: "monthly" as const,
       priority: 0.6,
+    },
+    {
+      url: `${siteUrl}/feed.xml`,
+      lastModified: siteLastModified,
+      changeFrequency: "daily" as const,
+      priority: 0.7,
     },
   ]
 
   const blogEntries = getAllBlogPosts().map((post) => ({
     url: `${siteUrl}/blog/${post.slug}`,
-    lastModified: new Date(post.publishedAt),
+    lastModified: new Date(post.updatedAt ?? post.publishedAt),
     changeFrequency: "weekly" as const,
     priority: 0.8,
   }))
 
-  return [...pageEntries, ...blogEntries, ...llmEntries]
+  return [...pageEntries, ...blogEntries, ...machineReadableEntries]
 }

@@ -1,20 +1,20 @@
 import type { MetadataRoute } from "next"
 import { getBlogPostSlugs } from "@/lib/blog-posts"
-import { siteUrl } from "@/lib/site"
+import { publicMarketingRoutes, siteUrl } from "@/lib/site"
 
 export default function robots(): MetadataRoute.Robots {
   const blogPaths = ["/blog", ...getBlogPostSlugs().map((slug) => `/blog/${slug}`)]
 
-  const publicPaths = [
-    "/",
-    ...blogPaths,
-    "/terms",
-    "/privacy",
-    "/disclaimer",
-    "/signin",
-    "/llms.txt",
-    "/llms-full.txt",
-  ]
+  const publicPaths = Array.from(
+    new Set([
+      ...publicMarketingRoutes,
+      ...blogPaths,
+      "/signin",
+      "/feed.xml",
+      "/llms.txt",
+      "/llms-full.txt",
+    ])
+  )
 
   return {
     rules: [
@@ -36,15 +36,11 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
       {
-        userAgent: [
-          "GPTBot",
-          "ChatGPT-User",
-          "Google-Extended",
-          "anthropic-ai",
-          "ClaudeBot",
-          "PerplexityBot",
-          "CCBot",
-        ],
+        userAgent: ["GPTBot", "Google-Extended", "anthropic-ai", "ClaudeBot"],
+        disallow: ["/"],
+      },
+      {
+        userAgent: ["OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "Googlebot"],
         allow: publicPaths,
       },
     ],

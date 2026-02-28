@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "waitlist:check": "node scripts/check-waitlist-setup.mjs"
+    "waitlist:check": "node scripts/check-waitlist-setup.mjs",
+    "seo:audit": "node scripts/seo-audit.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

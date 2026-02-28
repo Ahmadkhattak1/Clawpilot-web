@@ -44,6 +44,7 @@ export const seoKeywords = [
 
 export const publicMarketingRoutes = [
   "/",
+  "/blog",
   "/terms",
   "/privacy",
   "/disclaimer",

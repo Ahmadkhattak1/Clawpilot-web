@@ -94,7 +94,7 @@ export default function AuthCallbackPage() {
           const ageMs = Date.now() - new Date(createdAt).getTime()
           if (ageMs < 60_000 && typeof window.gtag === 'function') {
             window.gtag('event', 'conversion', {
-              send_to: 'AW-752447569/evJ-CLC8v_8bENHg5eYC',
+              send_to: 'AW-17277705517/evJ-CLC8v_8bENHg5eYC',
               value: 1.0,
               currency: 'PKR',
             })

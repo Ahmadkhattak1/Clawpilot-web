@@ -1,9 +1,13 @@
 import type { MetadataRoute } from "next"
+import { getBlogPostSlugs } from "@/lib/blog-posts"
 import { siteUrl } from "@/lib/site"
 
 export default function robots(): MetadataRoute.Robots {
+  const blogPaths = ["/blog", ...getBlogPostSlugs().map((slug) => `/blog/${slug}`)]
+
   const publicPaths = [
     "/",
+    ...blogPaths,
     "/terms",
     "/privacy",
     "/disclaimer",

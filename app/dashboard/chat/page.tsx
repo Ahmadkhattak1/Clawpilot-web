@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, Loader2 } from 'lucide-react'
@@ -208,6 +209,10 @@ export default function ChatPage() {
                   ) : null}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings/subscription">Subscription</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(event) => {
                     event.preventDefault()
@@ -224,75 +229,65 @@ export default function ChatPage() {
         </header>
 
         {/* Main Content */}
-        <main className="flex flex-1 flex-col items-center justify-center px-5 pb-24 sm:px-8">
-          <div className="flex w-full max-w-sm flex-col items-center text-center">
-            {/* Logo with glow */}
-            <div className="relative">
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 scale-150 rounded-full bg-[radial-gradient(circle,rgba(179,33,40,0.06),transparent_70%)]"
-              />
-              <div className="relative rounded-[20px] border border-border/40 bg-gradient-to-b from-card to-background p-4 shadow-sm">
-                <Image
-                  src="/logo.svg"
-                  alt="OpenClaw"
-                  width={64}
-                  height={64}
-                  className="h-16 w-16 object-contain"
+        <main className="flex flex-1 flex-col items-center justify-center px-5 pb-16 pt-4 sm:px-8">
+          <div className="w-full max-w-[390px] rounded-[34px] border border-border/70 bg-card/70 p-5 shadow-[0_18px_44px_rgba(0,0,0,0.10)] backdrop-blur-sm sm:p-6">
+            <div aria-hidden="true" className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-muted-foreground/25" />
+
+            <div className="flex flex-col items-center text-center">
+              {/* Logo with glow */}
+              <div className="relative">
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 scale-150 rounded-full bg-[radial-gradient(circle,rgba(179,33,40,0.06),transparent_70%)]"
                 />
+                <div className="relative rounded-[18px] border border-border/40 bg-gradient-to-b from-card to-background p-3.5 shadow-sm">
+                  <Image
+                    src="/logo.svg"
+                    alt="OpenClaw"
+                    width={56}
+                    height={56}
+                    className="h-14 w-14 object-contain"
+                  />
+                </div>
               </div>
+
+              <h1 className="mt-6 text-[30px] font-semibold tracking-tight text-foreground sm:text-[32px]">
+                OpenClaw Gateway
+              </h1>
+
+              {/* Error */}
+              {launchError ? (
+                <div className="mt-4 w-full rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-left text-[12.5px] leading-relaxed text-destructive">
+                  {launchError}
+                </div>
+              ) : null}
+
+              {/* Launch button */}
+              <OpenClawUiLaunchButton
+                tenantId={tenantId}
+                onUnauthorized={redirectToSignIn}
+                onLaunchStart={() => setLaunchError('')}
+                onError={setLaunchError}
+                label="Launch OpenClaw"
+                variant="default"
+                size="default"
+                className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                size="default"
+                className="mt-2.5 h-10 w-full rounded-xl gap-2 text-[13.5px] font-medium"
+                onClick={() => {
+                  setLaunchError('')
+                  setFileManagerOpen(true)
+                }}
+              >
+                <FileText className="h-4 w-4" />
+                Manage Files
+              </Button>
             </div>
-
-            {/* Copy */}
-            <h1 className="mt-8 text-[22px] font-semibold tracking-tight text-foreground sm:text-2xl">
-              OpenClaw Gateway
-            </h1>
-            <p className="mt-2.5 max-w-xs text-[14px] leading-relaxed text-muted-foreground">
-              Launch OpenClaw directly. We keep this page intentionally minimal,
-              and add custom workflows here only when needed.
-            </p>
-
-            {/* Status pill */}
-            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-border/50 bg-card px-3.5 py-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              </span>
-              <span className="text-xs font-medium text-muted-foreground">Instance running</span>
-            </div>
-
-            {/* Error */}
-            {launchError ? (
-              <div className="mt-5 w-full rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 text-left text-[13px] leading-relaxed text-destructive">
-                {launchError}
-              </div>
-            ) : null}
-
-            {/* Launch button */}
-            <OpenClawUiLaunchButton
-              tenantId={tenantId}
-              onUnauthorized={redirectToSignIn}
-              onLaunchStart={() => setLaunchError('')}
-              onError={setLaunchError}
-              label="Launch OpenClaw"
-              variant="default"
-              size="default"
-              className="mt-6 h-11 w-full gap-2 text-[14px] font-medium shadow-sm transition-all hover:shadow-md"
-            />
-
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              className="mt-3 h-11 w-full gap-2 text-[14px]"
-              onClick={() => {
-                setLaunchError('')
-                setFileManagerOpen(true)
-              }}
-            >
-              <FileText className="h-4 w-4" />
-              Manage Files
-            </Button>
           </div>
         </main>
 

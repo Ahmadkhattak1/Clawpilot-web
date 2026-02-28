@@ -67,6 +67,24 @@ const quickAnswers = [
   },
 ]
 
+const onboardingOutcomes = [
+  {
+    title: "A private cloud deployment",
+    detail:
+      "Your OpenClaw instance runs on managed infrastructure, so you avoid local uptime risk and maintenance drift.",
+  },
+  {
+    title: "Operational defaults that work",
+    detail:
+      "Logging, monitoring, and update workflows are preconfigured, which reduces setup mistakes in early production.",
+  },
+  {
+    title: "Integration-ready from day one",
+    detail:
+      "Connect messaging and workflow tools from a single dashboard and start real task execution immediately.",
+  },
+]
+
 export default function OpenClawEasySetupPage() {
   const structuredData = {
     "@context": "https://schema.org",
@@ -125,6 +143,12 @@ export default function OpenClawEasySetupPage() {
           <h2 id="how-setup-works" className="type-h2">
             How the easy OpenClaw setup works
           </h2>
+          <p className="type-body-sm mt-3 max-w-3xl text-foreground/85">
+            Most OpenClaw guides assume you want to self-host, patch dependencies, and keep background
+            services alive yourself. This page is for teams that want the same OpenClaw capability without
+            the operations burden. ClawPilot handles the infrastructure layer so you can focus on prompts,
+            workflows, approvals, and measurable business outcomes.
+          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {setupSteps.map((step) => (
               <div key={step.title} className="rounded-xl border border-border/40 bg-secondary/40 p-5">
@@ -139,6 +163,11 @@ export default function OpenClawEasySetupPage() {
           <h2 id="why-clawpilot" className="type-h2">
             Why teams choose this over manual OpenClaw setup
           </h2>
+          <p className="type-body-sm mt-3 max-w-3xl text-foreground/85">
+            A manual setup can work for hobby experiments, but teams usually need reliability, visibility,
+            and predictable change management. With ClawPilot, OpenClaw remains flexible while deployment and
+            operations are standardized for production use.
+          </p>
           <ul className="mt-5 space-y-3">
             <li className="rounded-lg border border-border/40 bg-secondary/25 px-4 py-3 type-body-sm">
               Faster launch than self-hosting because install, updates, and uptime are managed.
@@ -150,6 +179,25 @@ export default function OpenClawEasySetupPage() {
               Production-ready OpenClaw operations without buying extra hardware.
             </li>
           </ul>
+        </section>
+
+        <section aria-labelledby="what-you-get">
+          <h2 id="what-you-get" className="type-h2">
+            What you get after setup
+          </h2>
+          <p className="type-body-sm mt-3 max-w-3xl text-foreground/85">
+            Easy setup should not mean limited capability. After onboarding, you still control channel
+            permissions, confirmation flows, and execution scope. The difference is that your team starts from
+            a stable managed baseline instead of assembling infrastructure from scratch.
+          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {onboardingOutcomes.map((outcome) => (
+              <div key={outcome.title} className="rounded-xl border border-border/40 bg-secondary/40 p-5">
+                <h3 className="type-h4">{outcome.title}</h3>
+                <p className="type-body-sm mt-2">{outcome.detail}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section aria-labelledby="easy-openclaw-faq">

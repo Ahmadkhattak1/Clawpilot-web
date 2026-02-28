@@ -44,7 +44,6 @@ export const seoKeywords = [
 
 export const publicMarketingRoutes = [
   "/",
-  "/openclaw-easy-setup",
   "/terms",
   "/privacy",
   "/disclaimer",

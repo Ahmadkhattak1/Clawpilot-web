@@ -3,8 +3,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, ExternalLink, Key, Loader2, RefreshCw, Sparkles, Wallet } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,16 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { CHANNEL_OPTIONS } from '@/lib/channel-options'
-import {
-  createDefaultCustomerFinderConfig,
-  fetchCustomerFinderConfig,
-  mergeWithDefaultCustomerFinderConfig,
-  updateCustomerFinderConfig,
-  type CustomerFinderConfig,
-  type CustomerFinderSetupStatus,
-} from '@/lib/customer-finder'
 import {
   AVAILABLE_MODEL_PROVIDER_OPTIONS,
   getProviderModelOptions,
@@ -49,9 +40,6 @@ import { cn } from '@/lib/utils'
 
 const SUPPORTED_PROVIDER_IDS = ['openai', 'anthropic', 'google'] as const
 const INITIAL_VISIBLE_MODELS = 3
-const LEAD_INTEGRATIONS_SECTION_ID = 'lead-integrations'
-const SEARCH_API_SECTION_ID = 'search-api'
-const LEAD_EMAIL_SECTION_ID = 'lead-email'
 type SupportedProviderId = (typeof SUPPORTED_PROVIDER_IDS)[number]
 
 function isSupportedProviderId(value: string | null): value is SupportedProviderId {
@@ -149,25 +137,11 @@ export default function SettingsPageWrapper() {
 
 function SettingsPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [checkingSession, setCheckingSession] = useState(true)
   const [userId, setUserId] = useState('')
   const [tenantId, setTenantId] = useState('')
   const [loadingRuntime, setLoadingRuntime] = useState(false)
   const [runtimeError, setRuntimeError] = useState('')
-  const [loadingLeadIntegrations, setLoadingLeadIntegrations] = useState(false)
-  const [leadIntegrationsConfigDraft, setLeadIntegrationsConfigDraft] = useState<CustomerFinderConfig | null>(null)
-  const [leadWorkflowSetupStatus, setLeadWorkflowSetupStatus] = useState<CustomerFinderSetupStatus>('inactive')
-  const [settingsSaveStatus, setSettingsSaveStatus] = useState('')
-  const [settingsSaveStatusType, setSettingsSaveStatusType] = useState<'success' | 'error' | 'info'>('info')
-  const [settingsSaveSection, setSettingsSaveSection] = useState<'search-api' | 'lead-integrations' | 'lead-email' | null>(null)
-  const [savingSettingsSection, setSavingSettingsSection] = useState<'search-api' | 'lead-integrations' | 'lead-email' | null>(null)
-  const leadIntegrationsSectionRef = useRef<HTMLDivElement | null>(null)
-  const searchApiSectionRef = useRef<HTMLDivElement | null>(null)
-  const leadEmailSectionRef = useRef<HTMLDivElement | null>(null)
-  const [highlightLeadIntegrations, setHighlightLeadIntegrations] = useState(false)
-  const [highlightSearchApi, setHighlightSearchApi] = useState(false)
-  const [highlightLeadEmail, setHighlightLeadEmail] = useState(false)
 
   const [runtimeCurrentModelId, setRuntimeCurrentModelId] = useState('')
 
@@ -268,35 +242,6 @@ function SettingsPage() {
     if (!id) return null
     return buildModelLabel(id)
   }, [runtimeCurrentModelId])
-  const defaultLeadConfig = useMemo(() => createDefaultCustomerFinderConfig(), [])
-  const leadIntegrationsConfig = useMemo(
-    () => mergeWithDefaultCustomerFinderConfig(leadIntegrationsConfigDraft ?? defaultLeadConfig),
-    [defaultLeadConfig, leadIntegrationsConfigDraft],
-  )
-  const leadWorkflowIsActive = leadWorkflowSetupStatus === 'active'
-  const leadIntegrationsUsesSearchApi = leadIntegrationsConfig.leadSources.discoveryProvider === 'web-search-api'
-  const leadSearchApiConfigured = (
-    leadIntegrationsConfig.leadSources.webSearchApi.provider !== 'none'
-    && leadIntegrationsConfig.leadSources.webSearchApi.apiKey.trim().length > 0
-  )
-  const outreachEmailSetup = leadIntegrationsConfig.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email
-  const globalEmailReady = (
-    outreachEmailSetup.provider === 'gmail'
-      ? (
-        outreachEmailSetup.fromEmail.trim().length > 0
-        && outreachEmailSetup.gmailAppPassword.trim().length > 0
-      )
-      : outreachEmailSetup.provider === 'smtp'
-        ? (
-          outreachEmailSetup.fromEmail.trim().length > 0
-          && outreachEmailSetup.smtpHost.trim().length > 0
-          && outreachEmailSetup.smtpUsername.trim().length > 0
-          && outreachEmailSetup.smtpPassword.trim().length > 0
-          && Number.isFinite(outreachEmailSetup.smtpPort)
-          && outreachEmailSetup.smtpPort > 0
-        )
-        : false
-  )
 
   useEffect(() => {
     setEditingAuth(false)
@@ -361,17 +306,11 @@ function SettingsPage() {
     targetUserId?: string,
   ) => {
     setLoadingRuntime(true)
-    setLoadingLeadIntegrations(true)
     setRuntimeError('')
-    setSettingsSaveStatus('')
-    setSettingsSaveSection(null)
     try {
-      const [persisted, leadIntegrationsResponse] = await Promise.all([
-        targetUserId ? loadPersistedProfile(targetUserId, targetTenantId) : Promise.resolve(null),
-        fetchCustomerFinderConfig(targetTenantId).catch((error) => {
-          throw new Error(normalizeErrorMessage(error, 'Failed to load lead settings.'))
-        }),
-      ])
+      const persisted = targetUserId
+        ? await loadPersistedProfile(targetUserId, targetTenantId)
+        : null
 
       if (!persisted) {
         setRuntimeCurrentModelId('')
@@ -380,15 +319,11 @@ function SettingsPage() {
         setSavedOauthConnected(false)
         setOauthConnected(false)
       }
-      setLeadIntegrationsConfigDraft(leadIntegrationsResponse.config)
-      setLeadWorkflowSetupStatus(leadIntegrationsResponse.setup.status)
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Failed to load saved settings.')
       setRuntimeError(message)
-      setLeadWorkflowSetupStatus('inactive')
     } finally {
       setLoadingRuntime(false)
-      setLoadingLeadIntegrations(false)
     }
   }, [loadPersistedProfile])
 
@@ -586,73 +521,6 @@ function SettingsPage() {
     }
   }
 
-  function patchLeadIntegrationsConfig(
-    updater: (previous: CustomerFinderConfig) => CustomerFinderConfig,
-  ) {
-    // Preserve raw user input (including spaces) while typing; normalize only when saving.
-    setLeadIntegrationsConfigDraft((previous) => updater(
-      previous ?? createDefaultCustomerFinderConfig(),
-    ))
-    setSettingsSaveStatus('')
-    setSettingsSaveSection(null)
-  }
-
-  async function saveWorkflowConfig(
-    section: 'search-api' | 'lead-integrations' | 'lead-email',
-    successMessage: string,
-    fallbackErrorMessage: string,
-  ) {
-    if (!tenantId) return
-    setSavingSettingsSection(section)
-    setSettingsSaveSection(section)
-    setSettingsSaveStatus('')
-    try {
-      const response = await updateCustomerFinderConfig(tenantId, leadIntegrationsConfig)
-      setLeadIntegrationsConfigDraft(response.config)
-      setLeadWorkflowSetupStatus(response.setup.status)
-      setSettingsSaveStatus(successMessage)
-      setSettingsSaveStatusType('success')
-    } catch (error) {
-      setSettingsSaveStatus(normalizeErrorMessage(error, fallbackErrorMessage))
-      setSettingsSaveStatusType('error')
-    } finally {
-      setSavingSettingsSection(null)
-    }
-  }
-
-  useEffect(() => {
-    const requestedSection = searchParams.get('section')?.trim().toLowerCase()
-    const scrollTargets: Record<string, {
-      node: HTMLDivElement | null
-      setHighlight: (value: boolean) => void
-    }> = {
-      [LEAD_INTEGRATIONS_SECTION_ID]: {
-        node: leadIntegrationsSectionRef.current,
-        setHighlight: setHighlightLeadIntegrations,
-      },
-      [SEARCH_API_SECTION_ID]: {
-        node: searchApiSectionRef.current,
-        setHighlight: setHighlightSearchApi,
-      },
-      [LEAD_EMAIL_SECTION_ID]: {
-        node: leadEmailSectionRef.current,
-        setHighlight: setHighlightLeadEmail,
-      },
-    }
-
-    const target = requestedSection ? scrollTargets[requestedSection] : undefined
-    if (!target?.node) {
-      return
-    }
-
-    target.node.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    target.setHighlight(true)
-    const timeoutHandle = setTimeout(() => {
-      target.setHighlight(false)
-    }, 2_200)
-    return () => clearTimeout(timeoutHandle)
-  }, [searchParams])
-
   const isCurrentModel = (modelId: string) => (
     normalizeModelIdForComparison(runtimeCurrentModelId) === normalizeModelIdForComparison(modelId)
   )
@@ -688,9 +556,9 @@ function SettingsPage() {
             variant="outline"
             size="sm"
             onClick={() => { if (tenantId) void refreshSettingsData(tenantId, userId) }}
-            disabled={loadingRuntime || loadingLeadIntegrations}
+            disabled={loadingRuntime}
           >
-            {loadingRuntime || loadingLeadIntegrations ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {loadingRuntime ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Reload saved
           </Button>
         </div>
@@ -1066,610 +934,6 @@ function SettingsPage() {
               >
                 {savingModel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                 Save
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Global search API */}
-        <Card
-          ref={searchApiSectionRef}
-          className={cn(
-            'border-border/70 transition-shadow',
-            highlightSearchApi ? 'ring-2 ring-violet-400/50 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]' : '',
-          )}
-        >
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Web Search API (Global)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Shared search API credentials for features that use API-backed web search.
-            </p>
-            {loadingLeadIntegrations && !leadIntegrationsConfigDraft ? (
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading search API settings...
-              </p>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs">API provider</Label>
-                <Select
-                  value={leadIntegrationsConfig.leadSources.webSearchApi.provider}
-                  onValueChange={(provider) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    leadSources: {
-                      ...previous.leadSources,
-                      webSearchApi: {
-                        ...previous.leadSources.webSearchApi,
-                        provider: provider as CustomerFinderConfig['leadSources']['webSearchApi']['provider'],
-                      },
-                    },
-                  }))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Not configured</SelectItem>
-                    <SelectItem value="brave">Brave</SelectItem>
-                    <SelectItem value="perplexity">Perplexity</SelectItem>
-                    <SelectItem value="gemini">Gemini</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="global-search-api-key" className="text-xs">API key</Label>
-                <Input
-                  id="global-search-api-key"
-                  type="password"
-                  value={leadIntegrationsConfig.leadSources.webSearchApi.apiKey}
-                  onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    leadSources: {
-                      ...previous.leadSources,
-                      webSearchApi: {
-                        ...previous.leadSources.webSearchApi,
-                        apiKey: event.target.value,
-                      },
-                    },
-                  }))}
-                  placeholder="Paste API key"
-                  className="h-9"
-                />
-              </div>
-            </div>
-            <details className="group rounded-md border border-border/60 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-                Advanced options
-              </summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="global-search-api-url" className="text-xs">Base URL (optional)</Label>
-                  <Input
-                    id="global-search-api-url"
-                    value={leadIntegrationsConfig.leadSources.webSearchApi.baseUrl}
-                    onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                      ...previous,
-                      leadSources: {
-                        ...previous.leadSources,
-                        webSearchApi: {
-                          ...previous.leadSources.webSearchApi,
-                          baseUrl: event.target.value,
-                        },
-                      },
-                    }))}
-                    placeholder="Provider default URL"
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="global-search-api-model" className="text-xs">Model (optional)</Label>
-                  <Input
-                    id="global-search-api-model"
-                    value={leadIntegrationsConfig.leadSources.webSearchApi.model}
-                    onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                      ...previous,
-                      leadSources: {
-                        ...previous.leadSources,
-                        webSearchApi: {
-                          ...previous.leadSources.webSearchApi,
-                          model: event.target.value,
-                        },
-                      },
-                    }))}
-                    placeholder="sonar, gemini-2.5-flash"
-                    className="h-9"
-                  />
-                </div>
-              </div>
-            </details>
-            {settingsSaveSection === 'search-api' && settingsSaveStatus ? (
-              <p className={cn(
-                'rounded-lg px-3 py-2 text-sm',
-                settingsSaveStatusType === 'error'
-                  ? 'border border-destructive/30 bg-destructive/5 text-destructive'
-                  : settingsSaveStatusType === 'success'
-                    ? 'border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
-                    : 'border border-border/70 bg-muted/30 text-foreground/80',
-              )}>
-                {settingsSaveStatus}
-              </p>
-            ) : null}
-            <div className="flex items-center justify-end pt-1">
-              <Button
-                size="sm"
-                onClick={() => void saveWorkflowConfig(
-                  'search-api',
-                  'Global search API settings saved.',
-                  'Failed to save global search API settings.',
-                )}
-                disabled={savingSettingsSection !== null || loadingLeadIntegrations}
-              >
-                {savingSettingsSection === 'search-api' ? (
-                  <>
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    Saving
-                  </>
-                ) : (
-                  <>
-                    <Check className="mr-2 h-3.5 w-3.5" />
-                    Save Search API
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {leadWorkflowIsActive ? (
-          <>
-            {/* Workflow-specific lead discovery controls */}
-            <Card
-              ref={leadIntegrationsSectionRef}
-              className={cn(
-                'border-border/70 transition-shadow',
-                highlightLeadIntegrations ? 'ring-2 ring-violet-400/50 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]' : '',
-              )}
-            >
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base">Lead Discovery Controls</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <p className="text-sm text-muted-foreground">
-                  These controls define global lead discovery behavior.
-                </p>
-                <div className="space-y-2">
-                  <Label className="text-xs">Search strategy for leads</Label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          discoveryProvider: 'duckduckgo-html',
-                        },
-                      }))}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-left transition-colors',
-                        !leadIntegrationsUsesSearchApi
-                          ? 'border-violet-500/60 bg-violet-500/10'
-                          : 'border-border/70 bg-card hover:bg-muted/30',
-                      )}
-                    >
-                      <p className="text-xs font-medium text-foreground">Browser + DuckDuckGo</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">No API key required</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          discoveryProvider: 'web-search-api',
-                        },
-                      }))}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-left transition-colors',
-                        leadIntegrationsUsesSearchApi
-                          ? 'border-violet-500/60 bg-violet-500/10'
-                          : 'border-border/70 bg-card hover:bg-muted/30',
-                      )}
-                    >
-                      <p className="text-xs font-medium text-foreground">Use Global Search API</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Uses credentials from Web Search API settings</p>
-                    </button>
-                  </div>
-                  {leadIntegrationsUsesSearchApi && !leadSearchApiConfigured ? (
-                    <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-                      Search API is selected for lead discovery, but provider/key are incomplete in global Search API settings.
-                    </p>
-                  ) : null}
-                </div>
-                <div className="rounded-lg border border-border/70 p-3 space-y-2">
-                  <p className="text-xs font-medium text-foreground">Lead discovery capabilities</p>
-                  <label className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-2 text-xs">
-                    <span>Allow web discovery</span>
-                    <Switch
-                      checked={leadIntegrationsConfig.leadSources.webSearch}
-                      onCheckedChange={(checked) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          webSearch: checked,
-                        },
-                      }))}
-                    />
-                  </label>
-                  <label className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-2 text-xs">
-                    <span>Enable browser deep research</span>
-                    <Switch
-                      checked={leadIntegrationsConfig.leadSources.browserAutomation.enabled}
-                      onCheckedChange={(checked) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          browserAutomation: {
-                            ...previous.leadSources.browserAutomation,
-                            enabled: checked,
-                          },
-                        },
-                      }))}
-                    />
-                  </label>
-                  <label className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-2 text-xs">
-                    <span>Allow directory expansion (Maps/listings)</span>
-                    <Switch
-                      checked={leadIntegrationsConfig.leadSources.directories}
-                      onCheckedChange={(checked) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          directories: checked,
-                        },
-                      }))}
-                    />
-                  </label>
-                  <label className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-2 text-xs">
-                    <span>Allow social source checks (Facebook/Meta pages)</span>
-                    <Switch
-                      checked={leadIntegrationsConfig.leadSources.social}
-                      onCheckedChange={(checked) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        leadSources: {
-                          ...previous.leadSources,
-                          social: checked,
-                        },
-                      }))}
-                    />
-                  </label>
-                </div>
-                {settingsSaveSection === 'lead-integrations' && settingsSaveStatus ? (
-                  <p className={cn(
-                    'rounded-lg px-3 py-2 text-sm',
-                    settingsSaveStatusType === 'error'
-                      ? 'border border-destructive/30 bg-destructive/5 text-destructive'
-                      : settingsSaveStatusType === 'success'
-                        ? 'border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
-                        : 'border border-border/70 bg-muted/30 text-foreground/80',
-                  )}>
-                    {settingsSaveStatus}
-                  </p>
-                ) : null}
-                <div className="flex items-center justify-end pt-1">
-                  <Button
-                    size="sm"
-                    onClick={() => void saveWorkflowConfig(
-                      'lead-integrations',
-                      'Lead discovery controls saved.',
-                      'Failed to save lead discovery controls.',
-                    )}
-                    disabled={savingSettingsSection !== null || loadingLeadIntegrations}
-                  >
-                    {savingSettingsSection === 'lead-integrations' ? (
-                      <>
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Saving
-                      </>
-                    ) : (
-                      <>
-                        <Check className="mr-2 h-3.5 w-3.5" />
-                        Save Lead Controls
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-          </>
-        ) : (
-          <Card
-            ref={leadIntegrationsSectionRef}
-            className={cn(
-              'border-border/70 transition-shadow',
-              highlightLeadIntegrations || highlightLeadEmail ? 'ring-2 ring-violet-400/50 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]' : '',
-            )}
-          >
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base">Lead Discovery Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Lead discovery controls are currently unavailable.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Global email setup */}
-        <Card
-          ref={leadEmailSectionRef}
-          className={cn(
-            'border-border/70 transition-shadow',
-            highlightLeadEmail ? 'ring-2 ring-violet-400/50 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]' : '',
-          )}
-        >
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Global Email Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Current status</p>
-              <span className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                globalEmailReady
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-              )}>
-                {globalEmailReady ? 'Ready' : 'Setup required'}
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              These credentials are global and can be used by any email-capable runtime skill.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Email provider</Label>
-                <Select
-                  value={outreachEmailSetup.provider}
-                  onValueChange={(provider) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    outreachSetup: {
-                      email: {
-                        ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                        provider: provider as 'none' | 'gmail' | 'smtp',
-                      },
-                    },
-                  }))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Not configured</SelectItem>
-                    <SelectItem value="gmail">Gmail</SelectItem>
-                    <SelectItem value="smtp">Other email (SMTP)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="global-outreach-from-email" className="text-xs">From email</Label>
-                <Input
-                  id="global-outreach-from-email"
-                  value={outreachEmailSetup.fromEmail}
-                  onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    outreachSetup: {
-                      email: {
-                        ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                        fromEmail: event.target.value,
-                      },
-                    },
-                  }))}
-                  placeholder="founder@yourcompany.com"
-                  className="h-9"
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="global-outreach-from-name" className="text-xs">From name</Label>
-                <Input
-                  id="global-outreach-from-name"
-                  value={outreachEmailSetup.fromName}
-                  onKeyDown={(event) => {
-                    event.stopPropagation()
-                  }}
-                  onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    outreachSetup: {
-                      email: {
-                        ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                        fromName: event.target.value,
-                      },
-                    },
-                  }))}
-                  placeholder="Ahmad from ClawPilot"
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="global-outreach-reply-to" className="text-xs">Reply-to (optional)</Label>
-                <Input
-                  id="global-outreach-reply-to"
-                  value={outreachEmailSetup.replyTo}
-                  onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    outreachSetup: {
-                      email: {
-                        ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                        replyTo: event.target.value,
-                      },
-                    },
-                  }))}
-                  placeholder="reply@yourcompany.com"
-                  className="h-9"
-                />
-              </div>
-            </div>
-            {outreachEmailSetup.provider === 'gmail' ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="global-gmail-app-password" className="text-xs">Google App Password</Label>
-                <Input
-                  id="global-gmail-app-password"
-                  type="password"
-                  value={outreachEmailSetup.gmailAppPassword}
-                  onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                    ...previous,
-                    outreachSetup: {
-                      email: {
-                        ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                        gmailAppPassword: event.target.value,
-                      },
-                    },
-                  }))}
-                  placeholder="16-character app password"
-                  className="h-9"
-                />
-              </div>
-            ) : null}
-            {outreachEmailSetup.provider === 'smtp' ? (
-              <div className="rounded-lg border border-border/60 p-3 space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="global-smtp-host" className="text-xs">SMTP host</Label>
-                    <Input
-                      id="global-smtp-host"
-                      value={outreachEmailSetup.smtpHost}
-                      onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        outreachSetup: {
-                          email: {
-                            ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                            smtpHost: event.target.value,
-                          },
-                        },
-                      }))}
-                      placeholder="smtp.mailgun.org"
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="global-smtp-port" className="text-xs">SMTP port</Label>
-                    <Input
-                      id="global-smtp-port"
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={String(outreachEmailSetup.smtpPort)}
-                      onChange={(event) => {
-                        const parsed = Number(event.target.value)
-                        patchLeadIntegrationsConfig((previous) => ({
-                          ...previous,
-                          outreachSetup: {
-                            email: {
-                              ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                              smtpPort: Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0,
-                            },
-                          },
-                        }))
-                      }}
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="global-smtp-username" className="text-xs">SMTP username</Label>
-                    <Input
-                      id="global-smtp-username"
-                      value={outreachEmailSetup.smtpUsername}
-                      onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        outreachSetup: {
-                          email: {
-                            ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                            smtpUsername: event.target.value,
-                          },
-                        },
-                      }))}
-                      placeholder="smtp-user"
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="global-smtp-password" className="text-xs">SMTP password</Label>
-                    <Input
-                      id="global-smtp-password"
-                      type="password"
-                      value={outreachEmailSetup.smtpPassword}
-                      onChange={(event) => patchLeadIntegrationsConfig((previous) => ({
-                        ...previous,
-                        outreachSetup: {
-                          email: {
-                            ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                            smtpPassword: event.target.value,
-                          },
-                        },
-                      }))}
-                      placeholder="SMTP password"
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-                <label className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-2 text-xs">
-                  <span>Use TLS/SSL (secure)</span>
-                  <Switch
-                    checked={outreachEmailSetup.smtpSecure}
-                    onCheckedChange={(checked) => patchLeadIntegrationsConfig((previous) => ({
-                      ...previous,
-                      outreachSetup: {
-                        email: {
-                          ...(previous.outreachSetup?.email ?? defaultLeadConfig.outreachSetup.email),
-                          smtpSecure: checked,
-                        },
-                      },
-                    }))}
-                  />
-                </label>
-              </div>
-            ) : null}
-            {settingsSaveSection === 'lead-email' && settingsSaveStatus ? (
-              <p className={cn(
-                'rounded-lg px-3 py-2 text-sm',
-                settingsSaveStatusType === 'error'
-                  ? 'border border-destructive/30 bg-destructive/5 text-destructive'
-                  : settingsSaveStatusType === 'success'
-                    ? 'border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
-                    : 'border border-border/70 bg-muted/30 text-foreground/80',
-              )}>
-                {settingsSaveStatus}
-              </p>
-            ) : null}
-            <div className="flex items-center justify-end pt-1">
-              <Button
-                size="sm"
-                onClick={() => void saveWorkflowConfig(
-                  'lead-email',
-                  'Global email settings saved.',
-                  'Failed to save global email settings.',
-                )}
-                disabled={savingSettingsSection !== null || loadingLeadIntegrations}
-              >
-                {savingSettingsSection === 'lead-email' ? (
-                  <>
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    Saving
-                  </>
-                ) : (
-                  <>
-                    <Check className="mr-2 h-3.5 w-3.5" />
-                    Save Email Setup
-                  </>
-                )}
               </Button>
             </div>
           </CardContent>

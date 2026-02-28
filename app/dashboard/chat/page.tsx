@@ -1,11 +1,12 @@
 'use client'
 
 import Image from 'next/image'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUpRight, Loader2 } from 'lucide-react'
+import { FileText, Loader2 } from 'lucide-react'
 
+import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
+import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,8 +54,8 @@ export default function ChatPage() {
   const [profileInitial, setProfileInitial] = useState('A')
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [isOpeningOpenClaw, setIsOpeningOpenClaw] = useState(false)
   const [launchError, setLaunchError] = useState('')
+  const [fileManagerOpen, setFileManagerOpen] = useState(false)
 
   const routerRef = useRef(router)
   routerRef.current = router
@@ -83,89 +84,6 @@ export default function ChatPage() {
       router.replace('/')
     }
   }, [isSigningOut, router])
-
-  const handleOpenOpenClaw = useCallback(async () => {
-    if (!tenantId.trim() || isOpeningOpenClaw) return
-
-    const openedWindow = window.open('about:blank', '_blank')
-    if (!openedWindow) {
-      setLaunchError('Popup blocked. Allow popups to open OpenClaw in a new tab.')
-      return
-    }
-
-    try {
-      openedWindow.opener = null
-      openedWindow.document.title = 'Opening OpenClaw...'
-    } catch {
-      // Ignore cross-window assignment errors.
-    }
-
-    setIsOpeningOpenClaw(true)
-    setLaunchError('')
-    try {
-      const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
-      const accessToken = session?.access_token?.trim() ?? ''
-      if (!accessToken) {
-        if (!openedWindow.closed) openedWindow.close()
-        redirectToSignIn()
-        return
-      }
-
-      const response = await fetch('/api/openclaw/launch', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-        },
-      })
-
-      let payload: unknown = null
-      try {
-        payload = await response.json()
-      } catch {
-        payload = null
-      }
-
-      const payloadRecord =
-        payload && typeof payload === 'object' && !Array.isArray(payload)
-          ? (payload as Record<string, unknown>)
-          : null
-      const launchRecord =
-        payloadRecord?.launch &&
-        typeof payloadRecord.launch === 'object' &&
-        !Array.isArray(payloadRecord.launch)
-          ? (payloadRecord.launch as Record<string, unknown>)
-          : null
-      const message =
-        typeof payloadRecord?.message === 'string' && payloadRecord.message.trim()
-          ? payloadRecord.message.trim()
-          : null
-      const launchUrl =
-        typeof launchRecord?.url === 'string' && launchRecord.url.trim()
-          ? launchRecord.url.trim()
-          : null
-
-      if (!response.ok) {
-        throw new Error(message ?? 'Unable to open OpenClaw right now.')
-      }
-      if (!launchUrl) {
-        throw new Error('Launch URL is missing. Please try again.')
-      }
-      if (openedWindow.closed) {
-        throw new Error('Launch tab was closed before OpenClaw could load.')
-      }
-
-      openedWindow.location.replace(launchUrl)
-    } catch (error) {
-      if (!openedWindow.closed) openedWindow.close()
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message.trim()
-          : 'Unable to open OpenClaw right now.'
-      setLaunchError(message)
-    } finally {
-      setIsOpeningOpenClaw(false)
-    }
-  }, [isOpeningOpenClaw, redirectToSignIn, tenantId])
 
   // Bootstrap: verify session, hydrate profile, check billing
   useEffect(() => {
@@ -230,7 +148,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   if (checkingSession) {
     return (
@@ -290,13 +208,6 @@ export default function ChatPage() {
                   ) : null}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings">Settings</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings/subscription">Subscription</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(event) => {
                     event.preventDefault()
@@ -337,8 +248,8 @@ export default function ChatPage() {
               OpenClaw Gateway
             </h1>
             <p className="mt-2.5 max-w-xs text-[14px] leading-relaxed text-muted-foreground">
-              Your assistant is live. Open the full OpenClaw dashboard to manage
-              conversations, channels, and workflows.
+              Launch OpenClaw directly. We keep this page intentionally minimal,
+              and add custom workflows here only when needed.
             </p>
 
             {/* Status pill */}
@@ -358,17 +269,29 @@ export default function ChatPage() {
             ) : null}
 
             {/* Launch button */}
-            <Button
+            <OpenClawUiLaunchButton
+              tenantId={tenantId}
+              onUnauthorized={redirectToSignIn}
+              onLaunchStart={() => setLaunchError('')}
+              onError={setLaunchError}
+              label="Launch OpenClaw"
+              variant="default"
+              size="default"
               className="mt-6 h-11 w-full gap-2 text-[14px] font-medium shadow-sm transition-all hover:shadow-md"
-              onClick={() => void handleOpenOpenClaw()}
-              disabled={!tenantId || isOpeningOpenClaw}
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              className="mt-3 h-11 w-full gap-2 text-[14px]"
+              onClick={() => {
+                setLaunchError('')
+                setFileManagerOpen(true)
+              }}
             >
-              {isOpeningOpenClaw ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ArrowUpRight className="h-4 w-4" />
-              )}
-              Launch OpenClaw
+              <FileText className="h-4 w-4" />
+              Manage Files
             </Button>
           </div>
         </main>
@@ -380,6 +303,13 @@ export default function ChatPage() {
           </p>
         </footer>
       </div>
+
+      <WorkspaceMarkdownManagerDialog
+        tenantId={tenantId}
+        open={fileManagerOpen}
+        onOpenChange={setFileManagerOpen}
+        onUnauthorized={redirectToSignIn}
+      />
     </div>
   )
 }

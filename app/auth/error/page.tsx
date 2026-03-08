@@ -1,16 +1,27 @@
-'use client'
-
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getSafeNextPath } from '@/lib/supabase-auth'
 
-export default function AuthErrorPage() {
-  const searchParams = useSearchParams()
-  const message = searchParams.get('message') ?? 'The sign-in link may be invalid or expired.'
-  const nextPath = getSafeNextPath(searchParams.get('next'))
+type ErrorPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+function getSafeNextPath(value: string | null | undefined, fallback = '/dashboard/chat') {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback
+  return value
+}
+
+function getSingleParam(value: string | string[] | undefined): string | null {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value[0] ?? null
+  return null
+}
+
+export default async function AuthErrorPage({ searchParams }: ErrorPageProps) {
+  const resolvedSearchParams = await searchParams
+  const message = getSingleParam(resolvedSearchParams?.message) ?? 'The sign-in link may be invalid or expired.'
+  const nextPath = getSafeNextPath(getSingleParam(resolvedSearchParams?.next))
 
   return (
     <div className="relative grid min-h-[100dvh] w-full place-items-center overflow-hidden bg-background px-4 py-8">

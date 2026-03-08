@@ -1,4 +1,7 @@
-import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
+import type { AuthChangeEvent, Session, SupabaseClient } from '@supabase/supabase-js'
+
+import { getSupabaseAuthConfig, supabaseAuthCookieOptions } from '@/lib/supabase-auth-config'
 
 let supabaseAuthClient: SupabaseClient | null = null
 const SESSION_RECOVERY_DEFAULT_TIMEOUT_MS = 5000
@@ -13,23 +16,17 @@ type SessionRecoveryOptions = {
 }
 
 export function getSupabaseAuthClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      'Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.',
-    )
-  }
+  const { supabaseUrl, supabaseKey } = getSupabaseAuthConfig()
 
   if (!supabaseAuthClient) {
-    supabaseAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+    supabaseAuthClient = createBrowserClient(supabaseUrl, supabaseKey, {
       auth: {
         autoRefreshToken: true,
-        persistSession: true,
         detectSessionInUrl: false,
         flowType: 'pkce',
+        persistSession: true,
       },
+      cookieOptions: supabaseAuthCookieOptions,
     })
   }
 

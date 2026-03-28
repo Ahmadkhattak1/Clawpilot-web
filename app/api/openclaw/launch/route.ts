@@ -49,6 +49,18 @@ function normalizeLaunchUrl(rawUrl: string, backendBaseUrl: string): string | nu
   return `${base}${path}`
 }
 
+function resolveBaseUrl(rawUrl: string | undefined | null, fallbackUrl = ''): string {
+  const normalized = rawUrl?.trim() ?? ''
+  const resolved = normalized || fallbackUrl.trim()
+  if (!resolved) {
+    return ''
+  }
+  if (!/^https?:\/\//i.test(resolved)) {
+    return `https://${resolved}`
+  }
+  return resolved
+}
+
 async function parseJsonSafe(response: Response): Promise<unknown> {
   const text = await response.text()
   if (!text) return null
@@ -109,7 +121,10 @@ export async function POST(request: Request) {
 
   const tenantId = deriveTenantIdFromUserId(userData.user.id)
   const backendApiUrl = getBackendUrl()
-  const backendPublicApiUrl = getBackendUrl()
+  const backendPublicApiUrl = resolveBaseUrl(
+    process.env.BACKEND_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL,
+    backendApiUrl,
+  )
   const internalToken = process.env.BACKEND_INTERNAL_API_TOKEN?.trim()
   if (!internalToken) {
     return NextResponse.json(

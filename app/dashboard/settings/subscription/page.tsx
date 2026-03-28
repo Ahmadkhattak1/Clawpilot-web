@@ -578,7 +578,7 @@ function SettingsSubscriptionPageClient() {
     return storedSessionId
   }, [checkoutSessionId])
   const billingNextPath = '/dashboard/model'
-  const backHref = onboardingComplete ? '/settings' : '/dashboard/model'
+  const backHref = onboardingComplete ? '/dashboard/chat' : '/dashboard/model'
   const statusLabel = toDisplayStatus(snapshot)
   const activePlanLabel = toDisplayPlan(normalizedPlan)
   const periodLabel = snapshot?.cancelAtPeriodEnd ? 'Ends' : hasPaidPlan ? 'Renews' : 'Trial ends'
@@ -859,19 +859,16 @@ function SettingsSubscriptionPageClient() {
 
         <Card className="border-dashed border-border/70 bg-muted/20">
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Cancellation</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {allowCancelFlow ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  We add one confirmation step to prevent accidental cancellations.
-                </p>
-                {snapshot?.cancelAtPeriodEnd ? (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    A cancellation is already scheduled. You can still change this now.
-                  </p>
-                ) : null}
+              <CardTitle className="text-base">Cancellation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {allowCancelFlow ? (
+                <>
+                  {snapshot?.cancelAtPeriodEnd ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      A cancellation is already scheduled. You can still change this now.
+                    </p>
+                  ) : null}
                 <Button
                   variant="outline"
                   onClick={() => {

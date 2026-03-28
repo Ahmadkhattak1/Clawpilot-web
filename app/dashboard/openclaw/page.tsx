@@ -24,6 +24,7 @@ import {
   type ProviderSetupMethod,
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
+import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
 import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
@@ -93,6 +94,13 @@ function OpenCloudStepPageClient() {
           return
         }
 
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const deploymentStillStarting = await isTenantDeploymentStillStarting(tenantId)
+        if (deploymentStillStarting) {
+          router.replace('/dashboard/deploy')
+          return
+        }
+
         let onboardingComplete = false
         if (forceRestartOnboarding) {
           try {
@@ -104,7 +112,6 @@ function OpenCloudStepPageClient() {
           onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
         const subscription = await fetchSubscriptionSnapshot(tenantId)
         if (!hasManagedHostingPlan(subscription)) {
           router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
@@ -178,7 +185,7 @@ function OpenCloudStepPageClient() {
     setApiKey('')
     setError('')
     if (showStatusMessage) {
-      setStatus('OAuth selected. You will connect after deployment.')
+      setStatus('OAuth selected. You will connect it right after deployment.')
     }
     return true
   }
@@ -225,7 +232,7 @@ function OpenCloudStepPageClient() {
         ? saveOAuthSelection(false)
         : saveApiKeySelection(false)
     if (!didSave) return
-    router.push(forceRestartOnboarding ? '/dashboard/hooks?restart=1' : '/dashboard/hooks')
+    router.push(forceRestartOnboarding ? '/dashboard/deploy?restart=1' : '/dashboard/deploy')
   }
 
   if (checkingSession) {
@@ -316,7 +323,7 @@ function OpenCloudStepPageClient() {
                   <p className="text-sm text-muted-foreground">{providerConfig.oauthHint}</p>
                 ) : null}
                 <Button className="mt-3" onClick={() => saveOAuthSelection(true)}>
-                  Use OAuth (connect later)
+                  Use OAuth (connect after deployment)
                 </Button>
               </div>
             ) : (

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function ChannelSetupPage() {
-  redirect('/channels')
+  redirect('/dashboard/channels')
 }

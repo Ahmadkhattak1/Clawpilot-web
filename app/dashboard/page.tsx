@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
+import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
@@ -25,19 +26,32 @@ export default function DashboardPage() {
           return
         }
 
-        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        if (cancelled) return
-
         const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const snapshot = await fetchSubscriptionSnapshot(tenantId)
+        const [snapshot, deploymentStillStarting] = await Promise.all([
+          fetchSubscriptionSnapshot(tenantId),
+          isTenantDeploymentStillStarting(tenantId),
+        ])
         if (cancelled) return
 
         if (!hasManagedHostingPlan(snapshot)) {
-          router.replace(buildBillingRequiredPath(complete ? '/dashboard/chat' : '/dashboard/model'))
+          router.replace(buildBillingRequiredPath(deploymentStillStarting ? '/dashboard/deploy' : '/dashboard/model'))
           return
         }
 
-        router.replace(complete ? '/dashboard/chat' : '/dashboard/model')
+        if (deploymentStillStarting) {
+          router.replace('/dashboard/deploy')
+          return
+        }
+
+        const complete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (cancelled) return
+
+        if (!complete) {
+          router.replace('/dashboard/model')
+          return
+        }
+
+        router.replace('/dashboard/chat')
       } catch {
         if (!cancelled) {
           router.replace(buildSignInPath('/dashboard/model'))

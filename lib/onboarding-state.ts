@@ -3,10 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import { getSupabaseAuthClient } from '@/lib/supabase-auth'
 import {
   deriveTenantIdFromUserId,
-  fetchTenantDaemonRecord,
-  fetchTenantDaemonStatus,
-  tenantHasPersistedDaemon,
-  tenantHasProvisionedInstance,
+  fetchTenantDaemonStatusSnapshot,
+  tenantNeedsRedeploy,
+  tenantHasReadyGateway,
 } from '@/lib/tenant-instance'
 
 interface RuntimeOnboardingRow {
@@ -89,7 +88,25 @@ export async function isOnboardingComplete(
   )
   const hasExplicitOnboardingFlag = Boolean(data?.onboarding_complete || data?.onboarding_completed_at)
   const complete = Boolean(hasExplicitOnboardingFlag || legacyProfileConfigured)
+  let daemonSnapshotPromise: Promise<Awaited<ReturnType<typeof fetchTenantDaemonStatusSnapshot>>> | null = null
+  const getDaemonSnapshot = () => {
+    if (!daemonSnapshotPromise) {
+      daemonSnapshotPromise = fetchTenantDaemonStatusSnapshot(tenantId)
+    }
+    return daemonSnapshotPromise
+  }
+
   if (complete) {
+    const daemonSnapshot = await getDaemonSnapshot()
+    if (tenantNeedsRedeploy(daemonSnapshot)) {
+      try {
+        await markOnboardingIncomplete(session)
+      } catch {
+        // Prefer treating the deleted runtime as the source of truth even if profile cleanup lags.
+      }
+      return false
+    }
+
     if (!hasExplicitOnboardingFlag && legacyProfileConfigured) {
       await markOnboardingComplete(session)
     }
@@ -97,14 +114,9 @@ export async function isOnboardingComplete(
   }
   if (!options.backfillFromProvisionedTenant) return false
 
-  const daemonRecord = await fetchTenantDaemonRecord(tenantId)
-  if (tenantHasPersistedDaemon(daemonRecord)) {
-    await markOnboardingComplete(session)
-    return true
-  }
-
-  const daemonStatus = await fetchTenantDaemonStatus(tenantId)
-  if (!tenantHasProvisionedInstance(daemonStatus)) return false
+  const daemonSnapshot = await getDaemonSnapshot()
+  if (daemonSnapshot.kind !== 'ok') return false
+  if (!tenantHasReadyGateway(daemonSnapshot.status)) return false
 
   await markOnboardingComplete(session)
   return true

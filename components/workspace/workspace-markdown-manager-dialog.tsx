@@ -416,10 +416,10 @@ export function WorkspaceMarkdownManagerDialog({
         <div className="flex justify-end">
           <Button type="button" size="sm" variant="ghost" className="h-8" asChild>
             <Link
-              href="/settings/skills"
+              href="/dashboard/chat"
               onClick={() => onOpenChange(false)}
             >
-              Open advanced workspace tools
+              Return to launch
             </Link>
           </Button>
         </div>

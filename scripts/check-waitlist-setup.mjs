@@ -26,17 +26,22 @@ function readEnvFile(filePath) {
 
 const envFromFile = readEnvFile(path.join(process.cwd(), ".env.local"))
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? envFromFile.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? envFromFile.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  ?? envFromFile.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  ?? envFromFile.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ?? envFromFile.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseKey) {
   console.error(
-    "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Set them in .env.local first.",
+    "Missing NEXT_PUBLIC_SUPABASE_URL or a Supabase publishable key. Set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY in .env.local first.",
   )
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,

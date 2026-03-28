@@ -1,15 +1,17 @@
 'use client'
 
 import type { Session } from '@supabase/supabase-js'
-import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, CheckCircle2, Loader2, Rocket } from 'lucide-react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { ArrowLeft, CheckCircle2, Loader2, Rocket, TerminalSquare } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SetupStepper } from '@/components/ui/setup-stepper'
+import { readPersistedDeployStartedAt, writePersistedDeployStartedAt } from '@/lib/deploy-progress'
 import {
   MODEL_PROVIDER_SETUP_STORAGE_KEY,
   type ProviderSetupRecord,
@@ -21,10 +23,18 @@ import {
   isModelSupportedByProvider,
 } from '@/lib/model-providers'
 import { isOnboardingComplete, markOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
-import { SKILLS_CONFIG_STORAGE_KEY, SKILLS_STORAGE_KEY, type SkillConfigStorage } from '@/lib/skill-options'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatus,
+  fetchTenantDaemonStatusSnapshot,
+  tenantNeedsRedeploy,
+  tenantHasProvisionedInstance,
+  tenantHasReadyGateway,
+  type TenantDaemonStatus,
+} from '@/lib/tenant-instance'
+import { cn } from '@/lib/utils'
 
 function getStoredProviderSetup(): ProviderSetupStorage {
   if (typeof window === 'undefined') return {}
@@ -41,62 +51,17 @@ function getStoredProviderSetup(): ProviderSetupStorage {
   }
 }
 
-function getStoredSkillIds(): string[] {
-  if (typeof window === 'undefined') return []
+const DEPLOY_STATUS_POLL_INTERVAL_MS = 5_000
 
-  const raw = window.localStorage.getItem(SKILLS_STORAGE_KEY)
-  if (!raw) return []
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item) => typeof item === 'string')
-  } catch {
-    return []
-  }
-}
-
-function getStoredSkillConfig(): SkillConfigStorage {
-  if (typeof window === 'undefined') return {}
-
-  const raw = window.localStorage.getItem(SKILLS_CONFIG_STORAGE_KEY)
-  if (!raw) return {}
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as SkillConfigStorage
-  } catch {
-    return {}
-  }
-}
-
-const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
-
-function readPersistedDeployStartedAt(): number | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(DEPLOY_STARTED_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-function writePersistedDeployStartedAt(ts: number | null) {
-  if (typeof window === 'undefined') return
-  try {
-    if (ts === null) {
-      window.localStorage.removeItem(DEPLOY_STARTED_STORAGE_KEY)
-    } else {
-      window.localStorage.setItem(DEPLOY_STARTED_STORAGE_KEY, String(ts))
-    }
-  } catch {
-    // Ignore storage write failures.
-  }
-}
+const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
+  { atSecond: 0, text: "Hi. I'm Lenny. I'll watch this while your workspace gets ready." },
+  { atSecond: 10, text: 'We are reserving your hosted workspace and getting everything in place.' },
+  { atSecond: 30, text: 'OpenClaw is being installed and started for you.' },
+  { atSecond: 60, text: 'This part can stay quiet for a bit while services finish starting.' },
+  { atSecond: 90, text: 'We are still checking that everything is ready before we send you in.' },
+  { atSecond: 150, text: 'Still working. This usually means the setup is finishing, not that it was lost.' },
+  { atSecond: 240, text: 'Almost there. We are waiting for OpenClaw to finish coming online.' },
+]
 
 interface ConfettiPiece {
   id: number
@@ -108,6 +73,14 @@ interface ConfettiPiece {
   size: number
   color: string
 }
+
+interface TerminalLine {
+  id: string
+  text: string
+  tone: 'idle' | 'ok' | 'active'
+}
+
+type RuntimeSetupState = NonNullable<TenantDaemonStatus['instance']>
 
 function buildConfettiPieces() {
   const colors = [
@@ -176,6 +149,83 @@ function MagicConfetti({ show }: { show: boolean }) {
   )
 }
 
+function DeployTerminal({
+  lines,
+  running,
+}: {
+  lines: TerminalLine[]
+  running: boolean
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-lg shadow-primary/10">
+      <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-4 py-2.5">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
+        </div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">deploy.log</p>
+      </div>
+      <div className="max-h-72 overflow-auto px-4 py-3 font-mono text-[11px] leading-6">
+        {lines.map((line) => (
+          <p
+            key={line.id}
+            className={
+              line.tone === 'ok'
+                ? 'text-emerald-700'
+                : line.tone === 'active'
+                  ? 'text-amber-700'
+                  : 'text-muted-foreground'
+            }
+          >
+            {line.text}
+          </p>
+        ))}
+        {running ? (
+          <motion.span
+            className="mt-1 inline-block h-4 w-2 bg-foreground"
+            animate={{ opacity: [1, 0.1, 1] }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+function getVisibleLennyMessages(elapsedSeconds: number): string[] {
+  return LENNY_MESSAGES.filter((message) => message.atSecond <= elapsedSeconds).map((message) => message.text)
+}
+
+function resolveDeploymentStatusText(status: TenantDaemonStatus | null): string {
+  const daemonState = status?.daemon?.status?.trim().toUpperCase() ?? null
+  if (!status) {
+    return 'Getting your workspace ready...'
+  }
+
+  if (tenantHasReadyGateway(status)) {
+    return 'OpenClaw is ready.'
+  }
+
+  if (daemonState === 'TERMINATED') {
+    return ''
+  }
+
+  if (tenantHasProvisionedInstance(status)) {
+    return 'Your hosted workspace is ready. OpenClaw is still starting.'
+  }
+
+  if (daemonState === 'RUNNING') {
+    return 'Reserving your hosted workspace...'
+  }
+
+  if (daemonState === 'STOPPED') {
+    return 'Your hosted workspace is waiting to start.'
+  }
+
+  return 'Getting your workspace ready...'
+}
+
 function HooksPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -185,19 +235,27 @@ function HooksPageClient() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
-
   const [selectedModelProviderId, setSelectedModelProviderId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [providerSetup, setProviderSetup] = useState<ProviderSetupRecord | null>(null)
-  const [skillIds, setSkillIds] = useState<string[]>([])
-  const [skillConfigs, setSkillConfigs] = useState<Record<string, Record<string, string>>>({})
   const [showConfetti, setShowConfetti] = useState(false)
   const [hasDeployStarted, setHasDeployStarted] = useState(() => readPersistedDeployStartedAt() !== null)
+  const [deployStartedAt, setDeployStartedAt] = useState<number | null>(() => readPersistedDeployStartedAt())
+  const [deployElapsedSeconds, setDeployElapsedSeconds] = useState(() => {
+    const startedAt = readPersistedDeployStartedAt()
+    return startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0
+  })
+  const [runtimeSetupState, setRuntimeSetupState] = useState<RuntimeSetupState | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const terminatedPollStreakRef = useRef(0)
 
   function resetDeployProgress() {
     setHasDeployStarted(false)
+    setDeployStartedAt(null)
+    setDeployElapsedSeconds(0)
+    setRuntimeSetupState(null)
+    terminatedPollStreakRef.current = 0
     writePersistedDeployStartedAt(null)
   }
 
@@ -216,13 +274,14 @@ function HooksPageClient() {
         const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
         const providerSetupStore = getStoredProviderSetup()
         const selectedSetup = providerId ? providerSetupStore[providerId] ?? null : null
+        const derivedTenantId = deriveTenantIdFromUserId(session.user.id)
 
         let onboardingComplete = false
         if (forceRestartOnboarding) {
           try {
             await markOnboardingIncomplete(session)
-          } catch (error) {
-            console.warn('Failed to mark onboarding incomplete during restart flow', error)
+          } catch {
+            // Continue through the restart flow even if the profile flag reset fails.
           }
         } else {
           onboardingComplete = await isOnboardingComplete(session, {
@@ -230,10 +289,37 @@ function HooksPageClient() {
           })
         }
 
-        const derivedTenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(derivedTenantId)
+        const daemonStatus = daemonSnapshot?.kind === 'ok' ? daemonSnapshot.status : null
+        const daemonState = daemonStatus?.daemon?.status?.trim().toUpperCase() ?? null
+        const hasProvisionedInstance = tenantHasProvisionedInstance(daemonStatus)
+        let deploymentStillStarting = false
+        if (
+          (hasDeployStarted || hasProvisionedInstance || daemonState === 'RUNNING' || daemonState === 'STOPPED') &&
+          daemonState !== 'TERMINATED'
+        ) {
+          deploymentStillStarting = !tenantHasReadyGateway(daemonStatus)
+        }
+        if (daemonSnapshot && tenantNeedsRedeploy(daemonSnapshot)) {
+          deploymentStillStarting = false
+          onboardingComplete = false
+          try {
+            await markOnboardingIncomplete(session)
+          } catch {
+            // Keep routing aligned with runtime truth even if profile cleanup lags.
+          }
+        }
+        if (deploymentStillStarting) {
+          onboardingComplete = false
+        }
+
         const subscription = await fetchSubscriptionSnapshot(derivedTenantId)
         if (!hasManagedHostingPlan(subscription)) {
-          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
+          router.replace(
+            buildBillingRequiredPath(
+              deploymentStillStarting ? '/dashboard/deploy' : onboardingComplete ? '/dashboard/chat' : '/dashboard/model',
+            ),
+          )
           return
         }
         if (onboardingComplete) {
@@ -241,25 +327,28 @@ function HooksPageClient() {
           return
         }
 
-        const skillConfigStore = getStoredSkillConfig()
-
         if (!cancelled) {
+          if (deploymentStillStarting && !hasDeployStarted) {
+            const startedAt = Date.now()
+            writePersistedDeployStartedAt(startedAt)
+            setHasDeployStarted(true)
+            setDeployStartedAt(startedAt)
+            setDeployElapsedSeconds(0)
+          }
           setActiveSession(session)
           setTenantId(derivedTenantId)
           setSelectedModelProviderId(providerId)
           setSelectedModelId(isModelSupportedByProvider(providerId, modelId) ? modelId : null)
           setProviderSetup(selectedSetup)
-          setSkillIds(getStoredSkillIds())
-          setSkillConfigs(
-            Object.fromEntries(
-              Object.entries(skillConfigStore).map(([skillId, config]) => [skillId, config?.values ?? {}]),
-            ),
-          )
+          setRuntimeSetupState(daemonStatus?.instance ?? null)
+          setStatus(deploymentStillStarting ? resolveDeploymentStatusText(daemonStatus) : '')
           setCheckingSession(false)
         }
 
-        // Clean up legacy install profile from localStorage
         window.localStorage.removeItem('clawpilot:openclaw-install-profile')
+        window.localStorage.removeItem('clawpilot:skills')
+        window.localStorage.removeItem('clawpilot:skills-skipped')
+        window.localStorage.removeItem('clawpilot:skills-config')
       } catch {
         router.replace('/signin')
       }
@@ -270,24 +359,16 @@ function HooksPageClient() {
     return () => {
       cancelled = true
     }
-  }, [forceRestartOnboarding, router])
+  }, [forceRestartOnboarding, hasDeployStarted, router])
 
-  const onboardingChecks = useMemo(() => {
-    return [
-      {
-        label: 'Provider',
-        complete: Boolean(selectedModelProviderId),
-      },
-      {
-        label: 'Model',
-        complete: Boolean(selectedModelId),
-      },
-      {
-        label: 'Auth',
-        complete: Boolean(providerSetup),
-      },
-    ]
-  }, [providerSetup, selectedModelId, selectedModelProviderId])
+  const onboardingChecks = useMemo(
+    () => [
+      { label: 'Provider', complete: Boolean(selectedModelProviderId) },
+      { label: 'Model', complete: Boolean(selectedModelId) },
+      { label: 'Auth', complete: Boolean(providerSetup) },
+    ],
+    [providerSetup, selectedModelId, selectedModelProviderId],
+  )
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
 
@@ -298,6 +379,19 @@ function HooksPageClient() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!deployStartedAt) {
+      return
+    }
+
+    setDeployElapsedSeconds(Math.max(0, Math.floor((Date.now() - deployStartedAt) / 1000)))
+    const timer = setInterval(() => {
+      setDeployElapsedSeconds(Math.max(0, Math.floor((Date.now() - deployStartedAt) / 1000)))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [deployStartedAt])
 
   function validateBeforeSubmit() {
     if (!selectedModelProviderId || !selectedModelId || !providerSetup) {
@@ -315,26 +409,106 @@ function HooksPageClient() {
     return null
   }
 
-  async function finalizeSetupAndRedirect(nextStatus: string) {
-    setShowConfetti(true)
-    setError('')
-    setStatus(nextStatus)
-    writePersistedDeployStartedAt(null)
+  const finalizeSetupAndRedirect = useCallback(
+    async (nextStatus: string) => {
+      setShowConfetti(true)
+      setHasDeployStarted(false)
+      setError('')
+      setStatus(nextStatus)
+      writePersistedDeployStartedAt(null)
 
-    if (activeSession) {
-      try {
-        await markOnboardingComplete(activeSession)
-      } catch {
-        // Non-blocking for successful deploys.
+      if (activeSession) {
+        try {
+          await markOnboardingComplete(activeSession)
+        } catch {
+          // Keep the successful deploy path moving even if profile persistence lags.
+        }
+      }
+
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current)
+      }
+
+      redirectTimeoutRef.current = setTimeout(() => {
+        router.push('/dashboard/chat')
+      }, 900)
+    },
+    [activeSession, router],
+  )
+
+  useEffect(() => {
+    if (!hasDeployStarted || !tenantId || !activeSession || checkingSession || showConfetti) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+    const scheduleNextPoll = () => {
+      timeoutHandle = setTimeout(() => {
+        void pollDeploymentReadiness()
+      }, DEPLOY_STATUS_POLL_INTERVAL_MS)
+    }
+
+    const pollDeploymentReadiness = async () => {
+      const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+      if (cancelled) {
+        return
+      }
+
+      if (tenantNeedsRedeploy(daemonSnapshot)) {
+        resetDeployProgress()
+        try {
+          await markOnboardingIncomplete(activeSession)
+        } catch {
+          // Ignore delayed profile cleanup and keep the UI moving.
+        }
+        setError('We could not find your hosted workspace. Please deploy again.')
+        setStatus('')
+        return
+      }
+
+      const daemonStatus = daemonSnapshot.kind === 'ok' ? daemonSnapshot.status : null
+      setRuntimeSetupState(daemonStatus?.instance ?? null)
+
+      if (tenantHasReadyGateway(daemonStatus)) {
+        terminatedPollStreakRef.current = 0
+        await finalizeSetupAndRedirect('Deployment complete. Opening chat...')
+        return
+      }
+
+      const daemonState = daemonStatus?.daemon?.status?.trim().toUpperCase() ?? null
+      if (daemonState === 'TERMINATED') {
+        terminatedPollStreakRef.current += 1
+        const deployAgeMs = deployStartedAt ? Date.now() - deployStartedAt : 0
+        const hasReservedWorkspace = tenantHasProvisionedInstance(daemonStatus)
+        if (terminatedPollStreakRef.current < 3 && (!hasReservedWorkspace || deployAgeMs < 15_000)) {
+          setError('')
+          setStatus('Still getting your workspace ready...')
+          scheduleNextPoll()
+          return
+        }
+        resetDeployProgress()
+        setError("We couldn't finish getting your workspace ready. Please try deploying again.")
+        setStatus('')
+        return
+      }
+
+      terminatedPollStreakRef.current = 0
+      setError('')
+      setStatus(resolveDeploymentStatusText(daemonStatus))
+      scheduleNextPoll()
+    }
+
+    void pollDeploymentReadiness()
+
+    return () => {
+      cancelled = true
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle)
       }
     }
-
-    if (redirectTimeoutRef.current) {
-      clearTimeout(redirectTimeoutRef.current)
-    }
-
-    router.push('/dashboard/chat')
-  }
+  }, [activeSession, checkingSession, finalizeSetupAndRedirect, hasDeployStarted, showConfetti, tenantId])
 
   async function completeSetup() {
     const validationError = validateBeforeSubmit()
@@ -344,12 +518,16 @@ function HooksPageClient() {
       return
     }
 
+    const startedAt = Date.now()
     setSubmitting(true)
     setHasDeployStarted(true)
-    const now = Date.now()
-    writePersistedDeployStartedAt(now)
+    setDeployStartedAt(startedAt)
+    setDeployElapsedSeconds(0)
+    setRuntimeSetupState(null)
+    terminatedPollStreakRef.current = 0
+    writePersistedDeployStartedAt(startedAt)
     setError('')
-    setStatus('Deploy in progress...')
+    setStatus('Getting your workspace ready...')
     setShowConfetti(false)
 
     try {
@@ -377,8 +555,6 @@ function HooksPageClient() {
               ...providerSetup,
               apiKey: providerSetup?.apiKey,
             },
-            skillIds,
-            skillConfigs,
           },
         }),
       })
@@ -410,7 +586,7 @@ function HooksPageClient() {
         return
       }
 
-      await finalizeSetupAndRedirect('Deployment started. Opening chat...')
+      setStatus('Deploy request accepted. We are preparing your hosted workspace.')
     } catch {
       resetDeployProgress()
       setError('Network error.')
@@ -419,6 +595,58 @@ function HooksPageClient() {
       setSubmitting(false)
     }
   }
+
+  const terminalLines = useMemo(() => {
+    const lines: TerminalLine[] = onboardingChecks.map((check) => ({
+      id: `check-${check.label}`,
+      text: check.complete ? `${check.label} is ready.` : `${check.label} still needs attention.`,
+      tone: check.complete ? 'ok' : 'idle',
+    }))
+
+    if (hasDeployStarted) {
+      const hasWorkspace = Boolean(runtimeSetupState?.instanceId?.trim() || runtimeSetupState?.instanceState?.trim())
+      const ready = runtimeSetupState?.setupComplete === true || runtimeSetupState?.gatewayProbe?.ready === true
+      const hasRecentCheck = Boolean(runtimeSetupState?.gatewayProbe?.checkedAt)
+
+      lines.push({
+        id: 'deploy-workspace',
+        text: hasWorkspace ? 'Your hosted workspace has been reserved.' : 'Reserving your hosted workspace.',
+        tone: hasWorkspace ? 'ok' : 'active',
+      })
+      lines.push({
+        id: 'deploy-openclaw',
+        text: ready
+          ? 'OpenClaw is ready to open.'
+          : hasRecentCheck
+            ? 'OpenClaw is starting and we are checking the connection.'
+            : 'Installing and starting OpenClaw.',
+        tone: ready ? 'ok' : 'active',
+      })
+    }
+
+    if (error) {
+      lines.push({
+        id: 'deploy-error',
+        text: error,
+        tone: 'active',
+      })
+    }
+
+    return lines
+  }, [error, hasDeployStarted, onboardingChecks, runtimeSetupState])
+
+  const currentLennyMessage = useMemo(() => {
+    if (!hasDeployStarted) {
+      return null
+    }
+
+    if (runtimeSetupState?.instanceId && !tenantHasReadyGateway({ instance: runtimeSetupState })) {
+      return 'Good news: your hosted workspace is ready. OpenClaw is still finishing up.'
+    }
+
+    const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
+    return visibleMessages.at(-1) ?? "I'm watching the deploy logs."
+  }, [deployElapsedSeconds, hasDeployStarted, runtimeSetupState])
 
   if (checkingSession) {
     return (
@@ -457,22 +685,69 @@ function HooksPageClient() {
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
-          <div className="flex-1 space-y-6">
-            <section className="rounded-xl border border-border/70 bg-card p-4">
-              <p className="text-sm font-semibold">Checks</p>
-              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                {onboardingChecks.map((check) => (
-                  <li key={check.label} className="flex items-center gap-2">
-                    {check.complete ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
-                    )}
-                    <span>{check.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+          <div
+            className={cn(
+              'grid flex-1 gap-6',
+              hasDeployStarted ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]' : undefined,
+            )}
+          >
+            <div className="space-y-6">
+              <section className="rounded-xl border border-border/70 bg-card p-4">
+                <p className="text-sm font-semibold">Checks</p>
+                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                  {onboardingChecks.map((check) => (
+                    <li key={check.label} className="flex items-center gap-2">
+                      {check.complete ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
+                      )}
+                      <span>{check.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              {hasDeployStarted && currentLennyMessage ? (
+                <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                  <div className="flex gap-2.5">
+                    <Image
+                      src="/pfp.webp"
+                      alt="Lenny the lobster"
+                      width={32}
+                      height={32}
+                      className="mt-0.5 h-8 w-8 shrink-0 rounded-full"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground/70">Lenny</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{currentLennyMessage}</p>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+            </div>
+
+            {hasDeployStarted ? (
+              <div className="space-y-4">
+                <section className="rounded-xl border border-border/70 bg-card/80 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                      <TerminalSquare className="h-4 w-4 text-muted-foreground" />
+                      Progress
+                    </p>
+                    {deployStartedAt ? (
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        {Math.floor(deployElapsedSeconds / 60)}:{String(deployElapsedSeconds % 60).padStart(2, '0')}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2">
+                    <DeployTerminal lines={terminalLines} running={submitting || !tenantHasReadyGateway({ instance: runtimeSetupState ?? undefined })} />
+                  </div>
+                </section>
+
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-auto border-t border-border/70 pt-4">
@@ -480,20 +755,13 @@ function HooksPageClient() {
               <div className="max-w-2xl flex-1 space-y-1">
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-                {!allChecksComplete ? (
-                  <p className="text-xs text-muted-foreground">Complete checks.</p>
-                ) : null}
+                {!allChecksComplete ? <p className="text-xs text-muted-foreground">Complete checks.</p> : null}
               </div>
 
               <Button
                 type="button"
                 onClick={completeSetup}
-                disabled={
-                  submitting ||
-                  hasDeployStarted ||
-                  showConfetti ||
-                  !allChecksComplete
-                }
+                disabled={submitting || hasDeployStarted || showConfetti || !allChecksComplete}
                 className="self-end sm:ml-auto sm:min-w-28"
               >
                 {submitting || hasDeployStarted ? (

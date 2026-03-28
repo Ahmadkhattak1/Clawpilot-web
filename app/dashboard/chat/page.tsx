@@ -3,8 +3,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ExternalLink, FileText, Loader2, ShieldCheck, X } from 'lucide-react'
 
 import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
@@ -18,7 +18,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
+import {
+  MODEL_PROVIDER_MODEL_STORAGE_KEY,
+  MODEL_PROVIDER_STORAGE_KEY,
+} from '@/lib/model-providers'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
+import {
+  MODEL_PROVIDER_SETUP_STORAGE_KEY,
+  type ProviderSetupRecord,
+  type ProviderSetupStorage,
+} from '@/lib/provider-auth-config'
+import {
+  completeRuntimeOpenAICodexOAuth,
+  listRuntimeModels,
+  startRuntimeOpenAICodexOAuth,
+} from '@/lib/runtime-controls'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
@@ -46,6 +61,45 @@ function buildPfpWebUrl(email: string): string | null {
   return `https://pfp.web/${encodeURIComponent(normalized)}`
 }
 
+function getStoredProviderSetup(): ProviderSetupStorage {
+  if (typeof window === 'undefined') return {}
+
+  const raw = window.localStorage.getItem(MODEL_PROVIDER_SETUP_STORAGE_KEY)
+  if (!raw) return {}
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    return parsed as ProviderSetupStorage
+  } catch {
+    return {}
+  }
+}
+
+function isOpenAIOAuthSetupPending(
+  providerId: string | null | undefined,
+  providerSetup: ProviderSetupRecord | null | undefined,
+): boolean {
+  return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
+}
+
+function normalizeOpenAIModelIdForRuntime(modelId: string): string {
+  const normalized = modelId.trim()
+  if (!normalized.startsWith('openai/')) return normalized
+  return `openai-codex/${normalized.slice('openai/'.length)}`
+}
+
+function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
+  const expiresAtMs = Date.parse(expiresAt)
+  if (!Number.isFinite(expiresAtMs)) return 'Unknown'
+  const remainingMs = expiresAtMs - nowMs
+  const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const remainingMinutes = Math.floor(remainingSeconds / 60)
+  const secondsPart = remainingSeconds % 60
+  if (remainingMs <= 0) return 'Expired'
+  return `${remainingMinutes}m ${secondsPart}s`
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const [checkingSession, setCheckingSession] = useState(true)
@@ -57,9 +111,25 @@ export default function ChatPage() {
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [launchError, setLaunchError] = useState('')
   const [fileManagerOpen, setFileManagerOpen] = useState(false)
+  const [oauthRequired, setOauthRequired] = useState(false)
+  const [oauthModalOpen, setOauthModalOpen] = useState(false)
+  const [oauthBusy, setOauthBusy] = useState(false)
+  const [oauthError, setOauthError] = useState('')
+  const [oauthStatus, setOauthStatus] = useState('')
+  const [oauthSessionId, setOauthSessionId] = useState('')
+  const [oauthAuthUrl, setOauthAuthUrl] = useState('')
+  const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
+  const [oauthCallback, setOauthCallback] = useState('')
+  const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
 
   const routerRef = useRef(router)
   routerRef.current = router
+
+  const oauthUrlExpired = oauthExpiresAt ? Date.parse(oauthExpiresAt) <= oauthNowMs : false
+  const oauthCountdownLabel = useMemo(
+    () => (oauthExpiresAt ? formatOAuthExpiryCountdown(oauthExpiresAt, oauthNowMs) : null),
+    [oauthExpiresAt, oauthNowMs],
+  )
 
   const redirectToSignIn = useCallback(() => {
     const currentPath =
@@ -86,6 +156,160 @@ export default function ChatPage() {
     }
   }, [isSigningOut, router])
 
+  const persistOpenAIOAuthConnected = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+    if (providerId !== 'openai') return
+
+    const setupStore = getStoredProviderSetup()
+    const currentSetup = setupStore[providerId] ?? {}
+    setupStore[providerId] = {
+      ...currentSetup,
+      method: 'oauth',
+      oauthConnected: true,
+      updatedAt: new Date().toISOString(),
+    }
+    window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
+  }, [])
+
+  const handleStartOpenAIOAuth = useCallback(async (
+    options: {
+      openWindow?: boolean
+      preopenedWindow?: Window | null
+    } = {},
+  ) => {
+    if (!tenantId) return
+    const { openWindow = false, preopenedWindow = null } = options
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('')
+    try {
+      const selectedModelId =
+        typeof window === 'undefined'
+          ? ''
+          : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const oauthStart = await startRuntimeOpenAICodexOAuth(tenantId, {
+        modelId: runtimeModelId || undefined,
+      })
+
+      setOauthSessionId(oauthStart.sessionId)
+      setOauthAuthUrl(oauthStart.authUrl)
+      setOauthExpiresAt(oauthStart.expiresAt)
+      setOauthNowMs(Date.now())
+      setOauthStatus('OAuth window is ready. Sign in, then paste the localhost callback URL.')
+
+      if (openWindow) {
+        let openedWindow = preopenedWindow
+        if (openedWindow && !openedWindow.closed) {
+          openedWindow.location.href = oauthStart.authUrl
+          openedWindow.focus()
+        } else {
+          openedWindow = window.open(oauthStart.authUrl, '_blank', 'noopener,noreferrer')
+        }
+        if (!openedWindow) {
+          setOauthError('Popup blocked. Allow popups, then try again.')
+        }
+      }
+    } catch (error) {
+      if (preopenedWindow && !preopenedWindow.closed) {
+        preopenedWindow.close()
+      }
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Failed to start OpenAI OAuth.'
+      if (/gateway_starting|bootstrapping|gateway_unavailable|not running/i.test(message)) {
+        setOauthStatus('OpenClaw is still starting. Retry in a few seconds.')
+      } else if (/route\s+post:|not found/i.test(message)) {
+        setOauthError('We could not start the OpenAI sign-in flow. Refresh and try again.')
+      } else {
+        setOauthError(message)
+      }
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [tenantId])
+
+  const handleOpenOauthWindow = useCallback(() => {
+    setOauthModalOpen(true)
+    setOauthError('')
+    if (oauthAuthUrl && !oauthUrlExpired) {
+      const openedWindow = window.open(oauthAuthUrl, '_blank', 'noopener,noreferrer')
+      if (!openedWindow) {
+        setOauthError('Popup blocked. Allow popups, then try again.')
+      }
+      return
+    }
+    const preopenedWindow = window.open('', '_blank')
+    if (!preopenedWindow) {
+      setOauthError('Popup blocked. Allow popups, then try again.')
+      return
+    }
+    preopenedWindow.document.write('<title>OpenAI OAuth</title><p style="font-family: sans-serif; padding: 24px;">Preparing OpenAI sign-in...</p>')
+    void handleStartOpenAIOAuth({ openWindow: true, preopenedWindow })
+  }, [handleStartOpenAIOAuth, oauthAuthUrl, oauthUrlExpired])
+
+  const handleCompleteOpenAIOAuth = useCallback(async () => {
+    if (!tenantId) return
+    const callback = oauthCallback.trim()
+    if (!oauthSessionId) {
+      setOauthError('Generate the OAuth URL first.')
+      return
+    }
+    if (!callback) {
+      setOauthError('Paste the callback URL.')
+      return
+    }
+
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('Completing OpenAI OAuth...')
+    try {
+      const selectedModelId =
+        typeof window === 'undefined'
+          ? ''
+          : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const result = await completeRuntimeOpenAICodexOAuth(tenantId, {
+        sessionId: oauthSessionId,
+        callback,
+        modelId: runtimeModelId || undefined,
+      })
+      if (!result.oauthConnected) {
+        throw new Error('OAuth did not complete.')
+      }
+
+      persistOpenAIOAuthConnected()
+      setOauthRequired(false)
+      setOauthModalOpen(false)
+      setOauthStatus('OpenAI OAuth is connected. You can launch OpenClaw now.')
+      setOauthCallback('')
+      setOauthSessionId('')
+      setOauthAuthUrl('')
+      setOauthExpiresAt(null)
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Failed to complete OpenAI OAuth.'
+      setOauthError(message)
+      setOauthStatus('')
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [oauthCallback, oauthSessionId, persistOpenAIOAuthConnected, tenantId])
+
+  useEffect(() => {
+    if (!oauthModalOpen || !oauthExpiresAt) {
+      return
+    }
+
+    setOauthNowMs(Date.now())
+    const timer = setInterval(() => setOauthNowMs(Date.now()), 1_000)
+    return () => clearInterval(timer)
+  }, [oauthExpiresAt, oauthModalOpen])
+
   // Bootstrap: verify session, hydrate profile, check billing
   useEffect(() => {
     let cancelled = false
@@ -99,21 +323,43 @@ export default function ChatPage() {
         }
 
         const tid = deriveTenantIdFromUserId(session.user.id)
-        const [onboardingComplete, subscription] = await Promise.all([
-          isOnboardingComplete(session, { backfillFromProvisionedTenant: true }),
+        const [subscription, deploymentStillStarting] = await Promise.all([
           fetchSubscriptionSnapshot(tid),
+          isTenantDeploymentStillStarting(tid),
         ])
 
         if (!hasManagedHostingPlan(subscription)) {
           router.replace(
-            buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'),
+            buildBillingRequiredPath(deploymentStillStarting ? '/dashboard/deploy' : '/dashboard/model'),
           )
           return
         }
 
+        if (deploymentStillStarting) {
+          router.replace('/dashboard/deploy')
+          return
+        }
+
+        const onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         if (!onboardingComplete) {
           router.replace('/dashboard/model?restart=1')
           return
+        }
+
+        const providerId =
+          typeof window === 'undefined' ? null : window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+        const providerSetupStore = getStoredProviderSetup()
+        const selectedProviderSetup = providerId ? providerSetupStore[providerId] ?? null : null
+        let oauthPending = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
+
+        try {
+          const runtimeModels = await listRuntimeModels(tid, { includeModels: false })
+          const storedModelConfig = runtimeModels.storedModelConfig
+          if (storedModelConfig?.modelProviderId === 'openai' && storedModelConfig.modelAuthMethod === 'oauth') {
+            oauthPending = storedModelConfig.modelOauthConnected !== true
+          }
+        } catch {
+          // Fall back to local onboarding storage when runtime model sync is unavailable.
         }
 
         const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
@@ -137,6 +383,12 @@ export default function ChatPage() {
           setProfileEmail(email)
           setProfileInitial(buildProfileInitial(displayName || email))
           setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
+          setOauthRequired(oauthPending)
+          setOauthModalOpen(oauthPending)
+          setOauthError('')
+          setOauthStatus(
+            oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '',
+          )
           setCheckingSession(false)
         }
       } catch {
@@ -195,7 +447,7 @@ export default function ChatPage() {
                     {profileImageUrl ? (
                       <AvatarImage src={profileImageUrl} alt={profileName} />
                     ) : null}
-                    <AvatarFallback className="bg-muted text-[11px] font-medium text-muted-foreground">
+                    <AvatarFallback className="bg-foreground text-[11px] font-semibold text-background">
                       {profileInitial}
                     </AvatarFallback>
                   </Avatar>
@@ -209,6 +461,9 @@ export default function ChatPage() {
                   ) : null}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">Settings</Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/settings/subscription">Subscription</Link>
                 </DropdownMenuItem>
@@ -262,17 +517,41 @@ export default function ChatPage() {
                 </div>
               ) : null}
 
+              {oauthRequired ? (
+                <div className="mt-4 w-full rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-left">
+                  <p className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                    <ShieldCheck className="h-4 w-4" />
+                    Connect OpenAI before launch
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
+                    Finish the OAuth step first. You will sign in to OpenAI, then paste the localhost callback URL here.
+                  </p>
+                </div>
+              ) : null}
+
               {/* Launch button */}
-              <OpenClawUiLaunchButton
-                tenantId={tenantId}
-                onUnauthorized={redirectToSignIn}
-                onLaunchStart={() => setLaunchError('')}
-                onError={setLaunchError}
-                label="Launch OpenClaw"
-                variant="default"
-                size="default"
-                className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
-              />
+              {oauthRequired ? (
+                <Button
+                  type="button"
+                  onClick={handleOpenOauthWindow}
+                  disabled={oauthBusy || !tenantId.trim()}
+                  className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
+                >
+                  {oauthBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                  Connect OpenAI OAuth
+                </Button>
+              ) : (
+                <OpenClawUiLaunchButton
+                  tenantId={tenantId}
+                  onUnauthorized={redirectToSignIn}
+                  onLaunchStart={() => setLaunchError('')}
+                  onError={setLaunchError}
+                  label="Launch OpenClaw"
+                  variant="default"
+                  size="default"
+                  className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
+                />
+              )}
 
               <Button
                 type="button"
@@ -305,6 +584,90 @@ export default function ChatPage() {
         onOpenChange={setFileManagerOpen}
         onUnauthorized={redirectToSignIn}
       />
+
+      {oauthModalOpen ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-background/80 px-4 backdrop-blur-sm sm:px-6">
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border/80 bg-card p-5 shadow-2xl shadow-black/10 sm:p-6">
+            <button
+              type="button"
+              onClick={() => setOauthModalOpen(false)}
+              className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Close OAuth dialog"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <p className="text-xl font-semibold text-foreground">Connect OpenAI OAuth</p>
+            <p className="mt-2 text-sm font-medium text-foreground">Follow these steps:</p>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
+              <li>Click <span className="font-medium text-foreground">Open OAuth Window</span>.</li>
+              <li>Sign in to your OpenAI account and finish the authorization flow.</li>
+              <li>
+                When approval finishes, your browser will show a URL that starts with{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-[12px] text-foreground">
+                  http://127.0.0.1:1455/callback...
+                </code>
+                .
+              </li>
+              <li>Copy that full URL and paste it into the Callback URL field below.</li>
+            </ol>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={handleOpenOauthWindow}
+                disabled={oauthBusy}
+                className="bg-black text-white hover:bg-black/90 dark:bg-black dark:text-white dark:hover:bg-black/90"
+              >
+                {oauthBusy
+                  ? 'Preparing OAuth...'
+                  : !oauthAuthUrl
+                    ? 'Open OAuth Window'
+                    : oauthUrlExpired
+                      ? 'Refresh OAuth Window'
+                      : 'Open OAuth Window'}
+                <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleStartOpenAIOAuth()}
+                disabled={oauthBusy}
+              >
+                Regenerate URL
+              </Button>
+            </div>
+
+            {oauthCountdownLabel ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                OAuth URL expires in {oauthCountdownLabel}.
+              </p>
+            ) : null}
+
+            <div className="mt-4">
+              <label className="text-sm font-medium text-foreground" htmlFor="oauth-callback">
+                Callback URL
+              </label>
+              <textarea
+                id="oauth-callback"
+                value={oauthCallback}
+                onChange={(event) => setOauthCallback(event.target.value)}
+                rows={3}
+                placeholder="http://127.0.0.1:1455/callback?..."
+                className="mt-2 w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-sm outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+
+            {oauthStatus ? <p className="mt-3 text-xs text-muted-foreground">{oauthStatus}</p> : null}
+            {oauthError ? <p className="mt-1 text-xs text-destructive">{oauthError}</p> : null}
+
+            <div className="mt-5">
+              <Button onClick={() => void handleCompleteOpenAIOAuth()} disabled={oauthBusy || !oauthSessionId || !oauthCallback.trim()}>
+                {oauthBusy ? 'Completing...' : 'Complete OAuth'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

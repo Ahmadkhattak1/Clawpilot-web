@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
+import { getSupabaseAuthConfig } from "@/lib/supabase-auth-config"
+
 type SubscribeEmailResult =
   | { success: true; isDuplicate: boolean }
   | { success: false; error: unknown; code?: string; message?: string }
@@ -11,17 +13,10 @@ type UpdateSubscriberResult =
 let supabaseClient: SupabaseClient | null = null
 
 function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-    )
-  }
+  const { supabaseUrl, supabaseKey } = getSupabaseAuthConfig()
 
   if (!supabaseClient) {
-    supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    supabaseClient = createClient(supabaseUrl, supabaseKey, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,

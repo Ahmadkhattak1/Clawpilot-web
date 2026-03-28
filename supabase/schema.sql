@@ -7,19 +7,6 @@ create table if not exists public.subscribers (
   updated_at timestamptz
 );
 
-create table if not exists public.openclaw_runtime_sessions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  tenant_id text not null,
-  session_key text not null,
-  session_label text,
-  is_active boolean not null default false,
-  last_seen_at timestamptz not null default timezone('utc'::text, now()),
-  created_at timestamptz not null default timezone('utc'::text, now()),
-  updated_at timestamptz not null default timezone('utc'::text, now()),
-  unique (user_id, tenant_id, session_key)
-);
-
 create table if not exists public.openclaw_runtime_profiles (
   user_id uuid not null,
   tenant_id text not null,
@@ -122,17 +109,6 @@ alter table public.openclaw_subscriptions
   add constraint openclaw_subscriptions_last_payment_amount_cents_check
   check (last_payment_amount_cents is null or last_payment_amount_cents >= 0);
 
-create table if not exists public.openclaw_runtime_messages (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  tenant_id text not null,
-  session_key text not null,
-  role text not null check (role in ('user', 'assistant', 'system')),
-  content text not null,
-  message_ts timestamptz not null default timezone('utc'::text, now()),
-  created_at timestamptz not null default timezone('utc'::text, now())
-);
-
 create table if not exists public.clawpilot_lifecycle_state (
   state_key text primary key,
   state_snapshot jsonb not null,
@@ -140,10 +116,6 @@ create table if not exists public.clawpilot_lifecycle_state (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index if not exists openclaw_runtime_sessions_lookup_idx
-  on public.openclaw_runtime_sessions (user_id, tenant_id, is_active desc, last_seen_at desc);
-create index if not exists openclaw_runtime_messages_lookup_idx
-  on public.openclaw_runtime_messages (user_id, tenant_id, session_key, message_ts asc);
 create index if not exists openclaw_subscriptions_lookup_idx
   on public.openclaw_subscriptions (user_id, plan_code, billing_status);
 drop index if exists openclaw_subscriptions_period_idx;
@@ -155,18 +127,14 @@ create index if not exists openclaw_subscription_events_lookup_idx
   on public.openclaw_subscription_events (tenant_id, created_at desc);
 
 alter table public.subscribers enable row level security;
-alter table public.openclaw_runtime_sessions enable row level security;
 alter table public.openclaw_runtime_profiles enable row level security;
-alter table public.openclaw_runtime_messages enable row level security;
 alter table public.openclaw_subscriptions enable row level security;
 alter table public.openclaw_subscription_events enable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant insert on table public.subscribers to anon;
 grant insert on table public.subscribers to authenticated;
-grant select, insert, update, delete on table public.openclaw_runtime_sessions to authenticated;
 grant select, insert, update, delete on table public.openclaw_runtime_profiles to authenticated;
-grant select, insert, update, delete on table public.openclaw_runtime_messages to authenticated;
 grant select, insert, update, delete on table public.openclaw_subscriptions to authenticated;
 grant select, insert on table public.openclaw_subscription_events to authenticated;
 
@@ -177,25 +145,9 @@ for insert
 to anon, authenticated
 with check (length(trim(email)) > 0);
 
-drop policy if exists "Runtime sessions are user scoped" on public.openclaw_runtime_sessions;
-create policy "Runtime sessions are user scoped"
-on public.openclaw_runtime_sessions
-for all
-to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
-
 drop policy if exists "Runtime profiles are user scoped" on public.openclaw_runtime_profiles;
 create policy "Runtime profiles are user scoped"
 on public.openclaw_runtime_profiles
-for all
-to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
-
-drop policy if exists "Runtime messages are user scoped" on public.openclaw_runtime_messages;
-create policy "Runtime messages are user scoped"
-on public.openclaw_runtime_messages
 for all
 to authenticated
 using (auth.uid() = user_id)

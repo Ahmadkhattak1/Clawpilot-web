@@ -26,6 +26,7 @@ import {
   type ModelProviderId,
   type ModelProviderOption,
 } from '@/lib/model-providers'
+import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
 import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
@@ -167,6 +168,13 @@ function ModelStepPageClient() {
           return
         }
 
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const deploymentStillStarting = await isTenantDeploymentStillStarting(tenantId)
+        if (deploymentStillStarting) {
+          router.replace('/dashboard/deploy')
+          return
+        }
+
         let onboardingComplete = false
         if (forceRestartOnboarding) {
           try {
@@ -178,7 +186,6 @@ function ModelStepPageClient() {
           onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
         const subscription = await fetchSubscriptionSnapshot(tenantId)
         if (!hasManagedHostingPlan(subscription)) {
           router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
@@ -290,7 +297,7 @@ function ModelStepPageClient() {
             >
               <Avatar className="h-9 w-9">
                 {profileImageUrl ? <AvatarImage src={profileImageUrl} alt={profileName} /> : null}
-                <AvatarFallback className="bg-muted text-xs font-medium text-foreground">
+                <AvatarFallback className="bg-foreground text-xs font-semibold text-background">
                   {profileInitial}
                 </AvatarFallback>
               </Avatar>

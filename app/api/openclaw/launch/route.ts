@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 import { getBackendUrl } from '@/lib/runtime-controls'
+import { getSupabaseAuthConfig } from '@/lib/supabase-auth-config'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
 export const dynamic = 'force-dynamic'
@@ -70,9 +71,14 @@ export async function POST(request: Request) {
     )
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) {
+  let supabaseUrl: string
+  let supabaseKey: string
+
+  try {
+    const supabaseConfig = getSupabaseAuthConfig()
+    supabaseUrl = supabaseConfig.supabaseUrl
+    supabaseKey = supabaseConfig.supabaseKey
+  } catch {
     return NextResponse.json(
       {
         error: 'SERVER_MISCONFIGURED',
@@ -82,7 +88,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

@@ -13,11 +13,13 @@ npm install
 2. Copy `.env.example` to `.env.local` and set:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)
 - `NEXT_PUBLIC_BACKEND_API_URL` (default: `http://localhost:4000`)
 - `BACKEND_API_URL` (server-side backend URL for API routes)
 - `BACKEND_INTERNAL_API_TOKEN` (must match backend `INTERNAL_API_TOKEN`)
+
+Legacy aliases `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` still work.
 
 3. In Supabase SQL Editor, run:
 
@@ -56,8 +58,10 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Set these environment variables in Vercel project settings:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional)
 - `NEXT_PUBLIC_BACKEND_API_URL`
 - `BACKEND_API_URL`
 - `BACKEND_INTERNAL_API_TOKEN`
+
+Legacy aliases `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` remain supported.

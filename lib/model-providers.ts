@@ -61,16 +61,19 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       label: 'Claude Opus 4.6',
       summary: 'Highest quality Anthropic option for complex tasks.',
       isRecommended: true,
+      supportedMethods: ['api-key'],
     },
     {
       id: 'anthropic/claude-sonnet-4-5',
       label: 'Claude Sonnet 4.5',
       summary: 'Balanced speed and quality for day-to-day assistants.',
+      supportedMethods: ['api-key'],
     },
     {
       id: 'anthropic/claude-haiku-4-5',
       label: 'Claude Haiku 4.5',
       summary: 'Fast Anthropic model for lightweight prompts.',
+      supportedMethods: ['api-key'],
     },
   ],
   openai: [

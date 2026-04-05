@@ -1,6 +1,7 @@
 'use client'
 
-import { Check, Loader2 } from 'lucide-react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Check, Copy, Loader2, Mail, X } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
@@ -36,6 +37,7 @@ import { cn } from '@/lib/utils'
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
   AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
 )
+const CONTACT_EMAIL = 'support@clawpilot.app'
 
 function isEnabledModelProviderId(value: string | null): value is ModelProviderId {
   if (!value) return false
@@ -120,6 +122,8 @@ function ModelStepPageClient() {
   const [profileInitial, setProfileInitial] = useState('A')
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactCopied, setContactCopied] = useState(false)
 
   const selectedProvider = useMemo(
     () => AVAILABLE_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null,
@@ -154,6 +158,15 @@ function ModelStepPageClient() {
       console.error('Failed to sign out', error)
     } finally {
       router.replace('/')
+    }
+  }
+
+  async function handleCopyContactEmail() {
+    try {
+      await navigator.clipboard.writeText(CONTACT_EMAIL)
+      setContactCopied(true)
+    } catch {
+      setContactCopied(false)
     }
   }
 
@@ -241,6 +254,15 @@ function ModelStepPageClient() {
     }
   }, [forceRestartOnboarding, router])
 
+  useEffect(() => {
+    if (!contactCopied) {
+      return
+    }
+
+    const timer = window.setTimeout(() => setContactCopied(false), 1_500)
+    return () => window.clearTimeout(timer)
+  }, [contactCopied])
+
   function onImageError(providerId: string) {
     setImageErrors((previous) => ({
       ...previous,
@@ -287,7 +309,19 @@ function ModelStepPageClient() {
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/95 via-background/80 to-background"
       />
 
-      <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <div className="fixed right-4 top-4 z-20 flex items-center gap-2.5 sm:right-6 sm:top-6">
+        <button
+          type="button"
+          onClick={() => setContactOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={contactOpen}
+          aria-controls="model-contact-modal"
+          className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-[13px] font-medium tracking-tight text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+        >
+          <Mail className="h-4 w-4" />
+          <span>Contact us</span>
+        </button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -412,6 +446,63 @@ function ModelStepPageClient() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog.Root
+        open={contactOpen}
+        onOpenChange={(open) => {
+          setContactOpen(open)
+          if (!open) {
+            setContactCopied(false)
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[60] bg-black/35" />
+          <Dialog.Content
+            id="model-contact-modal"
+            aria-describedby={undefined}
+            className="fixed left-1/2 top-1/2 z-[70] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/70 bg-background p-5 shadow-[0_18px_44px_rgba(0,0,0,0.12)] outline-none sm:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <Dialog.Title className="text-lg font-semibold tracking-tight text-foreground">
+                Contact us
+              </Dialog.Title>
+
+              <Dialog.Close asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg border-border/70 shadow-sm"
+                  aria-label="Close contact modal"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </Dialog.Close>
+            </div>
+
+            <div className="mt-5 flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-3 shadow-sm shadow-black/5">
+              <button
+                type="button"
+                onClick={() => void handleCopyContactEmail()}
+                className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
+              >
+                {CONTACT_EMAIL}
+              </button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-lg border-border/70 px-3 shadow-sm"
+                onClick={() => void handleCopyContactEmail()}
+              >
+                <Copy className="h-4 w-4" />
+                <span>{contactCopied ? 'Copied' : 'Copy'}</span>
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }

@@ -1,5 +1,11 @@
 import Link from "next/link"
 
+import {
+  ClawContainer,
+  ClawSection,
+  ClawSectionIntro,
+  clawSurfaceClassName,
+} from "@/components/ui/clawpilot"
 import { marketingLandingPages } from "@/lib/landing-pages"
 
 const landingHubCardCopy: Record<
@@ -38,14 +44,12 @@ const landingHubCardCopy: Record<
 
 export function LandingPagesHub() {
   return (
-    <section className="relative px-6 py-16 md:py-20">
-      <div className="mx-auto max-w-5xl">
-        <h2 className="text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          Choose the Right OpenClaw Setup for Your Team
-        </h2>
-        <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Compare deployment options in minutes and move forward with the model that gives you the best mix of speed, reliability, and control.
-        </p>
+    <ClawSection>
+      <ClawContainer size="xl">
+        <ClawSectionIntro
+          description="Compare deployment options in minutes and move forward with the model that gives you the best mix of speed, reliability, and control."
+          title="Choose the Right OpenClaw Setup for Your Team"
+        />
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {marketingLandingPages.map((page) => {
@@ -55,7 +59,12 @@ export function LandingPagesHub() {
               <Link
                 key={page.path}
                 href={page.path}
-                className="rounded-2xl border border-border/50 bg-card/75 p-6 transition-colors hover:bg-muted/40"
+                className={clawSurfaceClassName({
+                  interactive: true,
+                  padding: "lg",
+                  radius: "xl",
+                  tone: "frosted",
+                })}
               >
                 <p className="text-[15px] font-semibold text-foreground">
                   {cardCopy?.title ?? page.headline}
@@ -66,14 +75,14 @@ export function LandingPagesHub() {
                 <p className="mt-4 text-sm font-medium text-foreground">
                   {cardCopy?.cta ?? "Read the guide"}{" "}
                   <span aria-hidden className="text-foreground/70">
-                    →
+                    &rarr;
                   </span>
                 </p>
               </Link>
             )
           })}
         </div>
-      </div>
-    </section>
+      </ClawContainer>
+    </ClawSection>
   )
 }

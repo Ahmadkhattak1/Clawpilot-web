@@ -19,7 +19,7 @@ function normalizeSiteUrl(value?: string): string {
 
 export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
-export const siteLastUpdatedAt = "2026-03-01"
+export const siteLastUpdatedAt = "2026-03-29"
 
 export const seoKeywords = [
   "OpenClaw agents",

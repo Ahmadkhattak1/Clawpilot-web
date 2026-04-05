@@ -5,6 +5,7 @@ import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -83,6 +84,16 @@ function OpenCloudStepPageClient() {
     [selectedModelId, selectedProviderId],
   )
 
+  const availableMethods = useMemo(() => {
+    if (!providerConfig) {
+      return []
+    }
+
+    return providerConfig.methods.filter((method) => (
+      selectedModel?.supportedMethods?.includes(method) ?? true
+    ))
+  }, [providerConfig, selectedModel])
+
   useEffect(() => {
     let cancelled = false
 
@@ -149,19 +160,19 @@ function OpenCloudStepPageClient() {
   }, [forceRestartOnboarding, router])
 
   useEffect(() => {
-    if (!providerConfig || !selectedProviderId) {
+    if (!selectedProviderId || availableMethods.length === 0) {
       setSelectedMethod(null)
       return
     }
 
     const savedMethod = savedSetup[selectedProviderId]?.method
-    if (savedMethod && providerConfig.methods.includes(savedMethod)) {
+    if (savedMethod && availableMethods.includes(savedMethod)) {
       setSelectedMethod(savedMethod)
       return
     }
 
-    setSelectedMethod(providerConfig.methods[0] ?? null)
-  }, [providerConfig, savedSetup, selectedProviderId])
+    setSelectedMethod(availableMethods[0] ?? null)
+  }, [availableMethods, savedSetup, selectedProviderId])
 
   function persistSetup(nextSetup: ProviderSetupStorage) {
     setSavedSetup(nextSetup)
@@ -246,7 +257,7 @@ function OpenCloudStepPageClient() {
     )
   }
 
-  if (!selectedProvider || !providerConfig || !selectedMethod || !selectedModel) return null
+  if (!selectedProvider || !providerConfig || !selectedMethod || !selectedModel || availableMethods.length === 0) return null
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
@@ -274,46 +285,62 @@ function OpenCloudStepPageClient() {
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
           <div className="max-w-2xl space-y-8">
-            {providerConfig.methods.length > 1 ? (
+            {availableMethods.length > 1 ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMethod('oauth')
-                    setError('')
-                    setStatus('')
-                  }}
-                  className={cn(
-                    'rounded-lg border bg-card p-3 text-left transition-colors',
-                    selectedMethod === 'oauth'
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                      : 'border-border/70 hover:border-primary/40',
-                  )}
-                >
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldCheck className="h-4 w-4" />
-                    OAuth
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMethod('api-key')
-                    setError('')
-                    setStatus('')
-                  }}
-                  className={cn(
-                    'rounded-lg border bg-card p-3 text-left transition-colors',
-                    selectedMethod === 'api-key'
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                      : 'border-border/70 hover:border-primary/40',
-                  )}
-                >
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    <KeyRound className="h-4 w-4" />
-                    API key
-                  </p>
-                </button>
+                {availableMethods.includes('oauth') ? (
+                  <div className="relative">
+                    {selectedMethod === 'oauth' ? (
+                      <div className="pointer-events-none absolute right-3 top-0 z-20 -translate-y-1/2">
+                        <Badge
+                          variant="outline"
+                          className="rotate-[3deg] border-emerald-500 bg-emerald-500 text-white"
+                        >
+                          Connect later
+                        </Badge>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('oauth')
+                        setError('')
+                        setStatus('')
+                      }}
+                      className={cn(
+                        'w-full rounded-lg border bg-card p-3 text-left transition-colors',
+                        selectedMethod === 'oauth'
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                          : 'border-border/70 hover:border-primary/40',
+                      )}
+                    >
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        <ShieldCheck className="h-4 w-4" />
+                        OAuth
+                      </p>
+                    </button>
+                  </div>
+                ) : null}
+                {availableMethods.includes('api-key') ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMethod('api-key')
+                      setError('')
+                      setStatus('')
+                    }}
+                    className={cn(
+                      'rounded-lg border bg-card p-3 text-left transition-colors',
+                      selectedMethod === 'api-key'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border/70 hover:border-primary/40',
+                    )}
+                  >
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <KeyRound className="h-4 w-4" />
+                      API key
+                    </p>
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
@@ -322,9 +349,6 @@ function OpenCloudStepPageClient() {
                 {providerConfig.oauthHint ? (
                   <p className="text-sm text-muted-foreground">{providerConfig.oauthHint}</p>
                 ) : null}
-                <Button className="mt-3" onClick={() => saveOAuthSelection(true)}>
-                  Use OAuth (connect after deployment)
-                </Button>
               </div>
             ) : (
               <form

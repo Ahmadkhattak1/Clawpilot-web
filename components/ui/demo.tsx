@@ -10,6 +10,7 @@ import {
   getRecoveredSupabaseSession,
   getSupabaseAuthClient,
 } from "@/lib/supabase-auth"
+import { Button } from "@/components/ui/button"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
 
@@ -116,35 +117,36 @@ export function Hero() {
         {/* CTA */}
         <div className="mt-9 flex flex-col items-center gap-3">
           {authStatus === "authenticated" ? (
-            <Link
-              href="/dashboard/chat"
-              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90"
-            >
-              Go to Dashboard
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            <Button asChild className="group" size="hero" variant="brand">
+              <Link href="/dashboard/chat">
+                Go to Dashboard
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
               onClick={onGoogleSignIn}
               disabled={isGoogleLoading || authStatus === "loading"}
-              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="group"
+              size="hero"
+              variant="brand"
             >
               {isGoogleLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : null}
               {authStatus === "loading"
                 ? "Loading..."
-                : "Get Started Free"}
+                : "Get Started"}
               {!isGoogleLoading && authStatus !== "loading" ? (
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               ) : null}
-            </button>
+            </Button>
           )}
           {authError ? (
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
-          <p className="text-xs text-muted-foreground/60">
+          <p className="text-xs text-muted-foreground">
             For less than a candy bar a day &middot; Cancel anytime
           </p>
         </div>

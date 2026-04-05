@@ -40,6 +40,18 @@
   .type-brand {
     @apply font-sans text-[15px] font-semibold tracking-tight;
   }
+
+  .type-eyebrow {
+    @apply text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground/70;
+  }
+
+  .type-stat-value {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  .type-stat-label {
+    @apply text-xs text-muted-foreground;
+  }
 }
 
 @layer base {

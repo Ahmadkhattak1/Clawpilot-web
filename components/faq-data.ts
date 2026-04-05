@@ -1,22 +1,22 @@
 export const faqItems = [
   {
-    question: "Is this an easy OpenClaw setup without hardware?",
+    question: "What is ClawPilot?",
     answer:
-      "Yes. ClawPilot hosts OpenClaw for you, so you do not need to buy hardware or run your own server.",
+      "ClawPilot is a managed hosting service for OpenClaw. We provision a private OpenClaw instance in the cloud so you can start using it immediately without managing servers, Docker, or any terminal setup.",
   },
   {
-    question: "Do I need to install anything for easy open claw setup?",
+    question: "Do I need to install anything?",
     answer:
-      "No. You create an account, connect chat, and start using OpenClaw immediately.",
+      "No. ClawPilot runs entirely in the cloud. You create an account, connect your preferred chat channels, and your OpenClaw instance is ready to use from any browser.",
   },
   {
-    question: "Is it always available?",
+    question: "Is my instance always available?",
     answer:
-      "Yes. We keep it running for you.",
+      "Yes. Your OpenClaw instance runs 24/7 on dedicated cloud infrastructure. We handle uptime monitoring, updates, and restarts so it stays online without any intervention on your end.",
   },
   {
-    question: "Can it access everything by default?",
+    question: "What can my OpenClaw instance access?",
     answer:
-      "No. You decide what it can access and what it is allowed to do.",
+      "Only what you explicitly allow. You control which integrations, API keys, and channels your instance connects to. Nothing is shared or enabled by default.",
   },
 ]

@@ -8,6 +8,7 @@ import {
   getRecoveredSupabaseSession,
   getSupabaseAuthClient,
 } from "@/lib/supabase-auth"
+import { Button } from "@/components/ui/button"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
 
@@ -118,22 +119,21 @@ export function Header() {
         </div>
 
         {authStatus === "authenticated" ? (
-          <Link
-            href="/dashboard/chat"
-            className="type-nav rounded-lg bg-foreground px-3.5 py-1.5 text-background transition-opacity hover:opacity-90"
-          >
-            Dashboard
-          </Link>
+          <Button asChild size="nav" variant="brand">
+            <Link href="/dashboard/chat">Dashboard</Link>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
             onClick={onGoogleSignIn}
             disabled={isGoogleLoading}
-            className="type-nav inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+            size="nav"
+            variant="brand"
+            className="gap-1.5"
           >
             {isGoogleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {isGoogleLoading ? "Connecting..." : "Get Started"}
-          </button>
+          </Button>
         )}
       </nav>
     </header>

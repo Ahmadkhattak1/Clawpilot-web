@@ -1,36 +1,93 @@
-import Link from "next/link"
-import { ArrowRight, CheckCircle2, Gauge, ShieldCheck, Sparkles } from "lucide-react"
+"use client"
 
+import Image from "next/image"
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { ArrowRight, Loader2 } from "lucide-react"
+import {
+  buildAuthCallbackUrl,
+  getRecoveredSupabaseSession,
+  getSupabaseAuthClient,
+} from "@/lib/supabase-auth"
+import { Button } from "@/components/ui/button"
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
+import {
+  ClawContainer,
+  ClawIconFrame,
+  ClawSection,
+  ClawSectionIntro,
+  ClawStat,
+  ClawSurface,
+} from "@/components/ui/clawpilot"
 import type { LandingPageConfig } from "@/lib/landing-pages"
 import { siteUrl } from "@/lib/site"
+
+type AuthStatus = "loading" | "authenticated" | "anonymous"
 
 type MarketingLandingPageProps = {
   page: LandingPageConfig
 }
 
-function trimForDisplay(text: string, maxLength = 120) {
-  const compact = text.replace(/\s+/g, " ").trim()
-  const sentenceMatch = compact.match(/^.+?[.!?](?:\s|$)/)
-  const firstSentence = sentenceMatch ? sentenceMatch[0].trim() : compact
-  const baseline = firstSentence.length > maxLength ? compact : firstSentence
-  if (baseline.length <= maxLength) {
-    return baseline
+function useAuthStatus() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading")
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [authError, setAuthError] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+    const supabase = getSupabaseAuthClient()
+
+    async function loadSession() {
+      try {
+        const session = await getRecoveredSupabaseSession()
+        if (!cancelled) {
+          setAuthStatus(session ? "authenticated" : "anonymous")
+        }
+      } catch {
+        if (!cancelled) {
+          setAuthStatus("anonymous")
+        }
+      }
+    }
+
+    void loadSession()
+
+    const { data: authStateData } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) {
+        setAuthStatus(session ? "authenticated" : "anonymous")
+      }
+    })
+
+    return () => {
+      cancelled = true
+      authStateData.subscription.unsubscribe()
+    }
+  }, [])
+
+  const onGoogleSignIn = async () => {
+    if (isGoogleLoading || authStatus === "authenticated") return
+    setAuthError("")
+    setIsGoogleLoading(true)
+    try {
+      const supabase = getSupabaseAuthClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: buildAuthCallbackUrl("/dashboard/chat") },
+      })
+      if (error) throw error
+    } catch {
+      setAuthError("Google sign-in is temporarily unavailable. Please try again.")
+      setIsGoogleLoading(false)
+    }
   }
-  return `${baseline.slice(0, maxLength - 3).trimEnd()}...`
+
+  return { authStatus, isGoogleLoading, authError, onGoogleSignIn }
 }
 
 export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
+  const { authStatus, isGoogleLoading, authError, onGoogleSignIn } = useAuthStatus()
   const pageUrl = `${siteUrl}${page.path}`
-  const quickPoints = page.heroPoints.slice(0, 3)
-  const valueProps = page.valueProps.slice(0, 3)
-  const fitItems = page.fitChecklist.slice(0, 3)
-  const channelItems = page.channelNotes.slice(0, 3)
-  const comparisonRows = page.comparisonRows.slice(0, 4)
-  const faqItems = page.faq.slice(0, 3)
-  const relatedLinks = page.relatedLinks.slice(0, 4)
-  const valueIcons = [Gauge, ShieldCheck, Sparkles] as const
 
   const structuredData = {
     "@context": "https://schema.org",
@@ -50,10 +107,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
         mainEntity: page.faq.map((item) => ({
           "@type": "Question",
           name: item.question,
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: item.answer,
-          },
+          acceptedAnswer: { "@type": "Answer", text: item.answer },
         })),
       },
     ],
@@ -61,198 +115,277 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+
       <Header />
 
-      <article className="relative overflow-hidden px-6 pb-14 pt-24 md:pb-16 md:pt-28">
+      {/* ── Hero ─────────────────────────────────────────────── */}
+      <section
+        id="hero"
+        className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-24"
+      >
+        {/* Ambient glow */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[980px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(179,33,40,0.08),transparent_72%)]"
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(179,33,40,0.05),transparent_70%)]"
         />
 
-        <section className="relative mx-auto max-w-6xl">
-          <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
-            <div className="rounded-3xl border border-border/50 bg-card/75 p-7 shadow-sm md:p-10">
-              <p className="type-nav text-muted-foreground">{page.searchIntentLabel}</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-                {page.headline}
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                {trimForDisplay(page.subheadline, 180)}
-              </p>
+        <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center text-center">
+          {/* Logo */}
+          <div className="relative mb-10">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 scale-[2] rounded-full bg-[radial-gradient(circle,rgba(0,0,0,0.03),transparent_70%)]"
+            />
+            <Image
+              src="/logo.svg"
+              alt="ClawPilot"
+              width={120}
+              height={120}
+              priority
+              className="relative h-[90px] w-[90px] object-contain drop-shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-[110px] sm:w-[110px]"
+            />
+          </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                {page.keywords.slice(0, 3).map((keyword) => (
-                  <span
-                    key={keyword}
-                    className="rounded-full border border-border/60 bg-secondary/70 px-3 py-1 text-xs text-foreground/85"
+          {/* Intent label */}
+          <p className="type-eyebrow mb-4">{page.searchIntentLabel}</p>
+
+          {/* Headline */}
+          <h1 className="text-[34px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[46px] md:text-[54px]">
+            {page.headline}
+          </h1>
+
+          {/* Subheadline */}
+          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground sm:text-base">
+            {page.subheadline}
+          </p>
+
+          {/* Keyword tags */}
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {page.keywords.map((keyword) => (
+              <span
+                key={keyword}
+                className="rounded-full border border-border/60 bg-secondary/60 px-3 py-0.5 text-xs text-foreground/80"
+              >
+                {keyword}
+              </span>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="mt-9 flex flex-col items-center gap-3">
+            {authStatus === "authenticated" ? (
+              <Button asChild className="group" size="hero" variant="brand">
+                <Link href="/dashboard/chat">
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={onGoogleSignIn}
+                disabled={isGoogleLoading || authStatus === "loading"}
+                className="group"
+                size="hero"
+                variant="brand"
+              >
+                {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {authStatus === "loading" ? "Loading..." : "Get Started"}
+                {!isGoogleLoading && authStatus !== "loading" ? (
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                ) : null}
+              </Button>
+            )}
+            {authError ? <p className="text-center text-sm text-destructive">{authError}</p> : null}
+          </div>
+        </div>
+      </section>
+
+      {/* ── At a glance (stats strip) ────────────────────────── */}
+      <ClawSection spacing="compact">
+        <ClawContainer size="md" className="flex flex-col items-center gap-5 text-center">
+          <p className="type-eyebrow">Why it matters</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {page.heroPoints.map((point, i) => (
+              <div key={i} className="flex items-center gap-3">
+                {i > 0 && <div className="hidden h-3.5 w-px bg-border/60 sm:block" />}
+                <p className="text-sm text-muted-foreground">{point}</p>
+              </div>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── Value props (feature cards) ───────────────────────── */}
+      <ClawSection id="features">
+        <ClawContainer size="lg">
+          <ClawSectionIntro
+            title="Why teams choose this"
+            description="All the workflow power, without the infrastructure burden."
+          />
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            {page.valueProps.map((item) => (
+              <ClawSurface key={item.title} className="h-full">
+                <ClawIconFrame>
+                  <span className="text-base font-bold text-foreground/60">✦</span>
+                </ClawIconFrame>
+                <h3 className="type-h4 mt-4">{item.title}</h3>
+                <p className="type-body-sm mt-2">{item.description}</p>
+              </ClawSurface>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── How it works (numbered steps) ────────────────────── */}
+      <ClawSection id="how-it-works">
+        <ClawContainer size="md">
+          <ClawSectionIntro title="Best fit for" />
+          <div className="mt-10 space-y-3">
+            {page.fitChecklist.map((item, i) => (
+              <ClawSurface key={i} className="flex items-start gap-4" padding="md" radius="lg">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
+                  {i + 1}
+                </span>
+                <p className="type-body-sm pt-1">{item}</p>
+              </ClawSurface>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── Comparison table ──────────────────────────────────── */}
+      <ClawSection id="comparison">
+        <ClawContainer size="lg">
+          <ClawSectionIntro
+            title="Managed vs Self-Hosted"
+            description="A clear side-by-side so you can pick the right path for your team."
+          />
+          <div className="mt-10 overflow-hidden rounded-2xl border border-border/50">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/40 bg-secondary/40">
+                  <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Category
+                  </th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Managed (ClawPilot)
+                  </th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Self-Hosted
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.comparisonRows.map((row, i) => (
+                  <tr
+                    key={row.category}
+                    className={
+                      i % 2 === 0
+                        ? "border-b border-border/30 bg-background"
+                        : "border-b border-border/30 bg-secondary/20"
+                    }
                   >
-                    {keyword}
-                  </span>
+                    <td className="px-5 py-4 font-medium text-foreground">{row.category}</td>
+                    <td className="px-5 py-4 text-muted-foreground">{row.managed}</td>
+                    <td className="px-5 py-4 text-muted-foreground">{row.selfHosted}</td>
+                  </tr>
                 ))}
-              </div>
+              </tbody>
+            </table>
+          </div>
+        </ClawContainer>
+      </ClawSection>
 
-              <div className="mt-7 flex flex-wrap gap-3">
-                <Link
-                  href="/signin"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90"
-                >
-                  Get Started Free
-                  <ArrowRight className="h-4 w-4" />
+      {/* ── Channel notes ─────────────────────────────────────── */}
+      <ClawSection id="channels">
+        <ClawContainer size="md">
+          <ClawSectionIntro title="Channel notes" />
+          <div className="mt-10 space-y-3">
+            {page.channelNotes.map((note, i) => (
+              <ClawSurface key={i} padding="md" radius="lg" tone="muted">
+                <p className="type-body-sm">{note}</p>
+              </ClawSurface>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── FAQ ───────────────────────────────────────────────── */}
+      <ClawSection id="faq">
+        <ClawContainer size="md">
+          <ClawSectionIntro
+            className="mb-12"
+            title="FAQ"
+            description="Common questions about this deployment model."
+          />
+          <div className="space-y-4">
+            {page.faq.map((item) => (
+              <ClawSurface key={item.question} padding="md" radius="lg" tone="muted">
+                <h3 className="type-h4 mb-2">{item.question}</h3>
+                <p className="type-body-sm">{item.answer}</p>
+              </ClawSurface>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── Related resources ─────────────────────────────────── */}
+      <ClawSection id="related">
+        <ClawContainer size="lg">
+          <ClawSectionIntro title="Related resources" />
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            {page.relatedLinks.map((item) => (
+              <ClawSurface key={item.href} interactive className="block" radius="xl">
+                <Link href={item.href} className="block">
+                  <p className="type-h4">{item.label}</p>
+                  <p className="type-body-sm mt-2">{item.description}</p>
                 </Link>
-                <Link
-                  href="/blog"
-                  className="inline-flex h-11 items-center justify-center rounded-xl border border-border/70 bg-background px-6 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  Read Guides
+              </ClawSurface>
+            ))}
+          </div>
+        </ClawContainer>
+      </ClawSection>
+
+      {/* ── Bottom CTA ────────────────────────────────────────── */}
+      <ClawSection>
+        <ClawContainer size="sm">
+          <ClawSectionIntro
+            title="Ready to try it?"
+            description="Your private instance is a few clicks away."
+          />
+          <div className="mt-8 flex flex-col items-center gap-3">
+            {authStatus === "authenticated" ? (
+              <Button asChild className="group" size="hero" variant="brand">
+                <Link href="/dashboard/chat">
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-border/50 bg-secondary/35 p-6 md:p-7">
-              <p className="text-xs font-semibold tracking-wide text-foreground/70">At a glance</p>
-              <ul className="mt-4 space-y-3">
-                {quickPoints.map((point) => (
-                  <li key={point} className="flex items-start gap-2 text-sm text-foreground/90">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-foreground/70" />
-                    <span>{trimForDisplay(point, 95)}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-xl border border-border/50 bg-card/75 p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Setup</p>
-                  <p className="mt-1 text-xs font-semibold text-foreground">Minutes</p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-card/75 p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Ops</p>
-                  <p className="mt-1 text-xs font-semibold text-foreground">Managed</p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-card/75 p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Focus</p>
-                  <p className="mt-1 text-xs font-semibold text-foreground">Workflows</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto mt-10 max-w-6xl">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Why teams choose this
-          </h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {valueProps.map((item, index) => {
-              const Icon = valueIcons[index] ?? Sparkles
-              return (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-border/50 bg-card/75 p-6"
-                >
-                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background">
-                    <Icon className="h-4 w-4 text-foreground/80" />
-                  </div>
-                  <h3 className="mt-3 text-base font-semibold text-foreground">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    {trimForDisplay(item.description, 115)}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="mx-auto mt-10 grid max-w-6xl gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-border/50 bg-card/75 p-6">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">Best fit</h2>
-            <ul className="mt-4 space-y-2">
-              {fitItems.map((item) => (
-                <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-foreground/70" />
-                  <span>{trimForDisplay(item, 88)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-border/50 bg-card/75 p-6">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">Channel notes</h2>
-            <ul className="mt-4 space-y-2">
-              {channelItems.map((item) => (
-                <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-foreground/70" />
-                  <span>{trimForDisplay(item, 90)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        <section className="mx-auto mt-10 max-w-6xl">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Quick comparison
-          </h2>
-          <div className="mt-5 grid gap-3">
-            {comparisonRows.map((row) => (
-              <div
-                key={row.category}
-                className="rounded-2xl border border-border/50 bg-card/75 p-5 md:p-6"
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={onGoogleSignIn}
+                disabled={isGoogleLoading || authStatus === "loading"}
+                className="group"
+                size="hero"
+                variant="brand"
               >
-                <p className="text-sm font-semibold text-foreground">{row.category}</p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-border/50 bg-background p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Managed</p>
-                    <p className="mt-1 text-sm text-foreground/90">
-                      {trimForDisplay(row.managed, 95)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/50 bg-background p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Self-hosted</p>
-                    <p className="mt-1 text-sm text-foreground/90">
-                      {trimForDisplay(row.selfHosted, 95)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
+                {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {authStatus === "loading" ? "Loading..." : "Get Started"}
+                {!isGoogleLoading && authStatus !== "loading" ? (
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                ) : null}
+              </Button>
+            )}
+            {authError ? <p className="text-sm text-destructive">{authError}</p> : null}
           </div>
-        </section>
-
-        <section id="faq" className="mx-auto mt-10 max-w-6xl">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">FAQ</h2>
-          <div className="mt-5 space-y-3">
-            {faqItems.map((item) => (
-              <div key={item.question} className="rounded-xl border border-border/50 bg-card/75 p-5">
-                <h3 className="text-base font-semibold text-foreground">{item.question}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {trimForDisplay(item.answer, 145)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mx-auto mt-10 max-w-6xl">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Related resources</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {relatedLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-xl border border-border/50 bg-card/75 p-5 transition-colors hover:bg-muted/40"
-              >
-                <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {trimForDisplay(item.description, 110)}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      </article>
+        </ClawContainer>
+      </ClawSection>
 
       <Footer />
     </main>

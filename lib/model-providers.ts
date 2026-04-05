@@ -14,6 +14,7 @@ export interface ProviderModelOption {
   label: string
   summary: string
   isRecommended?: boolean
+  supportedMethods?: readonly ('oauth' | 'api-key')[]
 }
 
 export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
@@ -74,10 +75,22 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
   ],
   openai: [
     {
+      id: 'openai/gpt-5.4',
+      label: 'GPT-5.4',
+      summary: 'Current OpenAI general-purpose GPT model for API key or Codex OAuth flows.',
+      isRecommended: true,
+      supportedMethods: ['oauth', 'api-key'],
+    },
+    {
+      id: 'openai/gpt-5.4-pro',
+      label: 'GPT-5.4 Pro',
+      summary: 'Higher-tier OpenAI API model that requires API key setup.',
+      supportedMethods: ['api-key'],
+    },
+    {
       id: 'openai/gpt-5.2',
       label: 'GPT-5.2',
       summary: 'Strong general-purpose default for reasoning and coding.',
-      isRecommended: true,
     },
     {
       id: 'openai/gpt-5-mini',
@@ -130,6 +143,16 @@ export function getProviderModelOption(
 ): ProviderModelOption | null {
   if (!providerId || !modelId) return null
   return getProviderModelOptions(providerId).find((model) => model.id === modelId) ?? null
+}
+
+export function isModelSupportedByProviderSetupMethod(
+  providerId: string | null | undefined,
+  modelId: string | null | undefined,
+  method: 'oauth' | 'api-key',
+): boolean {
+  const model = getProviderModelOption(providerId, modelId)
+  if (!model) return false
+  return model.supportedMethods?.includes(method) ?? true
 }
 
 export function toOpenClawProviderId(providerId: string | null | undefined): string | null {

@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 
-import { toOpenClawProviderId } from '@/lib/model-providers'
+import {
+  getProviderModelOption,
+  isModelSupportedByProviderSetupMethod,
+  toOpenClawProviderId,
+} from '@/lib/model-providers'
 import { getBackendUrl } from '@/lib/runtime-controls'
 import { getSupabaseAuthConfig } from '@/lib/supabase-auth-config'
 import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
@@ -125,6 +129,31 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: 'INVALID_JSON',
+      },
+      { status: 400 },
+    )
+  }
+
+  const selectedModel = getProviderModelOption(body.onboarding.modelProviderId, body.onboarding.modelId)
+  if (!selectedModel) {
+    return NextResponse.json(
+      {
+        error: 'UNSUPPORTED_MODEL',
+        message: 'Selected model is not supported for the chosen provider.',
+      },
+      { status: 400 },
+    )
+  }
+
+  if (!isModelSupportedByProviderSetupMethod(
+    body.onboarding.modelProviderId,
+    body.onboarding.modelId,
+    body.onboarding.modelSetup.method,
+  )) {
+    return NextResponse.json(
+      {
+        error: 'UNSUPPORTED_MODEL_AUTH_METHOD',
+        message: `${selectedModel.label} does not support ${body.onboarding.modelSetup.method}.`,
       },
       { status: 400 },
     )

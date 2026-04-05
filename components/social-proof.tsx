@@ -1,12 +1,16 @@
 import Image from "next/image"
 
+import {
+  ClawContainer,
+  ClawSection,
+  ClawStat,
+} from "@/components/ui/clawpilot"
+
 export function SocialProof() {
   return (
-    <section className="relative px-6 py-12 md:py-16">
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-5 text-center">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground/70">
-          Powered by
-        </p>
+    <ClawSection spacing="compact">
+      <ClawContainer size="md" className="flex flex-col items-center gap-5 text-center">
+        <p className="type-eyebrow">Powered by</p>
         <div className="flex items-center gap-3">
           <Image
             src="/logo.svg"
@@ -20,26 +24,17 @@ export function SocialProof() {
           </span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground">191K+</span>
-            <span className="text-xs text-muted-foreground">GitHub stars</span>
-          </div>
+          <ClawStat label="GitHub stars" value="191K+" />
           <div className="hidden h-3.5 w-px bg-border/60 sm:block" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground">900+</span>
-            <span className="text-xs text-muted-foreground">contributors</span>
-          </div>
+          <ClawStat label="contributors" value="900+" />
           <div className="hidden h-3.5 w-px bg-border/60 sm:block" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground">50+</span>
-            <span className="text-xs text-muted-foreground">integrations</span>
-          </div>
+          <ClawStat label="integrations" value="50+" />
         </div>
         <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
           OpenClaw is one of the fastest-growing open-source AI projects in the world.
           ClawPilot lets you run it without touching a terminal.
         </p>
-      </div>
-    </section>
+      </ClawContainer>
+    </ClawSection>
   )
 }

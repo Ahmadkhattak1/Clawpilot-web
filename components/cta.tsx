@@ -8,6 +8,8 @@ import {
   getRecoveredSupabaseSession,
   getSupabaseAuthClient,
 } from "@/lib/supabase-auth"
+import { Button } from "@/components/ui/button"
+import { ClawContainer, ClawSection, ClawSectionIntro } from "@/components/ui/clawpilot"
 
 export function CTA() {
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "anonymous">("loading")
@@ -69,41 +71,40 @@ export function CTA() {
   }, [])
 
   return (
-    <section className="relative px-6 py-16 md:py-20">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          Ready to try OpenClaw?
-        </h2>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Your private instance is a few clicks away. No credit card required to start.
-        </p>
+    <ClawSection>
+      <ClawContainer size="sm">
+        <ClawSectionIntro
+          description="Your private instance is a few clicks away. Cancel anytime."
+          title="Ready to try OpenClaw?"
+        />
 
         <div className="mt-8 flex flex-col items-center gap-3">
           {authStatus === "authenticated" ? (
-            <Link
-              href="/dashboard/chat"
-              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90"
-            >
-              Go to Dashboard
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            <Button asChild className="group" size="hero" variant="brand">
+              <Link href="/dashboard/chat">
+                Go to Dashboard
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
               onClick={onGoogleSignIn}
               disabled={isGoogleLoading || authStatus === "loading"}
-              className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-foreground px-7 text-[15px] font-medium text-background shadow-sm transition-all hover:shadow-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="group"
+              size="hero"
+              variant="brand"
             >
               {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {authStatus === "loading" ? "Loading..." : "Get Started Free"}
+              {authStatus === "loading" ? "Loading..." : "Get Started"}
               {!isGoogleLoading && authStatus !== "loading" ? (
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               ) : null}
-            </button>
+            </Button>
           )}
           {authError ? <p className="text-sm text-destructive">{authError}</p> : null}
         </div>
-      </div>
-    </section>
+      </ClawContainer>
+    </ClawSection>
   )
 }

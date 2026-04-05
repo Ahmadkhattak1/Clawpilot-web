@@ -1,5 +1,11 @@
 import { faqItems } from "./faq-data"
 import { siteUrl } from "@/lib/site"
+import {
+  ClawContainer,
+  ClawSection,
+  ClawSectionIntro,
+  ClawSurface,
+} from "@/components/ui/clawpilot"
 
 export function FAQ() {
   const schema = {
@@ -17,34 +23,27 @@ export function FAQ() {
   }
 
   return (
-    <section id="faq" className="relative px-6 py-16 md:py-20">
+    <ClawSection id="faq">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
       />
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="type-h2 mb-4">
-            FAQ
-          </h2>
-          <p className="type-body">
-            Clear answers about hosted OpenClaw and easy setup with ClawPilot.
-          </p>
-        </div>
+      <ClawContainer size="md">
+        <ClawSectionIntro
+          className="mb-12"
+          description="Clear answers about hosted OpenClaw and easy setup with ClawPilot."
+          title="FAQ"
+        />
 
         <div className="space-y-4">
           {faqItems.map((item) => (
-            <div key={item.question} className="rounded-xl border border-border/50 bg-secondary/40 p-5">
-              <h3 className="type-h4 mb-2">
-                {item.question}
-              </h3>
-              <p className="type-body-sm">
-                {item.answer}
-              </p>
-            </div>
+            <ClawSurface key={item.question} padding="md" radius="lg" tone="muted">
+              <h3 className="type-h4 mb-2">{item.question}</h3>
+              <p className="type-body-sm">{item.answer}</p>
+            </ClawSurface>
           ))}
         </div>
-      </div>
-    </section>
+      </ClawContainer>
+    </ClawSection>
   )
 }

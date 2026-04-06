@@ -89,7 +89,7 @@ export function Header() {
         <Link href="/" className="flex items-center gap-2.5">
           <div className="h-9 w-9 overflow-hidden rounded-md flex items-center justify-center">
             <img
-              src="/logo.svg"
+              src="/logo.webp"
               alt="ClawPilot mascot"
               className="w-full h-full object-contain"
             />

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/logo.svg",
+        url: "/logo.webp",
         width: 512,
         height: 512,
         alt: "ClawPilot mascot logo",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${siteName} Blog`,
     description: "OpenClaw hosting guides, comparisons, and setup posts.",
-    images: ["/logo.svg"],
+    images: ["/logo.webp"],
   },
 }
 

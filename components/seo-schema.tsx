@@ -11,7 +11,7 @@ export function SeoSchema() {
         "@id": `${siteUrl}#organization`,
         name: siteName,
         url: siteUrl,
-        logo: `${siteUrl}/logo.svg`,
+        logo: `${siteUrl}/logo.webp`,
       },
       {
         "@type": "WebSite",

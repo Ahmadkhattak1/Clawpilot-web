@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/logo.svg",
+        url: "/logo.webp",
         width: 512,
         height: 512,
         alt: "ClawPilot mascot logo",
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     title: "ClawPilot | Your Own OpenClaw in the Cloud",
     description:
       "A private OpenClaw instance running in minutes. No servers, no Docker, no terminal.",
-    images: ["/logo.svg"],
+    images: ["/logo.webp"],
   },
   robots: {
     index: true,

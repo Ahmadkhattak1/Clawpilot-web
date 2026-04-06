@@ -141,7 +141,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
               className="absolute inset-0 scale-[2] rounded-full bg-[radial-gradient(circle,rgba(0,0,0,0.03),transparent_70%)]"
             />
             <Image
-              src="/logo.svg"
+              src="/logo.webp"
               alt="ClawPilot"
               width={120}
               height={120}

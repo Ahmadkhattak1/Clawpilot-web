@@ -7,7 +7,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 md:flex-row">
         <Link href="/" className="flex items-center gap-2">
           <Image
-            src="/logo.svg"
+            src="/logo.webp"
             alt="ClawPilot"
             width={32}
             height={32}

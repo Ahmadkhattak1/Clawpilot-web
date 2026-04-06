@@ -55,10 +55,10 @@ export function BlogPostingSchema({ post }: { post: BlogPost }) {
       url: siteUrl,
       logo: {
         "@type": "ImageObject",
-        url: `${siteUrl}/logo.svg`,
+        url: `${siteUrl}/logo.webp`,
       },
     },
-    image: [`${siteUrl}/logo.svg`],
+    image: [`${siteUrl}/logo.webp`],
   } satisfies Record<string, unknown>
 
   return <JsonLd data={schema} />

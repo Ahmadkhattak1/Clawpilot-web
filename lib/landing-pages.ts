@@ -521,13 +521,13 @@ export function buildLandingMetadata(page: LandingPageConfig): Metadata {
       description: page.metaDescription,
       url: page.path,
       type: "website",
-      images: ["/logo.svg"],
+      images: ["/logo.webp"],
     },
     twitter: {
       card: "summary_large_image",
       title: `${siteName} | ${page.metaTitle}`,
       description: page.metaDescription,
-      images: ["/logo.svg"],
+      images: ["/logo.webp"],
     },
   }
 }

@@ -507,7 +507,7 @@ export default function ChatPage() {
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between">
             <div className="flex items-center gap-2.5">
               <Image
-                src="/logo.svg"
+                src="/logo.webp"
                 alt="ClawPilot"
                 width={32}
                 height={32}
@@ -591,7 +591,7 @@ export default function ChatPage() {
                 />
                 <div className="relative rounded-[18px] border border-border/40 bg-gradient-to-b from-card to-background p-3.5 shadow-sm">
                   <Image
-                    src="/logo.svg"
+                    src="/logo.webp"
                     alt="OpenClaw"
                     width={56}
                     height={56}

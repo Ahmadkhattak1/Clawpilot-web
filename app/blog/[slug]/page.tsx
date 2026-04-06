@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       authors: [authorName],
       images: [
         {
-          url: "/logo.svg",
+          url: "/logo.webp",
           width: 512,
           height: 512,
           alt: "ClawPilot mascot logo",
@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       card: "summary_large_image",
       title: post.title,
       description: post.description,
-      images: ["/logo.svg"],
+      images: ["/logo.webp"],
     },
   }
 }

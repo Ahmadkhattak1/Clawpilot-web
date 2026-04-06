@@ -84,7 +84,7 @@ export function Hero() {
         className="pointer-events-none absolute top-0 left-1/2 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(179,33,40,0.04),transparent_70%)]"
       />
 
-      <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center text-center">
+      <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center text-center">
         {/* Mascot */}
         <div className="relative mb-10">
           <div
@@ -92,7 +92,7 @@ export function Hero() {
             className="absolute inset-0 scale-[2] rounded-full bg-[radial-gradient(circle,rgba(0,0,0,0.03),transparent_70%)]"
           />
           <Image
-            src="/logo.svg"
+            src="/logo.webp"
             alt="ClawPilot mascot"
             width={120}
             height={120}
@@ -103,7 +103,7 @@ export function Hero() {
 
         {/* Headline */}
         <h1 className="text-[36px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[48px] md:text-[56px]">
-          Your own OpenClaw.
+          Your own <span className="whitespace-nowrap">OpenClaw agents.</span>
           <br />
           <span className="text-muted-foreground">Running in minutes.</span>
         </h1>

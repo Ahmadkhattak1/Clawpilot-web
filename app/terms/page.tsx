@@ -16,14 +16,14 @@ export const metadata: Metadata = {
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
     url: "/terms",
-    images: ["/logo.svg"],
+    images: ["/logo.webp"],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
-    images: ["/logo.svg"],
+    images: ["/logo.webp"],
   },
 }
 

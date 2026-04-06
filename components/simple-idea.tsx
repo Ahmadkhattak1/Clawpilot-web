@@ -89,7 +89,7 @@ export function SimpleIdea() {
               title="ClawPilot"
               icon={
                 <Image
-                  src="/logo.svg"
+                  src="/logo.webp"
                   alt="ClawPilot logo"
                   width={22}
                   height={22}

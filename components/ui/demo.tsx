@@ -147,7 +147,7 @@ export function Hero() {
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            For less than a candy bar a day &middot; Cancel anytime
+            For less than a candy bar 🍫 a day &middot; Cancel anytime
           </p>
         </div>
       </div>

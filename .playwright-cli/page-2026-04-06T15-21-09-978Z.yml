@@ -1,0 +1,249 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - navigation [ref=e4]:
+      - link "ClawPilot mascot ClawPilot" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - img "ClawPilot mascot" [ref=e7]
+        - generic [ref=e8]: ClawPilot
+      - generic [ref=e9]:
+        - link "Why ClawPilot" [ref=e10] [cursor=pointer]:
+          - /url: "#why-clawpilot"
+        - link "How It Works" [ref=e11] [cursor=pointer]:
+          - /url: "#how-it-works"
+        - link "Blog" [ref=e12] [cursor=pointer]:
+          - /url: /blog
+      - button "Get Started" [ref=e13] [cursor=pointer]
+    - generic [ref=e15]:
+      - img "ClawPilot mascot" [ref=e18]
+      - heading "Your own OpenClaw. Running in minutes." [level=1] [ref=e19]:
+        - text: Your own OpenClaw.
+        - text: Running in minutes.
+      - paragraph [ref=e20]: ClawPilot gives you a private OpenClaw instance in the cloud. No servers. No Docker. No terminal. Just sign up and go.
+      - generic [ref=e21]:
+        - button "Get Started" [ref=e22] [cursor=pointer]:
+          - text: Get Started
+          - img
+        - paragraph [ref=e23]: For less than a candy bar 🍫 a day · Cancel anytime
+    - generic [ref=e25]:
+      - paragraph [ref=e26]: Powered by
+      - generic [ref=e27]:
+        - img "OpenClaw" [ref=e28]
+        - generic [ref=e29]: OpenClaw
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - generic [ref=e32]: 191K+
+          - generic [ref=e33]: GitHub stars
+        - generic [ref=e35]:
+          - generic [ref=e36]: 900+
+          - generic [ref=e37]: contributors
+        - generic [ref=e39]:
+          - generic [ref=e40]: 50+
+          - generic [ref=e41]: integrations
+      - paragraph [ref=e42]: OpenClaw is one of the fastest-growing open-source AI projects in the world. ClawPilot lets you run it without touching a terminal.
+    - generic [ref=e44]:
+      - generic [ref=e45]:
+        - heading "Not sure if you need OpenClaw?" [level=2] [ref=e46]
+        - paragraph [ref=e47]:
+          - text: Heres what people are
+          - generic [ref=e48]: doing with it
+      - generic [ref=e49]:
+        - generic:
+          - generic:
+            - img
+        - region [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e54]:
+              - group [ref=e55]:
+                - article [ref=e56]:
+                  - generic [ref=e58]:
+                    - img [ref=e60]
+                    - generic [ref=e61]:
+                      - 'heading "OpenClaw: The complete guide to building, training, and living with your personal AI agent" [level=3] [ref=e62]':
+                        - 'link "OpenClaw: The complete guide to building, training, and living with your personal AI agent" [ref=e64] [cursor=pointer]':
+                          - /url: https://www.lennysnewsletter.com/p/openclaw-the-complete-guide-to-building
+                      - paragraph [ref=e65]:
+                        - generic [ref=e66]: I built a team of 9 AI agents that run my work and life. Here's how you can too.
+                  - link "https://lennysnewsletter.com" [ref=e67] [cursor=pointer]:
+                    - /url: https://www.lennysnewsletter.com/p/openclaw-the-complete-guide-to-building
+                    - img [ref=e68]
+                    - generic [ref=e71]: https://lennysnewsletter.com
+              - group [ref=e72]:
+                - article [ref=e73]:
+                  - generic [ref=e75]:
+                    - img [ref=e77]
+                    - generic [ref=e78]:
+                      - 'heading "Full Tutorial: Use OpenClaw to Build a Business That Runs Itself | Nat Eliason" [level=3] [ref=e79]':
+                        - 'link "Full Tutorial: Use OpenClaw to Build a Business That Runs Itself | Nat Eliason" [ref=e81] [cursor=pointer]':
+                          - /url: https://creatoreconomy.so/p/use-openclaw-to-build-a-business-that-runs-itself-nat-eliason
+                      - paragraph [ref=e82]:
+                        - generic [ref=e83]: How Nat set up his OpenClaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.
+                  - link "https://creatoreconomy.so" [ref=e84] [cursor=pointer]:
+                    - /url: https://creatoreconomy.so/p/use-openclaw-to-build-a-business-that-runs-itself-nat-eliason
+                    - img [ref=e85]
+                    - generic [ref=e88]: https://creatoreconomy.so
+              - group [ref=e89]:
+                - article [ref=e90]:
+                  - generic [ref=e92]:
+                    - img [ref=e94]
+                    - generic [ref=e95]:
+                      - 'heading "OpenClaw use cases: 25 ways to automate work and life" [level=3] [ref=e96]':
+                        - 'link "OpenClaw use cases: 25 ways to automate work and life" [ref=e98] [cursor=pointer]':
+                          - /url: https://www.hostinger.com/tutorials/openclaw-use-cases
+                      - paragraph [ref=e99]:
+                        - generic [ref=e100]: A practical list covering everyday admin, developer workflows, and long-running jobs that OpenClaw can handle for you.
+                  - link "https://hostinger.com" [ref=e101] [cursor=pointer]:
+                    - /url: https://www.hostinger.com/tutorials/openclaw-use-cases
+                    - img [ref=e102]
+                    - generic [ref=e105]: https://hostinger.com
+              - group [ref=e106]:
+                - article [ref=e107]:
+                  - generic [ref=e109]:
+                    - img [ref=e111]
+                    - generic [ref=e112]:
+                      - 'heading "OpenClaw Use Cases: 35+ Real Ways People Are Running Their Lives (and Businesses) With It" [level=3] [ref=e113]':
+                        - 'link "OpenClaw Use Cases: 35+ Real Ways People Are Running Their Lives (and Businesses) With It" [ref=e115] [cursor=pointer]':
+                          - /url: https://sidsaladi.substack.com/p/openclaw-use-cases-35-real-ways-people
+                      - paragraph [ref=e116]:
+                        - generic [ref=e117]: A verified playbook covering everything from morning briefings to multi-agent business councils.
+                  - link "https://sidsaladi.substack.com" [ref=e118] [cursor=pointer]:
+                    - /url: https://sidsaladi.substack.com/p/openclaw-use-cases-35-real-ways-people
+                    - img [ref=e119]
+                    - generic [ref=e122]: https://sidsaladi.substack.com
+              - group [ref=e123]:
+                - article [ref=e124]:
+                  - generic [ref=e126]:
+                    - img [ref=e128]
+                    - generic [ref=e129]:
+                      - heading "How OpenClaw Changed My Workflow" [level=3] [ref=e130]:
+                        - link "How OpenClaw Changed My Workflow" [ref=e132] [cursor=pointer]:
+                          - /url: https://safeti.medium.com/how-openclaw-changed-my-workflow-e27b4a03e432
+                      - paragraph [ref=e133]:
+                        - generic [ref=e134]: A firsthand account of using OpenClaw in Telegram with real tools to help ship work end-to-end.
+                  - link "https://safeti.medium.com" [ref=e135] [cursor=pointer]:
+                    - /url: https://safeti.medium.com/how-openclaw-changed-my-workflow-e27b4a03e432
+                    - img [ref=e136]
+                    - generic [ref=e139]: https://safeti.medium.com
+              - group [ref=e140]:
+                - article [ref=e141]:
+                  - generic [ref=e143]:
+                    - img [ref=e145]
+                    - generic [ref=e146]:
+                      - heading "11 Insane Use Cases of OpenClaw AI" [level=3] [ref=e147]:
+                        - link "11 Insane Use Cases of OpenClaw AI" [ref=e149] [cursor=pointer]:
+                          - /url: https://medium.com/the-ai-studio/11-insane-use-cases-of-openclaw-ai-a341e997a57f
+                      - paragraph [ref=e150]:
+                        - generic [ref=e151]: What happens when you give an AI agent access to your entire digital life.
+                  - link "https://medium.com" [ref=e152] [cursor=pointer]:
+                    - /url: https://medium.com/the-ai-studio/11-insane-use-cases-of-openclaw-ai-a341e997a57f
+                    - img [ref=e153]
+                    - generic [ref=e156]: https://medium.com
+            - generic [ref=e157]:
+              - button "Scroll articles left" [ref=e158] [cursor=pointer]:
+                - img [ref=e159]
+              - button "Scroll articles right" [ref=e161] [cursor=pointer]:
+                - img [ref=e162]
+      - link "Go to Dashboard" [ref=e165] [cursor=pointer]:
+        - /url: /dashboard/chat
+        - text: Go to Dashboard
+        - img
+    - generic [ref=e167]:
+      - generic [ref=e168]:
+        - heading "Why ClawPilot" [level=2] [ref=e169]
+        - paragraph [ref=e170]: All the power of OpenClaw. None of the server work.
+      - generic [ref=e171]:
+        - generic [ref=e172]:
+          - img [ref=e174]
+          - heading "Your own private instance" [level=3] [ref=e176]
+          - paragraph [ref=e177]: A dedicated OpenClaw server, fully isolated. Your data, your keys, your rules. Nothing shared.
+        - generic [ref=e178]:
+          - img [ref=e180]
+          - heading "Always on" [level=3] [ref=e183]
+          - paragraph [ref=e184]: Runs 24/7 in the cloud. No laptop to keep open, no Raspberry Pi to babysit. It just works.
+        - generic [ref=e185]:
+          - img [ref=e187]
+          - heading "Minutes, not days" [level=3] [ref=e189]
+          - paragraph [ref=e190]: Skip the VPS, Docker, Node.js, and config files. Sign up, and your OpenClaw is live.
+    - generic [ref=e192]:
+      - generic [ref=e193]:
+        - heading "Choose the Right OpenClaw Setup for Your Team" [level=2] [ref=e194]
+        - paragraph [ref=e195]: Compare deployment options in minutes and move forward with the model that gives you the best mix of speed, reliability, and control.
+      - generic [ref=e196]:
+        - link "Launch OpenClaw Fast Without Managing Servers Get a private cloud setup that stays online and stable, so your team can focus on live workflows instead of infrastructure. See hosting options" [ref=e197] [cursor=pointer]:
+          - /url: /openclaw-hosting
+          - paragraph [ref=e198]: Launch OpenClaw Fast Without Managing Servers
+          - paragraph [ref=e199]: Get a private cloud setup that stays online and stable, so your team can focus on live workflows instead of infrastructure.
+          - paragraph [ref=e200]: See hosting options →
+        - link "Scale Operations With Managed OpenClaw Choose a managed runtime when you want predictable uptime, fewer incidents, and less weekly maintenance overhead. Compare managed benefits" [ref=e201] [cursor=pointer]:
+          - /url: /managed-openclaw
+          - paragraph [ref=e202]: Scale Operations With Managed OpenClaw
+          - paragraph [ref=e203]: Choose a managed runtime when you want predictable uptime, fewer incidents, and less weekly maintenance overhead.
+          - paragraph [ref=e204]: Compare managed benefits →
+        - 'link "VPS or Managed: Pick the Lower-Risk Path Use a side-by-side framework to decide if your team should own server operations or move faster with managed hosting. View the decision guide" [ref=e205] [cursor=pointer]':
+          - /url: /openclaw-vps-hosting
+          - paragraph [ref=e206]: "VPS or Managed: Pick the Lower-Risk Path"
+          - paragraph [ref=e207]: Use a side-by-side framework to decide if your team should own server operations or move faster with managed hosting.
+          - paragraph [ref=e208]: View the decision guide →
+        - link "Run WhatsApp Automation Reliably in the Cloud Keep customer conversations running with a hosted setup built for consistent multi-channel workflow delivery. Explore WhatsApp deployment" [ref=e209] [cursor=pointer]:
+          - /url: /openclaw-whatsapp-automation
+          - paragraph [ref=e210]: Run WhatsApp Automation Reliably in the Cloud
+          - paragraph [ref=e211]: Keep customer conversations running with a hosted setup built for consistent multi-channel workflow delivery.
+          - paragraph [ref=e212]: Explore WhatsApp deployment →
+    - generic [ref=e214]:
+      - heading "How It Works" [level=2] [ref=e216]
+      - generic [ref=e217]:
+        - generic [ref=e218]:
+          - generic [ref=e219]: "1"
+          - generic [ref=e220]:
+            - paragraph [ref=e221]: Sign up
+            - paragraph [ref=e222]: Create your account with Google. Takes 10 seconds.
+        - generic [ref=e223]:
+          - generic [ref=e224]: "2"
+          - generic [ref=e225]:
+            - paragraph [ref=e226]: We deploy your OpenClaw
+            - paragraph [ref=e227]: A private instance is provisioned on dedicated cloud infrastructure.
+        - generic [ref=e228]:
+          - generic [ref=e229]: "3"
+          - generic [ref=e230]:
+            - paragraph [ref=e231]: Start using it
+            - paragraph [ref=e232]: Connect your chat apps, bring your API keys, and let your AI assistant get to work.
+      - paragraph [ref=e233]: No Docker. No terminal. No DevOps experience needed.
+    - generic [ref=e235]:
+      - generic [ref=e236]:
+        - heading "FAQ" [level=2] [ref=e237]
+        - paragraph [ref=e238]: Clear answers about hosted OpenClaw and easy setup with ClawPilot.
+      - generic [ref=e239]:
+        - generic [ref=e240]:
+          - heading "What is ClawPilot?" [level=3] [ref=e241]
+          - paragraph [ref=e242]: ClawPilot is a managed hosting service for OpenClaw. We provision a private OpenClaw instance in the cloud so you can start using it immediately without managing servers, Docker, or any terminal setup.
+        - generic [ref=e243]:
+          - heading "Do I need to install anything?" [level=3] [ref=e244]
+          - paragraph [ref=e245]: No. ClawPilot runs entirely in the cloud. You create an account, connect your preferred chat channels, and your OpenClaw instance is ready to use from any browser.
+        - generic [ref=e246]:
+          - heading "Is my instance always available?" [level=3] [ref=e247]
+          - paragraph [ref=e248]: Yes. Your OpenClaw instance runs 24/7 on dedicated cloud infrastructure. We handle uptime monitoring, updates, and restarts so it stays online without any intervention on your end.
+        - generic [ref=e249]:
+          - heading "What can my OpenClaw instance access?" [level=3] [ref=e250]
+          - paragraph [ref=e251]: Only what you explicitly allow. You control which integrations, API keys, and channels your instance connects to. Nothing is shared or enabled by default.
+    - generic [ref=e253]:
+      - generic [ref=e254]:
+        - heading "Ready to try OpenClaw?" [level=2] [ref=e255]
+        - paragraph [ref=e256]: Your private instance is a few clicks away. Cancel anytime.
+      - button "Get Started" [ref=e258] [cursor=pointer]:
+        - text: Get Started
+        - img
+    - generic [ref=e260]:
+      - link "ClawPilot ClawPilot" [ref=e261] [cursor=pointer]:
+        - /url: /
+        - img "ClawPilot" [ref=e262]
+        - generic [ref=e263]: ClawPilot
+      - generic [ref=e264]:
+        - link "Terms" [ref=e265] [cursor=pointer]:
+          - /url: /terms
+        - link "Privacy" [ref=e266] [cursor=pointer]:
+          - /url: /privacy
+        - link "Disclaimer" [ref=e267] [cursor=pointer]:
+          - /url: /disclaimer
+      - paragraph [ref=e268]: Built on OpenClaw
+  - button "Open Next.js Dev Tools" [ref=e274] [cursor=pointer]:
+    - img [ref=e275]
+  - alert [ref=e278]

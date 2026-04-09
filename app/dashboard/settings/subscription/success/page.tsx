@@ -16,32 +16,65 @@ export default function SubscriptionSuccessPage() {
 
   useEffect(() => {
     let redirected = false
+    let pollId: ReturnType<typeof setInterval> | null = null
+    let conversionSent = false
 
     const finishRedirect = () => {
       if (redirected) {
         return
       }
       redirected = true
+      if (pollId) {
+        clearInterval(pollId)
+        pollId = null
+      }
       router.replace(CONTINUE_PATH)
     }
 
-    const gtag = (window as typeof window & {
-      gtag?: (...args: unknown[]) => void
-    }).gtag
+    const sendConversion = () => {
+      if (conversionSent) {
+        return true
+      }
 
-    if (typeof gtag === 'function') {
+      const gtag = (window as typeof window & {
+        gtag?: (...args: unknown[]) => void
+      }).gtag
+
+      if (typeof gtag !== 'function') {
+        return false
+      }
+
+      conversionSent = true
       gtag('event', 'conversion', {
         send_to: SUBSCRIPTION_CONVERSION_SEND_TO,
         event_callback: finishRedirect,
-        event_timeout: 2000,
+        event_timeout: 3000,
       })
+      return true
+    }
+
+    if (!sendConversion()) {
+      let attempts = 0
+      pollId = setInterval(() => {
+        attempts += 1
+        const sent = sendConversion()
+        if (sent || attempts >= 20) {
+          if (pollId) {
+            clearInterval(pollId)
+            pollId = null
+          }
+        }
+      }, 250)
     }
 
     const redirectTimeout = setTimeout(() => {
       finishRedirect()
-    }, 2_500)
+    }, 5_000)
 
     return () => {
+      if (pollId) {
+        clearInterval(pollId)
+      }
       clearTimeout(redirectTimeout)
     }
   }, [router])
@@ -63,13 +96,13 @@ export default function SubscriptionSuccessPage() {
             Subscription confirmed
           </CardTitle>
           <CardDescription>
-            Your plan is active. Redirecting you to your workspace.
+            Your plan is active. Saving Google Ads conversion and redirecting you to your workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Redirecting...
+            Finalizing confirmation...
           </p>
           <Button asChild className="w-full">
             <Link href={CONTINUE_PATH}>Continue now</Link>

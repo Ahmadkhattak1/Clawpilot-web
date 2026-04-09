@@ -7,9 +7,9 @@ import { useEffect } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SUBSCRIPTION_CONVERSION_SEND_TO } from '@/lib/google-ads'
 
 const CONTINUE_PATH = '/dashboard/model'
-const SUBSCRIPTION_CONVERSION_SEND_TO = 'AW-17277705517/ZdHBCNGD8JgcEK26065A'
 
 export default function SubscriptionSuccessPage() {
   const router = useRouter()

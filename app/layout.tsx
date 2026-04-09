@@ -3,6 +3,7 @@ import Script from "next/script"
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
 import { ThemeProvider } from "@/components/theme-provider"
+import { GOOGLE_TAG_ID } from "@/lib/google-ads"
 import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
 import './globals.css'
@@ -65,8 +66,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: '#ffffff',
 }
-
-const GOOGLE_TAG_ID = "GT-T5P2FWBK"
 
 export default function RootLayout({
   children,

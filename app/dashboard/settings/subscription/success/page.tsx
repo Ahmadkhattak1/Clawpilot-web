@@ -9,14 +9,37 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 const CONTINUE_PATH = '/dashboard/model'
+const SUBSCRIPTION_CONVERSION_SEND_TO = 'AW-17277705517/ZdHBCNGD8JgcEK26065A'
 
 export default function SubscriptionSuccessPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const redirectTimeout = setTimeout(() => {
+    let redirected = false
+
+    const finishRedirect = () => {
+      if (redirected) {
+        return
+      }
+      redirected = true
       router.replace(CONTINUE_PATH)
-    }, 2_000)
+    }
+
+    const gtag = (window as typeof window & {
+      gtag?: (...args: unknown[]) => void
+    }).gtag
+
+    if (typeof gtag === 'function') {
+      gtag('event', 'conversion', {
+        send_to: SUBSCRIPTION_CONVERSION_SEND_TO,
+        event_callback: finishRedirect,
+        event_timeout: 2000,
+      })
+    }
+
+    const redirectTimeout = setTimeout(() => {
+      finishRedirect()
+    }, 2_500)
 
     return () => {
       clearTimeout(redirectTimeout)

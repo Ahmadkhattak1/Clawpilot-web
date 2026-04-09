@@ -49,6 +49,7 @@ function SubscriptionSuccessPageClient() {
     }
 
     let cancelled = false
+    let redirected = false
     let pollId: ReturnType<typeof setInterval> | null = null
     let redirectTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -70,17 +71,35 @@ function SubscriptionSuccessPageClient() {
           currency: 'PKR',
         }
 
+    const finishRedirect = () => {
+      if (cancelled || redirected) {
+        return
+      }
+      redirected = true
+      router.replace(CONTINUE_PATH)
+    }
+
     const fireConversion = (): boolean => {
       if (typeof window.gtag !== 'function') {
         return false
       }
-      if (window.localStorage.getItem(trackingKey) === '1') {
+
+      if (trackingKey && window.localStorage.getItem(trackingKey) === '1') {
         setTrackingState('tracked')
+        finishRedirect()
         return true
       }
 
-      window.gtag('event', 'conversion', conversionPayload)
-      window.localStorage.setItem(trackingKey, '1')
+      window.gtag('event', 'conversion', {
+        ...conversionPayload,
+        event_callback: finishRedirect,
+        event_timeout: 2000,
+      })
+
+      if (trackingKey) {
+        window.localStorage.setItem(trackingKey, '1')
+      }
+
       setTrackingState('tracked')
       return true
     }
@@ -110,11 +129,8 @@ function SubscriptionSuccessPageClient() {
     window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
 
     redirectTimeout = setTimeout(() => {
-      if (cancelled) {
-        return
-      }
-      router.replace(CONTINUE_PATH)
-    }, 2_000)
+      finishRedirect()
+    }, 2_500)
 
     return () => {
       cancelled = true

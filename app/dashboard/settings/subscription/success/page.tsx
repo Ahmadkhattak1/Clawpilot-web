@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 const STRIPE_CHECKOUT_SESSION_ID_TOKEN = '{CHECKOUT_SESSION_ID}'
 const STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY = 'clawpilot:last-stripe-checkout-session-id'
-const SUBSCRIBE_CONVERSION_SEND_TO = 'AW-17277705517/1amWCOLW3YAcEK26065A'
+const SUBSCRIBE_CONVERSION_SEND_TO = 'AW-17277705517/gXTcCJ6j2ZgcEK26065A'
 const SUBSCRIBE_CONVERSION_STORAGE_KEY_PREFIX = 'clawpilot:ads:subscribe-conversion:'
 const CONTINUE_PATH = '/dashboard/model'
 
@@ -57,12 +57,18 @@ function SubscriptionSuccessPageClient() {
     const trackingKey = checkoutSessionId
       ? `${SUBSCRIBE_CONVERSION_STORAGE_KEY_PREFIX}${checkoutSessionId}`
       : ''
-    const conversionPayload: Record<string, string> = checkoutSessionId
+    const conversionPayload: Record<string, string | number> = checkoutSessionId
       ? {
           send_to: SUBSCRIBE_CONVERSION_SEND_TO,
+          value: 1.0,
+          currency: 'PKR',
           transaction_id: checkoutSessionId,
         }
-      : {}
+      : {
+          send_to: SUBSCRIBE_CONVERSION_SEND_TO,
+          value: 1.0,
+          currency: 'PKR',
+        }
 
     const fireConversion = (): boolean => {
       if (typeof window.gtag !== 'function') {

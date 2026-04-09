@@ -3,9 +3,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import type { Session } from '@supabase/supabase-js'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Copy, Loader2, Mail, Rocket, TerminalSquare, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, Loader2, Mail, Rocket, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -54,16 +53,6 @@ function getStoredProviderSetup(): ProviderSetupStorage {
 
 const DEPLOY_STATUS_POLL_INTERVAL_MS = 5_000
 const CONTACT_EMAIL = 'support@clawpilot.app'
-
-const LENNY_MESSAGES: { atSecond: number; text: string }[] = [
-  { atSecond: 0, text: "Hi. I'm Lenny. I'll watch this while your workspace gets ready." },
-  { atSecond: 10, text: 'We are reserving your hosted workspace and getting everything in place.' },
-  { atSecond: 30, text: 'OpenClaw is being installed and started for you.' },
-  { atSecond: 60, text: 'This part can stay quiet for a bit while services finish starting.' },
-  { atSecond: 90, text: 'We are still checking that everything is ready before we send you in.' },
-  { atSecond: 150, text: 'Still working. This usually means the setup is finishing, not that it was lost.' },
-  { atSecond: 240, text: 'Almost there. We are waiting for OpenClaw to finish coming online.' },
-]
 
 interface ConfettiPiece {
   id: number
@@ -159,16 +148,7 @@ function DeployTerminal({
   running: boolean
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-lg shadow-primary/10">
-      <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
-        </div>
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">deploy.log</p>
-      </div>
-      <div className="max-h-72 overflow-auto px-4 py-3 font-mono text-[11px] leading-6">
+    <div className="min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-6">
         {lines.map((line) => (
           <p
             key={line.id}
@@ -190,13 +170,8 @@ function DeployTerminal({
             transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
           />
         ) : null}
-      </div>
-    </section>
+    </div>
   )
-}
-
-function getVisibleLennyMessages(elapsedSeconds: number): string[] {
-  return LENNY_MESSAGES.filter((message) => message.atSecond <= elapsedSeconds).map((message) => message.text)
 }
 
 function resolveDeploymentStatusText(status: TenantDaemonStatus | null): string {
@@ -657,19 +632,6 @@ function HooksPageClient() {
     return lines
   }, [error, hasDeployStarted, onboardingChecks, runtimeSetupState])
 
-  const currentLennyMessage = useMemo(() => {
-    if (!hasDeployStarted) {
-      return null
-    }
-
-    if (runtimeSetupState?.instanceId && !tenantHasReadyGateway({ instance: runtimeSetupState })) {
-      return 'Good news: your hosted workspace is ready. OpenClaw is still finishing up.'
-    }
-
-    const visibleMessages = getVisibleLennyMessages(deployElapsedSeconds)
-    return visibleMessages.at(-1) ?? "I'm watching the deploy logs."
-  }, [deployElapsedSeconds, hasDeployStarted, runtimeSetupState])
-
   if (checkingSession) {
     return (
       <div className="grid min-h-[100dvh] place-items-center bg-background">
@@ -716,80 +678,66 @@ function HooksPageClient() {
             </Link>
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Deploy</CardDescription>
+          <CardDescription>Installing your OpenClaw</CardDescription>
           <SetupStepper currentStep="deployment" className="pt-1" />
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col px-6 pb-7 md:px-10 md:pb-10">
-          <div
-            className={cn(
-              'grid flex-1 gap-6',
-              hasDeployStarted ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]' : undefined,
-            )}
-          >
-            <div className="space-y-6">
-              <section className="rounded-xl border border-border/70 bg-card p-4">
-                <p className="text-sm font-semibold">Checks</p>
-                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  {onboardingChecks.map((check) => (
-                    <li key={check.label} className="flex items-center gap-2">
-                      {check.complete ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
-                      )}
-                      <span>{check.label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              {hasDeployStarted && currentLennyMessage ? (
-                <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                  <div className="flex gap-2.5">
-                    <Image
-                      src="/pfp.webp"
-                      alt="Lenny the lobster"
-                      width={32}
-                      height={32}
-                      className="mt-0.5 h-8 w-8 shrink-0 rounded-full"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground/70">Lenny</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{currentLennyMessage}</p>
-                    </div>
-                  </div>
-                </section>
+          <div className="flex flex-1 flex-col gap-6">
+            <section
+              className={cn(
+                'rounded-xl border border-border/70 bg-card/80 p-4',
+                hasDeployStarted ? 'flex min-h-0 flex-1 flex-col' : undefined,
+              )}
+            >
+              {deployStartedAt ? (
+                <div className="flex items-center justify-end">
+                  <span className="tabular-nums text-xs text-muted-foreground">
+                    {Math.floor(deployElapsedSeconds / 60)}:{String(deployElapsedSeconds % 60).padStart(2, '0')}
+                  </span>
+                </div>
               ) : null}
-            </div>
 
-            {hasDeployStarted ? (
-              <div className="space-y-4">
-                <section className="rounded-xl border border-border/70 bg-card/80 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                      <TerminalSquare className="h-4 w-4 text-muted-foreground" />
-                      Progress
-                    </p>
-                    {deployStartedAt ? (
-                      <span className="tabular-nums text-xs text-muted-foreground">
-                        {Math.floor(deployElapsedSeconds / 60)}:{String(deployElapsedSeconds % 60).padStart(2, '0')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2">
-                    <DeployTerminal lines={terminalLines} running={submitting || !tenantHasReadyGateway({ instance: runtimeSetupState ?? undefined })} />
-                  </div>
-                </section>
+              {hasDeployStarted ? (
+                <div className={cn('min-h-0 flex-1', deployStartedAt ? 'mt-2' : undefined)}>
+                  <DeployTerminal
+                    lines={terminalLines}
+                    running={submitting || !tenantHasReadyGateway({ instance: runtimeSetupState ?? undefined })}
+                  />
+                </div>
+              ) : null}
 
-              </div>
-            ) : null}
+              <ul
+                className={cn(
+                  'flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-muted-foreground',
+                  hasDeployStarted ? 'mt-4 border-t border-border/70 pt-4' : undefined,
+                )}
+              >
+                {onboardingChecks.map((check) => (
+                  <li key={check.label} className="flex items-center gap-2">
+                    {check.complete ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
+                    )}
+                    <span>{check.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
 
           <div className="mt-auto border-t border-border/70 pt-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="max-w-2xl flex-1 space-y-1">
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? (
+                  <>
+                    <p className="text-sm text-destructive">{error}</p>
+                    <p className="text-xs text-muted-foreground">
+                      If you are running into problems, you can contact us.
+                    </p>
+                  </>
+                ) : null}
                 {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
                 {!allChecksComplete ? <p className="text-xs text-muted-foreground">Complete checks.</p> : null}
               </div>

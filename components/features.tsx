@@ -49,12 +49,6 @@ type OpenClawResourceArticle = {
 
 const openClawResourceArticles: OpenClawResourceArticle[] = [
   {
-    title: "OpenClaw: The complete guide to building, training, and living with your personal AI agent",
-    description:
-      "I built a team of 9 AI agents that run my work and life. Here's how you can too.",
-    url: "https://www.lennysnewsletter.com/p/openclaw-the-complete-guide-to-building",
-  },
-  {
     title: "Full Tutorial: Use OpenClaw to Build a Business That Runs Itself | Nat Eliason",
     description:
       "How Nat set up his OpenClaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.",

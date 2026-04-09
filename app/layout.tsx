@@ -67,6 +67,9 @@ export const viewport: Viewport = {
   themeColor: '#ffffff',
 }
 
+const GOOGLE_TAG_ID = "GT-T5P2FWBK"
+const GOOGLE_ADS_ID = "AW-17277705517"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -76,14 +79,15 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <Script
-          src="https://www.googletagmanager.com/gtag/js?id=AW-17277705517"
+          src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_TAG_ID}`}
           strategy="afterInteractive"
         />
-        <Script id="google-ads-gtag" strategy="afterInteractive">
+        <Script id="google-gtag" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', 'AW-17277705517');`}
+gtag('config', '${GOOGLE_TAG_ID}');
+gtag('config', '${GOOGLE_ADS_ID}');`}
         </Script>
       </head>
       <body className="font-sans">

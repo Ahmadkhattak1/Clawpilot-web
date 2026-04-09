@@ -1,6 +1,6 @@
 import { Header } from "@/components/header"
 import { Hero } from "@/components/hero"
-import { SocialProof } from "@/components/social-proof"
+import { ProductShowcase } from "@/components/product-showcase"
 import { Features } from "@/components/features"
 import { LandingPagesHub } from "@/components/marketing/landing-pages-hub"
 import { HowItWorks } from "@/components/how-it-works"
@@ -15,7 +15,7 @@ export default function Home() {
       <SeoSchema />
       <Header />
       <Hero />
-      <SocialProof />
+      <ProductShowcase />
       <Features />
       <LandingPagesHub />
       <HowItWorks />

@@ -68,6 +68,7 @@ export const viewport: Viewport = {
 }
 
 const GOOGLE_TAG_ID = "GT-T5P2FWBK"
+const GOOGLE_ADS_ID = "AW-17277705517"
 
 export default function RootLayout({
   children,
@@ -85,7 +86,8 @@ export default function RootLayout({
           {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${GOOGLE_TAG_ID}');`}
+gtag('config', '${GOOGLE_TAG_ID}');
+gtag('config', '${GOOGLE_ADS_ID}');`}
         </Script>
       </head>
       <body className="font-sans">

@@ -2,146 +2,26 @@
 
 import { CheckCircle2, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-const STRIPE_CHECKOUT_SESSION_ID_TOKEN = '{CHECKOUT_SESSION_ID}'
-const STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY = 'clawpilot:last-stripe-checkout-session-id'
-const SUBSCRIBE_CONVERSION_SEND_TO = 'AW-17277705517/gXTcCJ6j2ZgcEK26065A'
-const SUBSCRIBE_CONVERSION_STORAGE_KEY_PREFIX = 'clawpilot:ads:subscribe-conversion:'
 const CONTINUE_PATH = '/dashboard/model'
 
-type TrackingState = 'tracking' | 'tracked' | 'pending'
-
-function normalizeCheckoutSessionId(value: string | null): string {
-  const decoded = decodeURIComponent((value ?? '').trim())
-  if (!decoded) {
-    return ''
-  }
-
-  if (
-    decoded === STRIPE_CHECKOUT_SESSION_ID_TOKEN ||
-    decoded.includes('CHECKOUT_SESSION_ID') ||
-    decoded.startsWith('{') ||
-    decoded.endsWith('}')
-  ) {
-    return ''
-  }
-
-  return decoded
-}
-
-function SubscriptionSuccessPageClient() {
+export default function SubscriptionSuccessPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const querySessionId = useMemo(
-    () => normalizeCheckoutSessionId(searchParams.get('session_id')),
-    [searchParams],
-  )
-  const [trackingState, setTrackingState] = useState<TrackingState>('tracking')
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    let cancelled = false
-    let redirected = false
-    let pollId: ReturnType<typeof setInterval> | null = null
-    let redirectTimeout: ReturnType<typeof setTimeout> | null = null
-
-    const storedSessionId = window.localStorage.getItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)?.trim() ?? ''
-    const checkoutSessionId = querySessionId || storedSessionId
-    const trackingKey = checkoutSessionId
-      ? `${SUBSCRIBE_CONVERSION_STORAGE_KEY_PREFIX}${checkoutSessionId}`
-      : ''
-    const conversionPayload: Record<string, string | number> = checkoutSessionId
-      ? {
-          send_to: SUBSCRIBE_CONVERSION_SEND_TO,
-          value: 1.0,
-          currency: 'PKR',
-          transaction_id: checkoutSessionId,
-        }
-      : {
-          send_to: SUBSCRIBE_CONVERSION_SEND_TO,
-          value: 1.0,
-          currency: 'PKR',
-        }
-
-    const finishRedirect = () => {
-      if (cancelled || redirected) {
-        return
-      }
-      redirected = true
+    const redirectTimeout = setTimeout(() => {
       router.replace(CONTINUE_PATH)
-    }
-
-    const fireConversion = (): boolean => {
-      if (typeof window.gtag !== 'function') {
-        return false
-      }
-
-      if (trackingKey && window.localStorage.getItem(trackingKey) === '1') {
-        setTrackingState('tracked')
-        finishRedirect()
-        return true
-      }
-
-      window.gtag('event', 'conversion', {
-        ...conversionPayload,
-        event_callback: finishRedirect,
-        event_timeout: 2000,
-      })
-
-      if (trackingKey) {
-        window.localStorage.setItem(trackingKey, '1')
-      }
-
-      setTrackingState('tracked')
-      return true
-    }
-
-    if (!checkoutSessionId) {
-      setTrackingState('pending')
-    } else if (!fireConversion()) {
-      let attempts = 0
-      pollId = setInterval(() => {
-        if (cancelled) {
-          return
-        }
-        attempts += 1
-        const fired = fireConversion()
-        if (fired || attempts >= 12) {
-          if (!fired && !cancelled) {
-            setTrackingState('pending')
-          }
-          if (pollId) {
-            clearInterval(pollId)
-            pollId = null
-          }
-        }
-      }, 250)
-    }
-
-    window.localStorage.removeItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)
-
-    redirectTimeout = setTimeout(() => {
-      finishRedirect()
-    }, 2_500)
+    }, 2_000)
 
     return () => {
-      cancelled = true
-      if (pollId) {
-        clearInterval(pollId)
-      }
-      if (redirectTimeout) {
-        clearTimeout(redirectTimeout)
-      }
+      clearTimeout(redirectTimeout)
     }
-  }, [querySessionId, router])
+  }, [router])
 
   return (
     <div className="relative grid min-h-[100dvh] w-full place-items-center overflow-hidden bg-background px-4 py-8">
@@ -160,15 +40,13 @@ function SubscriptionSuccessPageClient() {
             Subscription confirmed
           </CardTitle>
           <CardDescription>
-            {trackingState === 'tracked'
-              ? 'Your plan is active. Redirecting you to your workspace.'
-              : 'Finalizing confirmation. You will be redirected shortly.'}
+            Your plan is active. Redirecting you to your workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {trackingState === 'pending' ? 'Redirecting...' : 'Saving conversion...'}
+            Redirecting...
           </p>
           <Button asChild className="w-full">
             <Link href={CONTINUE_PATH}>Continue now</Link>
@@ -176,13 +54,5 @@ function SubscriptionSuccessPageClient() {
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-export default function SubscriptionSuccessPage() {
-  return (
-    <Suspense fallback={null}>
-      <SubscriptionSuccessPageClient />
-    </Suspense>
   )
 }

@@ -2,7 +2,6 @@ import React from "react"
 import Script from "next/script"
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
-import { Analytics as GAAnalytics } from "@/components/analytics"
 import { ThemeProvider } from "@/components/theme-provider"
 import { seoKeywords, siteName, siteUrl } from "@/lib/site"
 
@@ -68,7 +67,6 @@ export const viewport: Viewport = {
 }
 
 const GOOGLE_TAG_ID = "GT-T5P2FWBK"
-const GOOGLE_ADS_ID = "AW-17277705517"
 
 export default function RootLayout({
   children,
@@ -86,8 +84,7 @@ export default function RootLayout({
           {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${GOOGLE_TAG_ID}');
-gtag('config', '${GOOGLE_ADS_ID}');`}
+gtag('config', '${GOOGLE_TAG_ID}');`}
         </Script>
       </head>
       <body className="font-sans">
@@ -95,7 +92,6 @@ gtag('config', '${GOOGLE_ADS_ID}');`}
           {children}
         </ThemeProvider>
         <VercelAnalytics />
-        <GAAnalytics />
       </body>
     </html>
   )

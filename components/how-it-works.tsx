@@ -1,3 +1,6 @@
+import Link from "next/link"
+import { ArrowRight } from "lucide-react"
+
 import {
   ClawContainer,
   ClawSection,
@@ -52,6 +55,16 @@ export function HowItWorks() {
         <p className="mt-8 text-center text-sm text-muted-foreground">
           No Docker. No terminal. No DevOps experience needed.
         </p>
+
+        <div className="mt-4 flex justify-center">
+          <Link
+            href="#get-started"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-foreground/75"
+          >
+            Start with Google
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </ClawContainer>
     </ClawSection>
   )

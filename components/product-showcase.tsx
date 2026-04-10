@@ -1,5 +1,6 @@
+import Link from "next/link"
 import Image from "next/image"
-import { PlugZap, Star, Users } from "lucide-react"
+import { ArrowRight, PlugZap, Star, Users } from "lucide-react"
 
 import {
   ClawContainer,
@@ -8,7 +9,7 @@ import {
 } from "@/components/ui/clawpilot"
 
 const socialProofStats = [
-  { label: "GitHub stars", value: "191K+", icon: Star },
+  { label: "GitHub stars", value: "354K+", icon: Star },
   { label: "contributors", value: "900+", icon: Users },
   { label: "integrations", value: "50+", icon: PlugZap },
 ]
@@ -84,6 +85,14 @@ export function ProductShowcase() {
           OpenClaw is one of the fastest-growing open-source AI projects in the world.
           ClawPilot lets you run it without touching a terminal.
         </p>
+
+        <Link
+          href="#get-started"
+          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-foreground/75"
+        >
+          Launch your own
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </ClawContainer>
     </ClawSection>
   )

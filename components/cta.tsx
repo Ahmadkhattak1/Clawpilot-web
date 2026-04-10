@@ -71,7 +71,7 @@ export function CTA() {
   }, [])
 
   return (
-    <ClawSection>
+    <ClawSection id="get-started">
       <ClawContainer size="sm">
         <ClawSectionIntro
           description="Your private instance is a few clicks away. Cancel anytime."

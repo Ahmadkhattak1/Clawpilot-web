@@ -1,3 +1,6 @@
+import Link from "next/link"
+import { ArrowRight } from "lucide-react"
+
 import { faqItems } from "./faq-data"
 import { siteUrl } from "@/lib/site"
 import {
@@ -42,6 +45,16 @@ export function FAQ() {
               <p className="type-body-sm">{item.answer}</p>
             </ClawSurface>
           ))}
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <Link
+            href="#get-started"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-foreground/75"
+          >
+            Ready to try it?
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </ClawContainer>
     </ClawSection>

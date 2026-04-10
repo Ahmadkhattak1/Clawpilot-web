@@ -15,6 +15,776 @@ export type BlogPost = {
 
 const blogPosts: BlogPost[] = [
   {
+    slug: "how-to-uninstall-openclaw-cleanly-on-windows",
+    title: "How to Uninstall OpenClaw Cleanly on Windows",
+    description:
+      "A practical Windows guide to uninstalling OpenClaw locally, including the built-in automatic path, the fully manual cleanup path, and what to remove if you used profiles or a source checkout.",
+    publishedAt: "2026-04-10",
+    readMinutes: 9,
+    primaryKeyword: "uninstall openclaw windows",
+    content: `
+## When you want a truly clean uninstall
+
+Uninstalling OpenClaw on Windows is not hard, but there is one detail that matters:
+
+The built-in uninstaller removes the **Gateway service**, local **state**, and your local **workspace**, but if you want a fully clean machine, you should also remove the **CLI install** you used.
+
+That is the part many people miss.
+
+If you installed OpenClaw locally on Windows, there are really two ways to remove it:
+
+- the **auto way**, using OpenClaw's built-in uninstaller
+- the **manual way**, where you remove the scheduled task, state directory, workspace, config, and CLI yourself
+
+This guide covers both.
+
+## Before you start
+
+This post is for **native Windows PowerShell installs**.
+
+If you installed OpenClaw inside **WSL2**, uninstall it **inside WSL**, using the Linux uninstall path from the OpenClaw docs rather than the Windows Scheduled Task path.
+
+It also helps to know how you originally installed OpenClaw:
+
+- via the official \`install.ps1\` script
+- via \`npm install -g openclaw@latest\`
+- via \`pnpm\` or \`bun\`
+- from a **git clone / source checkout**
+
+That affects the final cleanup step.
+
+## The auto way: easiest local uninstall
+
+If the \`openclaw\` CLI still works on your machine, the official docs recommend the built-in uninstaller first:
+
+\`\`\`powershell
+openclaw uninstall
+\`\`\`
+
+That is the easiest path for most people.
+
+If you want the same thing in a fully non-interactive form, the official docs give:
+
+\`\`\`powershell
+openclaw uninstall --all --yes --non-interactive
+\`\`\`
+
+And if the global CLI is broken but Node/npm still works, OpenClaw also supports:
+
+\`\`\`powershell
+npx -y openclaw uninstall --all --yes --non-interactive
+\`\`\`
+
+## What the auto uninstaller actually removes
+
+According to the official uninstall docs, the easy path is intended to remove:
+
+- the running Gateway service
+- the installed Gateway service wrapper
+- the OpenClaw state directory
+- the local workspace directory
+
+That means it handles most local cleanup for you.
+
+What it does **not** automatically guarantee is removal of the package manager install you originally used for the CLI. So if your goal is a really clean uninstall, do the auto path first, then remove the CLI too.
+
+## The cleanest auto uninstall flow on Windows
+
+If you want the shortest "clean uninstall" sequence on a Windows machine, use this order:
+
+### 1) Run the built-in uninstaller
+
+\`\`\`powershell
+openclaw uninstall --all --yes --non-interactive
+\`\`\`
+
+### 2) Remove the CLI package
+
+If you installed with npm:
+
+\`\`\`powershell
+npm rm -g openclaw
+\`\`\`
+
+If you installed with pnpm:
+
+\`\`\`powershell
+pnpm remove -g openclaw
+\`\`\`
+
+If you installed with bun:
+
+\`\`\`powershell
+bun remove -g openclaw
+\`\`\`
+
+At that point, most local Windows installs are fully removed.
+
+## The manual way: remove OpenClaw step by step
+
+The manual path is useful in three situations:
+
+- you want to verify every piece yourself
+- the \`openclaw\` command is no longer available
+- the Gateway keeps coming back because the Windows task was not removed cleanly
+
+Below is the practical Windows version of the official uninstall logic.
+
+## Step 1: stop the Gateway if the CLI still exists
+
+If the CLI is still installed, stop the Gateway cleanly first:
+
+\`\`\`powershell
+openclaw gateway stop
+\`\`\`
+
+Then uninstall the Gateway service:
+
+\`\`\`powershell
+openclaw gateway uninstall
+\`\`\`
+
+If those commands work, you are already most of the way there.
+
+## Step 2: remove the Windows Scheduled Task
+
+If the CLI is gone, or you want to verify the service is really removed, use the Windows Scheduled Task cleanup path from the official docs.
+
+The default task name is:
+
+- \`OpenClaw Gateway\`
+
+If you used a profile, the task is usually:
+
+- \`OpenClaw Gateway (<profile>)\`
+
+To delete the default task:
+
+\`\`\`powershell
+schtasks /Delete /F /TN "OpenClaw Gateway"
+\`\`\`
+
+If you used a profile, replace the task name with the matching profile task.
+
+This is the most important manual cleanup step on Windows because it stops OpenClaw from reappearing on login.
+
+## Step 3: remove the task script from your state directory
+
+The official docs say the Windows task script lives under your state directory.
+
+For the default local install, remove:
+
+\`\`\`powershell
+Remove-Item -Force "$env:USERPROFILE\.openclaw\gateway.cmd"
+\`\`\`
+
+If you used a profile, remove the matching script instead:
+
+\`\`\`powershell
+Remove-Item -Force "$env:USERPROFILE\.openclaw-<profile>\gateway.cmd"
+\`\`\`
+
+## Step 4: delete the local state directory
+
+The official uninstall docs say the default state directory is under your user profile.
+
+For the default local install:
+
+\`\`\`powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.openclaw"
+\`\`\`
+
+If you used profiles, remove those directories too:
+
+\`\`\`powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.openclaw-<profile>"
+\`\`\`
+
+If you set \`OPENCLAW_STATE_DIR\` yourself, remove that custom location instead of the default one.
+
+## Step 5: remove any custom config outside the state folder
+
+The official docs make one important note here: if you used \`OPENCLAW_CONFIG_PATH\` and pointed it somewhere **outside** the default state directory, you should delete that file too.
+
+For example:
+
+\`\`\`powershell
+Remove-Item -Force "C:\\path\\to\\your\\custom-openclaw.json"
+\`\`\`
+
+You only need this step if you explicitly customized the config path.
+
+## Step 6: remove the workspace if you want all local agent files gone
+
+If your goal is not just disabling OpenClaw, but removing all local agent files and project context, remove the workspace too.
+
+For the default local setup:
+
+\`\`\`powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.openclaw\workspace"
+\`\`\`
+
+In many installs this workspace sits under the main state directory, so removing the whole \`.openclaw\` folder already removes it. But it is worth calling out separately because the official docs list workspace removal as an explicit step.
+
+## Step 7: remove the CLI package
+
+If you installed OpenClaw using a package manager, remove the CLI itself too.
+
+For npm:
+
+\`\`\`powershell
+npm rm -g openclaw
+\`\`\`
+
+For pnpm:
+
+\`\`\`powershell
+pnpm remove -g openclaw
+\`\`\`
+
+For bun:
+
+\`\`\`powershell
+bun remove -g openclaw
+\`\`\`
+
+This is what makes the uninstall feel complete on a local machine.
+
+## Step 8: if you installed from source, delete the repo too
+
+If you ran OpenClaw from a **git clone** or source checkout, the official docs say you should:
+
+1. uninstall the Gateway service first
+2. remove state and workspace
+3. delete the repo directory
+
+So after service cleanup, just remove the source folder you cloned locally.
+
+## A practical full manual cleanup sequence
+
+If you want one straightforward Windows cleanup flow, this is the safest general version:
+
+\`\`\`powershell
+openclaw gateway stop
+openclaw gateway uninstall
+schtasks /Delete /F /TN "OpenClaw Gateway"
+Remove-Item -Force "$env:USERPROFILE\.openclaw\gateway.cmd"
+Remove-Item -Recurse -Force "$env:USERPROFILE\.openclaw"
+npm rm -g openclaw
+\`\`\`
+
+If the CLI is already missing, skip the \`openclaw ...\` lines and just run the Scheduled Task and filesystem cleanup directly.
+
+## How to verify OpenClaw is really gone
+
+After uninstalling, these quick checks help:
+
+### Check that the task is gone
+
+\`\`\`powershell
+schtasks /Query /TN "OpenClaw Gateway"
+\`\`\`
+
+If Windows reports it cannot find the task, that is what you want.
+
+### Check that the state folder is gone
+
+\`\`\`powershell
+Test-Path "$env:USERPROFILE\.openclaw"
+\`\`\`
+
+This should return \`False\` for the default setup.
+
+### Check whether the CLI is still installed
+
+\`\`\`powershell
+openclaw --version
+\`\`\`
+
+If PowerShell no longer recognizes the command, the CLI is gone too.
+
+## Common cleanup mistakes
+
+The most common uninstall mistakes on Windows are:
+
+- removing the package but leaving the Scheduled Task behind
+- deleting \`.openclaw\` but forgetting a custom config path
+- forgetting profile-specific directories like \`.openclaw-work\`
+- deleting the repo checkout before uninstalling the Gateway service
+
+If you avoid those, the uninstall is usually clean.
+
+## Final takeaway
+
+If the CLI still works, the best local Windows uninstall path is:
+
+\`\`\`powershell
+openclaw uninstall --all --yes --non-interactive
+npm rm -g openclaw
+\`\`\`
+
+If the CLI is already gone or the Gateway keeps showing up, use the manual path: remove the Scheduled Task, delete \`gateway.cmd\`, delete the state directory, remove any custom config, and then remove the CLI or repo checkout if it still exists.
+
+That gives you a truly clean local uninstall.
+
+## Helpful references
+
+- [OpenClaw uninstall docs](https://docs.openclaw.ai/install/uninstall)
+- [OpenClaw installer internals](https://docs.openclaw.ai/install/installer)
+`,
+  },
+  {
+    slug: "how-to-install-openclaw-locally",
+    title: "How to Install OpenClaw Locally: Step-by-Step Setup Guide",
+    description:
+      "A practical guide to installing OpenClaw locally, choosing the minimum provider credentials you need, and setting up Telegram, WhatsApp, Discord, or Slack only when you are ready.",
+    publishedAt: "2026-04-10",
+    readMinutes: 11,
+    primaryKeyword: "install openclaw locally",
+    content: `
+## The fastest way to get OpenClaw running
+
+If your goal is simply to try OpenClaw on your own machine, the setup is much lighter than many people expect.
+
+You do **not** need every channel, every integration, or a pile of API keys just to get started.
+
+The minimum working local setup is:
+
+- OpenClaw installed on your machine
+- one model provider credential
+- the local Gateway running
+- the browser dashboard for your first chat
+
+That means you can get OpenClaw working locally before you touch Telegram, Discord, Slack, or WhatsApp.
+
+## What you actually need
+
+According to the official getting-started docs, the current baseline is:
+
+- **Node 24 recommended** or **Node 22.14+ supported**
+- **macOS, Linux, Windows, or WSL2**
+- **one model provider credential**
+
+The docs also note that **WSL2 is more stable and recommended** if you are on Windows and want the full experience.
+
+The important part is the credential requirement. To run OpenClaw in the usual way, you need **one** working model/auth option, not all of them.
+
+In practice, the easiest choices are:
+
+- **OpenAI API key**
+- **Anthropic API key**
+- **OpenAI Codex sign-in** if you want subscription/OAuth-style access instead of a normal API key
+
+The official FAQ also says OpenClaw can run with **local-only models**, but if you want the smoothest first install, starting with one hosted provider is the simpler path.
+
+## Option 1: easiest install path
+
+The official docs recommend the installer script first.
+
+For **macOS, Linux, or WSL2**:
+
+\`\`\`bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+\`\`\`
+
+For **Windows PowerShell**:
+
+\`\`\`powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+\`\`\`
+
+That installer detects your OS, installs Node if needed, installs OpenClaw, and can launch onboarding.
+
+If you already manage Node yourself, the docs also support direct global install:
+
+\`\`\`bash
+npm install -g openclaw@latest
+openclaw onboard --install-daemon
+\`\`\`
+
+If you prefer to keep everything under a local prefix such as \`~/.openclaw\`, the official local-prefix installer is:
+
+\`\`\`bash
+curl -fsSL https://openclaw.ai/install-cli.sh | bash
+\`\`\`
+
+## Step 2: run onboarding
+
+Once OpenClaw is installed, the next command is the real start of setup:
+
+\`\`\`bash
+openclaw onboard --install-daemon
+\`\`\`
+
+This guided flow walks you through:
+
+- choosing a model provider
+- adding the credential for that provider
+- configuring the local Gateway
+- setting up the default local runtime
+
+The official docs describe this as the recommended way to configure a local Gateway on macOS, Linux, or Windows.
+
+## Step 3: choose the minimum credential you need
+
+This is where a lot of first-time users overcomplicate things.
+
+You only need **one** usable model/auth path to start chatting with OpenClaw locally.
+
+### OpenAI API key
+
+If you want the most straightforward hosted API setup, OpenAI is one of the simplest options.
+
+The official OpenClaw provider docs say to get your key from the **OpenAI dashboard** and then run:
+
+\`\`\`bash
+openclaw onboard --auth-choice openai-api-key
+\`\`\`
+
+Or, if you already exported the key:
+
+\`\`\`bash
+openclaw onboard --openai-api-key "$OPENAI_API_KEY"
+\`\`\`
+
+This is the best fit if you want a normal usage-based API workflow.
+
+### Anthropic API key
+
+Anthropic is another common starting point. The official OpenClaw Anthropic docs say new setup should use an **Anthropic API key** from the **Anthropic Console**.
+
+During onboarding, choose the Anthropic API-key option, or run:
+
+\`\`\`bash
+openclaw onboard --auth-choice anthropic-api-key
+\`\`\`
+
+The OpenClaw docs explicitly say the clearest billing path is to use an **Anthropic API key** instead of relying on Claude subscription auth inside OpenClaw.
+
+### OpenAI Codex sign-in
+
+If you prefer subscription-style auth instead of a normal API key, OpenClaw also supports **OpenAI Codex** sign-in.
+
+The official provider docs show:
+
+\`\`\`bash
+openclaw onboard --auth-choice openai-codex
+\`\`\`
+
+Or:
+
+\`\`\`bash
+openclaw models auth login --provider openai-codex
+\`\`\`
+
+This is useful if you already use Codex and want OpenClaw to authenticate through that path.
+
+## Step 4: verify the local install
+
+After onboarding, verify that the Gateway is actually running:
+
+\`\`\`bash
+openclaw gateway status
+\`\`\`
+
+The official getting-started guide says you should see the Gateway listening on **port 18789**.
+
+Then open the dashboard:
+
+\`\`\`bash
+openclaw dashboard
+\`\`\`
+
+This is the fastest first chat because it does **not** require any messaging channel setup at all. If the dashboard loads and you can send a message, your local install is working.
+
+## The real minimum setup, summarized
+
+If you want the shortest path from zero to a working local OpenClaw instance, do this:
+
+1. install OpenClaw
+2. run \`openclaw onboard --install-daemon\`
+3. choose **one** model provider auth option
+4. confirm \`openclaw gateway status\`
+5. open \`openclaw dashboard\`
+
+That is enough for a real local setup.
+
+## Optional: add a phone or chat channel later
+
+Once the dashboard works, you can decide whether you want to talk to OpenClaw through a messaging surface.
+
+This is where extra credentials may be needed.
+
+## Telegram: easiest chat-channel setup
+
+The official getting-started guide calls Telegram the fastest channel to set up because it only needs a **bot token**.
+
+The official Telegram docs say the flow is:
+
+1. message **@BotFather**
+2. run **/newbot**
+3. copy the token
+4. store it as \`TELEGRAM_BOT_TOKEN\` or in config
+5. start the Gateway
+6. approve the first pairing request
+
+Minimal runtime commands from the docs:
+
+\`\`\`bash
+openclaw gateway
+openclaw pairing list telegram
+openclaw pairing approve telegram <CODE>
+\`\`\`
+
+Telegram is a very good first channel because it is simple and low-friction.
+
+## WhatsApp: no API key, but you do need a login session
+
+WhatsApp is different. The built-in OpenClaw flow does **not** require a separate API key, but it does require linking a WhatsApp account.
+
+The official docs show the quick setup like this:
+
+\`\`\`bash
+openclaw channels login --channel whatsapp
+openclaw gateway
+\`\`\`
+
+If you use the default pairing mode, you may also need to approve the first request:
+
+\`\`\`bash
+openclaw pairing list whatsapp
+openclaw pairing approve whatsapp <CODE>
+\`\`\`
+
+So the short version is: **Telegram needs a bot token, WhatsApp needs a linked session**.
+
+## Discord: one bot token plus bot setup
+
+Discord is still very manageable, but it is not as light as Telegram.
+
+The official Discord docs say you need to:
+
+1. create a bot in the **Discord Developer Portal**
+2. copy the **bot token**
+3. enable **Message Content Intent**
+4. optionally enable **Server Members Intent** if you want allowlists or name lookups
+5. invite the bot to your server
+6. start the Gateway
+7. approve first DM pairing
+
+OpenClaw supports env fallback with:
+
+\`\`\`bash
+export DISCORD_BOT_TOKEN="YOUR_BOT_TOKEN"
+openclaw gateway
+\`\`\`
+
+Discord is a good choice if you want OpenClaw inside a private server or DM flow.
+
+## Slack: useful, but not the minimum path
+
+Slack works well, but it is not the easiest first-time setup.
+
+The official Slack docs say:
+
+- **Socket Mode** requires **botToken + appToken**
+- **HTTP mode** requires **botToken + signingSecret**
+
+So Slack is usually something to add after your local base install already works.
+
+If your goal is simply to get OpenClaw running, start with the dashboard, Telegram, or WhatsApp before you touch Slack.
+
+## Common mistakes first-time users make
+
+The biggest setup mistake is trying to configure everything at once.
+
+A better sequence is:
+
+1. get the dashboard working locally
+2. confirm one provider credential works
+3. add one channel
+4. only then layer in more integrations
+
+Another common problem is forgetting that the Gateway process needs access to your provider credential. The OpenClaw docs repeatedly point out that env-backed keys need to be available to the process actually running the Gateway.
+
+## When local install is the right choice
+
+Local OpenClaw setup makes sense if you want:
+
+- full control over the runtime
+- a private machine-owned setup
+- the simplest way to learn how OpenClaw actually works
+- room to customize later
+
+It is especially good for testing, personal use, and early experimentation.
+
+## When ClawPilot is the better move
+
+Local install is great when you want to learn and experiment. But once you move from "I want to try this" to "I want this running reliably," the operational work starts showing up.
+
+You have to think about:
+
+- keeping the Gateway healthy
+- managing updates
+- storing secrets safely
+- keeping channels connected
+- handling the rough edges when something breaks
+
+That is exactly where **ClawPilot** fits.
+
+If you want the OpenClaw experience without owning every part of setup, hosting, and maintenance yourself, ClawPilot is the simpler path. You still get the power of OpenClaw, but you skip a lot of the repetitive infrastructure and support work that comes after the first successful install.
+
+So the practical advice is:
+
+- install OpenClaw locally if you want to learn, test, or self-manage
+- use **ClawPilot** if you want to get to reliable usage faster
+
+## FAQ
+
+### What is the minimum API setup for OpenClaw?
+
+The minimum usual setup is **one model provider credential**, such as an OpenAI API key or an Anthropic API key. You do not need every provider.
+
+### Can I use OpenClaw without Telegram, Discord, or Slack?
+
+Yes. The fastest first chat is through \`openclaw dashboard\`, which does not require a messaging channel.
+
+### Which channel is easiest to add first?
+
+According to the official docs, **Telegram** is the fastest channel to set up because it only needs a bot token.
+
+### Does WhatsApp require an API key?
+
+Not in the normal built-in OpenClaw setup. WhatsApp uses a linked session flow instead of a traditional API key.
+
+## Helpful references
+
+- [Install OpenClaw](https://docs.openclaw.ai/install)
+- [OpenClaw Getting Started](https://docs.openclaw.ai/start/getting-started)
+- [OpenClaw Onboarding](https://docs.openclaw.ai/start/wizard)
+- [OpenAI provider docs](https://docs.openclaw.ai/providers/openai)
+- [Anthropic provider docs](https://docs.openclaw.ai/providers/anthropic)
+- [Telegram channel docs](https://docs.openclaw.ai/channels/telegram)
+- [Discord channel docs](https://docs.openclaw.ai/channels/discord)
+- [Slack channel docs](https://docs.openclaw.ai/channels/slack)
+- [WhatsApp channel docs](https://docs.openclaw.ai/channels/whatsapp)
+`,
+  },
+  {
+    slug: "what-is-openclaw-beginner-guide",
+    title: "What Is OpenClaw? A Beginner-Friendly Guide to the AI Lobster Everyone Talks About",
+    description:
+      "A simple guide to what OpenClaw is, who made it, how it started, and why it became one of the fastest-moving open source AI projects in early 2026.",
+    publishedAt: "2026-04-10",
+    readMinutes: 9,
+    primaryKeyword: "what is openclaw",
+    content: `
+## What OpenClaw is
+
+If you are hearing about it for the first time, **OpenClaw** is an open source personal AI assistant built to do more than reply to prompts. It is designed to stay connected to your tools, hold onto context, and help with real tasks instead of only generating text.
+
+That is why people often describe it as feeling less like a chatbot and more like a digital teammate. It can live on your machine, work through chat apps you already use, remember ongoing context, browse the web, work with files, run commands, and expand through skills and plugins.
+
+For a beginner, the simplest summary is this: OpenClaw tries to make AI useful in the flow of everyday work.
+
+## Why it feels different from a normal AI tool
+
+A lot of AI products still feel like places you visit. You open a tab, ask a question, get an answer, and leave.
+
+OpenClaw pushes in a different direction. The official site presents it as a personal AI assistant that runs across platforms and connects with many tools. That changes the feeling of the product. Instead of being trapped inside one interface, it is meant to operate in your own environment.
+
+In practice, that means OpenClaw can help through familiar channels and systems, including:
+
+- chat apps like WhatsApp, Telegram, Discord, Slack, and Signal
+- memory and ongoing context across conversations
+- browsing, file work, and shell actions
+- skills and plugins that extend what it can do
+- dozens of external integrations
+
+That combination is what made so many people stop and pay attention.
+
+## The story behind OpenClaw
+
+Part of OpenClaw's appeal is that it did not arrive as a polished corporate product. It grew in public, moved quickly, and built a strange but memorable identity around a lobster assistant.
+
+The project was created by **Peter Steinberger**, who later described it as a playground project that ended up creating much bigger waves than he expected. From the beginning, OpenClaw mixed serious agent capability with humor, personality, and community energy. That gave the project a style people actually remembered.
+
+It also was not always called OpenClaw. According to the official project lore, the assistant first appeared as **Clawd** inside **Clawdbot** in late November 2025. In **January 2026**, after a trademark-related rename, the project briefly became **Moltbot**, and the assistant identity evolved into **Molty**, the now-famous space lobster. Then, on **January 30, 2026**, the project officially became **OpenClaw**.
+
+That rename could have slowed things down, but it ended up adding to the story. The official lore describes a rushed migration where the repository, docs, packages, and branding were all moved over in just a few hours.
+
+## So who made it?
+
+The clearest answer is that Peter Steinberger created OpenClaw, and the community helped turn it into something much larger.
+
+The official site describes OpenClaw as built by Molty, "a space lobster AI with a soul," by Peter Steinberger and the community. It sounds playful, but it points to something real. OpenClaw is no longer just one person's repo. It became an open source ecosystem shaped by contributors, users, skill creators, and builders who kept pushing it forward.
+
+## Why OpenClaw spread so fast
+
+OpenClaw landed at a moment when people were already excited about AI, but were also starting to feel the limits of tools that mostly talked about what they could do.
+
+What made OpenClaw stand out was that it made the promise feel concrete. It gave people a glimpse of an assistant that could stay connected to context, work through normal communication channels, and take action in real systems instead of living only inside a prompt box.
+
+That made it feel less like another AI demo and more like an early version of a future product category.
+
+## Achievements and milestones
+
+The easiest way to understand OpenClaw's momentum is to look at the public numbers and milestones.
+
+As of **April 10, 2026**:
+
+- the OpenClaw GitHub repository showed **353,822 stars** and **71,482 forks**
+- the official site listed **50+ integrations**
+- the project was featured by **MacStories** and **StarryHope**
+- the site listed sponsors including **OpenAI, GitHub, NVIDIA, Vercel, Blacksmith, and Convex**
+
+There are also smaller moments that show how intense the growth was. The official lore says the **January 30, 2026** rename announcement generated **200K+ views in 90 minutes**. Then, on **February 14, 2026**, Peter wrote that OpenClaw would move to a **foundation** and remain **open and independent** even as he joined OpenAI.
+
+For something that started as a playground experiment, that is a remarkable rise in a short amount of time.
+
+## Why beginners should care
+
+You do not need to be deeply technical to understand why OpenClaw matters. The larger idea is simple: AI becomes much more useful when it can remember, connect, and act.
+
+For developers, that means automation, integrations, and custom workflows. For everyone else, it points to a future where an assistant can help with inboxes, scheduling, research, follow-ups, and digital tasks inside tools you already know how to use.
+
+That is why OpenClaw matters beyond the hype. It helped many people imagine AI not just as something you ask, but as something that can stay present and be genuinely useful.
+
+## Final thoughts
+
+So what is OpenClaw?
+
+It is an open source personal AI assistant project created by **Peter Steinberger** and expanded by a fast-moving community. More importantly, it represents a shift in how people think about AI. Instead of treating AI as something that only responds, OpenClaw pushes toward AI that can stay present, use tools, and get real work done.
+
+Its story is part of what makes it memorable. Its growth is part of what makes it important. And its success suggests that people are not only looking for smarter chatbots anymore. They are looking for assistants that can actually live in their world.
+
+## FAQ
+
+### Is OpenClaw open source?
+
+Yes. OpenClaw is presented as an open source project on both its official site and its GitHub repository.
+
+### Was OpenClaw always called OpenClaw?
+
+No. Before becoming OpenClaw on January 30, 2026, the project was previously known as Clawdbot and later Moltbot.
+
+### Who is Molty?
+
+Molty is the lobster assistant identity and mascot that became central to the project's culture and public story.
+
+### Is OpenClaw affiliated with Anthropic?
+
+No. The official site says OpenClaw is an independent project and is not affiliated with Anthropic.
+
+## Sources
+
+- [OpenClaw official site](https://openclaw.ai/)
+- [OpenClaw lore and project history](https://docs.openclaw.ai/start/lore)
+- [Peter Steinberger on OpenClaw's future](https://steipete.me/posts/2026/openclaw)
+- [OpenClaw GitHub repository](https://github.com/openclaw/openclaw)
+`,
+  },
+  {
     slug: "what-is-openclaw-hosting-2026",
     title: "What Is OpenClaw Hosting? (2026 Guide for Business Teams)",
     description:

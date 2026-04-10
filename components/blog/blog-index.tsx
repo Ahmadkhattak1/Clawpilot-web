@@ -28,7 +28,7 @@ export function BlogIndex({ posts }: BlogIndexProps) {
             <article key={post.slug} className="rounded-2xl border border-border/70 bg-card/80 p-6">
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground/75">
                 <span>{formatDate(post.publishedAt)}</span>
-                <span>•</span>
+                <span>/</span>
                 <span>{post.readMinutes} min read</span>
               </div>
 
@@ -38,8 +38,8 @@ export function BlogIndex({ posts }: BlogIndexProps) {
                 </Link>
               </h2>
 
-              <p className="mt-3 text-sm text-muted-foreground">{post.description}</p>
-              <p className="mt-4 text-xs uppercase tracking-wider text-muted-foreground/75">{post.primaryKeyword}</p>
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">{post.description}</p>
+              <p className="mt-4 text-xs uppercase tracking-[0.16em] text-muted-foreground/65">{post.primaryKeyword}</p>
             </article>
           ))}
         </div>

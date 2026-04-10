@@ -18,15 +18,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  AVAILABLE_MODEL_PROVIDER_OPTIONS,
+  HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS,
   fromOpenClawModelId,
   fromOpenClawProviderId,
   getProviderModelOptions,
-  isModelSupportedByProvider,
   isModelSupportedByProviderSetupMethod,
   toOpenClawProviderId,
   type ModelProviderId,
   type ModelProviderOption,
+  type ProviderModelOption,
 } from '@/lib/model-providers'
 import {
   MODEL_PROVIDER_AUTH_CONFIG,
@@ -37,6 +37,7 @@ import {
   listRuntimeModels,
   startRuntimeOpenAICodexOAuth,
   updateRuntimeModelConfig,
+  type RuntimeModelSummary,
   type RuntimeModelsData,
 } from '@/lib/runtime-controls'
 import { cn } from '@/lib/utils'
@@ -57,7 +58,7 @@ interface DialogModelConfig {
 }
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
-  AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
+  HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
 )
 
 function isEnabledModelProviderId(value: string | null): value is ModelProviderId {
@@ -123,6 +124,38 @@ function getSupportedMethods(
   ))
 }
 
+function getRuntimeProviderModelOptions(
+  providerId: ModelProviderId | null,
+  runtimeModels: RuntimeModelSummary[],
+): ProviderModelOption[] {
+  if (!providerId) return []
+
+  const discoveredModels = runtimeModels
+    .filter((model) => {
+      const normalizedProviderId = fromOpenClawProviderId(model.providerId)
+        ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      return normalizedProviderId === providerId
+    })
+    .map((model) => ({
+      id: fromOpenClawModelId(model.id) ?? model.id,
+      label: model.label?.trim() || (fromOpenClawModelId(model.id) ?? model.id),
+      summary: 'Available in the hosted OpenClaw runtime catalog.',
+      supportedMethods: undefined,
+    }))
+
+  const fallbackModels = getProviderModelOptions(providerId)
+  const mergedModels = [...discoveredModels, ...fallbackModels]
+  const seen = new Set<string>()
+
+  return mergedModels.filter((model) => {
+    if (seen.has(model.id)) {
+      return false
+    }
+    seen.add(model.id)
+    return true
+  })
+}
+
 function inferProviderIdFromModelId(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   const normalized = modelId.trim().toLowerCase()
@@ -144,15 +177,6 @@ function toDialogModelConfig(
   if (!isEnabledModelProviderId(providerId)) {
     return {
       providerId: null,
-      modelId: null,
-      authMethod: null,
-      oauthConnected: false,
-    }
-  }
-
-  if (!isModelSupportedByProvider(providerId, modelId)) {
-    return {
-      providerId,
       modelId: null,
       authMethod: null,
       oauthConnected: false,
@@ -219,6 +243,7 @@ export function RuntimeModelsDialog({
     authMethod: null,
     oauthConnected: false,
   })
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelSummary[]>([])
   const [selectedProviderId, setSelectedProviderId] = useState<ModelProviderId | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedAuthMethod, setSelectedAuthMethod] = useState<ProviderSetupMethod | null>(null)
@@ -235,8 +260,8 @@ export function RuntimeModelsDialog({
   const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
 
   const selectedProviderModels = useMemo(
-    () => getProviderModelOptions(selectedProviderId),
-    [selectedProviderId],
+    () => getRuntimeProviderModelOptions(selectedProviderId, runtimeModels),
+    [runtimeModels, selectedProviderId],
   )
   const supportedMethods = useMemo(
     () => getSupportedMethods(selectedProviderId, selectedModelId),
@@ -265,13 +290,14 @@ export function RuntimeModelsDialog({
 
     try {
       const runtimeModels = await listRuntimeModels(tenantId, {
-        includeModels: false,
         syncRuntime: true,
       })
+      setRuntimeModels(runtimeModels.models)
       const nextConfig = toDialogModelConfig(runtimeModels.storedModelConfig)
       const fallbackProviderId = nextConfig.providerId
       const fallbackModelId = nextConfig.modelId
-        ?? (fallbackProviderId ? getProviderModelOptions(fallbackProviderId)[0]?.id ?? null : null)
+        ?? getRuntimeProviderModelOptions(fallbackProviderId, runtimeModels.models)[0]?.id
+        ?? null
       const fallbackAuthMethod = (
         nextConfig.authMethod
         && getSupportedMethods(fallbackProviderId, fallbackModelId).includes(nextConfig.authMethod)
@@ -308,8 +334,8 @@ export function RuntimeModelsDialog({
       return
     }
 
-    if (!selectedModelId || !isModelSupportedByProvider(selectedProviderId, selectedModelId)) {
-      const firstModelId = getProviderModelOptions(selectedProviderId)[0]?.id ?? null
+    if (!selectedModelId || !selectedProviderModels.some((model) => model.id === selectedModelId)) {
+      const firstModelId = selectedProviderModels[0]?.id ?? null
       setSelectedModelId(firstModelId)
       return
     }
@@ -322,7 +348,7 @@ export function RuntimeModelsDialog({
     if (!selectedAuthMethod || !supportedMethods.includes(selectedAuthMethod)) {
       setSelectedAuthMethod(supportedMethods[0] ?? null)
     }
-  }, [selectedAuthMethod, selectedModelId, selectedProviderId, supportedMethods])
+  }, [selectedAuthMethod, selectedModelId, selectedProviderId, selectedProviderModels, supportedMethods])
 
   useEffect(() => {
     if (!open || !oauthExpiresAt) {
@@ -337,16 +363,17 @@ export function RuntimeModelsDialog({
   const handleProviderSelect = useCallback((providerId: ModelProviderId) => {
     setSelectedProviderId(providerId)
     setSelectedModelId((previous) => {
-      if (isModelSupportedByProvider(providerId, previous)) {
+      const providerModels = getRuntimeProviderModelOptions(providerId, runtimeModels)
+      if (providerModels.some((model) => model.id === previous)) {
         return previous
       }
-      return getProviderModelOptions(providerId)[0]?.id ?? null
+      return providerModels[0]?.id ?? null
     })
     setApiKeyValue('')
     setReplaceApiKey(false)
     setOauthError('')
     setOauthStatus('')
-  }, [])
+  }, [runtimeModels])
 
   const handleModelSelect = useCallback((modelId: string) => {
     setSelectedModelId(modelId)
@@ -568,7 +595,7 @@ export function RuntimeModelsDialog({
 
   const footerDisabled = loading || saving || oauthBusy
   const selectedProvider = selectedProviderId
-    ? AVAILABLE_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null
+    ? HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null
     : null
   const apiKeyLabel = selectedProviderId
     ? MODEL_PROVIDER_AUTH_CONFIG[selectedProviderId]?.apiKeyLabel ?? 'API key'
@@ -618,7 +645,7 @@ export function RuntimeModelsDialog({
         <section className="space-y-4">
           <p className="text-sm font-semibold text-foreground">Choose provider</p>
           <div className="grid gap-4 sm:grid-cols-3">
-            {AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => {
+            {HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.map((provider) => {
               const isSelected = selectedProviderId === provider.id
               return (
                 <button

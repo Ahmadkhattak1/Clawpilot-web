@@ -32,24 +32,12 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     methods: ['oauth', 'api-key'],
     apiKeyLabel: 'OpenAI API key',
     apiKeyPlaceholder: 'sk-...',
-    oauthHint: 'After deployment, sign in with OpenAI Code to finish setup.',
-  },
-  minimax: {
-    methods: ['oauth', 'api-key'],
-    apiKeyLabel: 'MiniMax API key',
-  },
-  moonshot: {
-    methods: ['api-key'],
-    apiKeyLabel: 'Moonshot/Kimi API key',
+    oauthHint: 'Use OpenAI OAuth for Codex, or an API key for direct OpenAI models.',
   },
   google: {
     methods: ['api-key'],
     apiKeyLabel: 'Google Gemini API key',
     apiKeyPlaceholder: 'AIza...',
-  },
-  xai: {
-    methods: ['api-key'],
-    apiKeyLabel: 'xAI API key',
   },
   openrouter: {
     methods: ['api-key'],
@@ -57,44 +45,107 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     apiKeyPlaceholder: 'sk-or-...',
   },
   qwen: {
-    methods: ['oauth'],
-    oauthHint: 'Qwen uses an OAuth/device login flow.',
+    methods: ['api-key'],
+    apiKeyLabel: 'Qwen API key',
   },
-  'z-ai': {
+  zai: {
     methods: ['api-key'],
     apiKeyLabel: 'Z.AI API key',
   },
-  copilot: {
-    methods: ['oauth', 'api-key'],
-    apiKeyLabel: 'GitHub Copilot token / key',
+  xai: {
+    methods: ['api-key'],
+    apiKeyLabel: 'xAI API key',
+  },
+  deepseek: {
+    methods: ['api-key'],
+    apiKeyLabel: 'DeepSeek API key',
+  },
+  groq: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Groq API key',
+    apiKeyPlaceholder: 'gsk_...',
+  },
+  mistral: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Mistral API key',
+  },
+  qianfan: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Qianfan API key',
+    apiKeyPlaceholder: 'bce-v3/ALTAK-...',
+  },
+  moonshot: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Moonshot API key',
+  },
+  kimi: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Kimi API key',
+  },
+  together: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Together API key',
+  },
+  venice: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Venice API key',
+    apiKeyPlaceholder: 'vapi_...',
   },
   'vercel-ai-gateway': {
     methods: ['api-key'],
     apiKeyLabel: 'Vercel AI Gateway API key',
   },
-  'opencode-zen': {
+  'cloudflare-ai-gateway': {
     methods: ['api-key'],
-    apiKeyLabel: 'OpenCode Zen API key',
+    apiKeyLabel: 'Cloudflare AI Gateway API key',
+  },
+  kilocode: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Kilo Gateway API key',
+  },
+  opencode: {
+    methods: ['api-key'],
+    apiKeyLabel: 'OpenCode API key',
+  },
+  'opencode-go': {
+    methods: ['api-key'],
+    apiKeyLabel: 'OpenCode API key',
+  },
+  synthetic: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Synthetic API key',
+  },
+  stepfun: {
+    methods: ['api-key'],
+    apiKeyLabel: 'StepFun API key',
+  },
+  'stepfun-plan': {
+    methods: ['api-key'],
+    apiKeyLabel: 'StepFun API key',
   },
   xiaomi: {
     methods: ['api-key'],
     apiKeyLabel: 'Xiaomi API key',
   },
-  'together-ai': {
+  fireworks: {
     methods: ['api-key'],
-    apiKeyLabel: 'Together AI API key',
+    apiKeyLabel: 'Fireworks API key',
   },
-  'venice-ai': {
+  chutes: {
     methods: ['api-key'],
-    apiKeyLabel: 'Venice AI API key',
+    apiKeyLabel: 'Chutes API key',
+  },
+  minimax: {
+    methods: ['api-key'],
+    apiKeyLabel: 'MiniMax API key',
+  },
+  copilot: {
+    methods: ['oauth', 'api-key'],
+    apiKeyLabel: 'GitHub Copilot token / key',
   },
   litellm: {
     methods: ['api-key'],
     apiKeyLabel: 'LiteLLM API key',
-  },
-  'cloudflare-ai-gateway': {
-    methods: ['api-key'],
-    apiKeyLabel: 'Cloudflare AI Gateway API key',
   },
   'custom-provider': {
     methods: ['api-key'],

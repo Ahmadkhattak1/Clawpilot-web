@@ -1,15 +1,6 @@
 import { buildTenantAuthHeaders } from '@/lib/backend-auth'
 import { getBackendUrl } from '@/lib/runtime-controls'
 
-export interface TenantDaemonRecord {
-  daemon?: {
-    status?: string | null
-    runtimeResourceId?: string | null
-  }
-}
-
-export type TenantDaemonPresence = 'present' | 'missing' | 'unknown'
-
 export interface TenantDaemonStatus {
   daemon?: {
     runtimeMode?: string
@@ -54,65 +45,6 @@ export function tenantHasProvisionedInstance(status: TenantDaemonStatus | null) 
 
 export function tenantHasReadyGateway(status: TenantDaemonStatus | null) {
   return status?.instance?.setupComplete === true || status?.instance?.gatewayProbe?.ready === true
-}
-
-export function tenantHasPersistedDaemon(daemonRecord: TenantDaemonRecord | null): boolean {
-  const daemon = daemonRecord?.daemon
-  if (!daemon) {
-    return false
-  }
-
-  const runtimeResourceId = daemon.runtimeResourceId?.trim()
-  if (runtimeResourceId) {
-    return true
-  }
-
-  const daemonStatus = daemon.status?.trim().toUpperCase()
-  if (daemonStatus === 'RUNNING' || daemonStatus === 'STOPPED') {
-    return true
-  }
-
-  return false
-}
-
-export async function fetchTenantDaemonRecord(tenantId: string): Promise<TenantDaemonRecord | null> {
-  const backendUrl = getBackendUrl()
-
-  try {
-    const headers = await buildTenantAuthHeaders(tenantId)
-    const response = await fetch(`${backendUrl}/api/v1/daemons/${tenantId}`, {
-      headers,
-    })
-
-    if (!response.ok) return null
-    return (await response.json()) as TenantDaemonRecord
-  } catch {
-    return null
-  }
-}
-
-export async function fetchTenantDaemonPresence(tenantId: string): Promise<TenantDaemonPresence> {
-  const backendUrl = getBackendUrl()
-
-  try {
-    const headers = await buildTenantAuthHeaders(tenantId)
-    const response = await fetch(`${backendUrl}/api/v1/daemons/${tenantId}`, {
-      headers,
-    })
-
-    if (response.ok) {
-      const payload = (await response.json()) as TenantDaemonRecord | null
-      return tenantHasPersistedDaemon(payload) ? 'present' : 'missing'
-    }
-
-    if (response.status === 404) {
-      return 'missing'
-    }
-
-    return 'unknown'
-  } catch {
-    return 'unknown'
-  }
 }
 
 export async function fetchTenantDaemonStatus(tenantId: string): Promise<TenantDaemonStatus | null> {

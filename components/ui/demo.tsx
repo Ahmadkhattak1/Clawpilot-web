@@ -14,6 +14,13 @@ import { Button } from "@/components/ui/button"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
 
+const channelIcons = [
+  { src: "/integrations/whatsapp.svg", alt: "WhatsApp" },
+  { src: "/integrations/telegram.svg", alt: "Telegram" },
+  { src: "/integrations/discord.svg", alt: "Discord" },
+  { src: "/integrations/imessage.svg", alt: "iMessage" },
+]
+
 export function Hero() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading")
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
@@ -84,9 +91,9 @@ export function Hero() {
         className="pointer-events-none absolute top-0 left-1/2 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(179,33,40,0.04),transparent_70%)]"
       />
 
-      <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center text-center">
+      <div className="relative z-10 mx-auto flex max-w-4xl -translate-y-8 flex-col items-center text-center sm:-translate-y-10 md:-translate-y-12">
         {/* Mascot */}
-        <div className="relative mb-10">
+        <div className="relative mb-7 sm:mb-8">
           <div
             aria-hidden="true"
             className="absolute inset-0 scale-[2] rounded-full bg-[radial-gradient(circle,rgba(0,0,0,0.03),transparent_70%)]"
@@ -102,20 +109,18 @@ export function Hero() {
         </div>
 
         {/* Headline */}
-        <h1 className="text-[36px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[48px] md:text-[56px]">
-          Your own <span className="whitespace-nowrap">OpenClaw agents.</span>
+        <h1 className="max-w-5xl text-[36px] font-semibold leading-[1.04] tracking-tight text-foreground sm:text-[48px] md:text-[58px]">
+          Your own OpenClaw,
           <br />
-          <span className="text-muted-foreground">Running in minutes.</span>
+          <span className="text-muted-foreground">without managing the hosting.</span>
         </h1>
 
-        {/* Subheadline */}
-        <p className="mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground sm:text-base">
-          ClawPilot gives you a private OpenClaw instance in the cloud.
-          No servers. No Docker. No terminal. Just sign up and go.
+        <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground sm:text-base">
+          Install OpenClaw in one click while ClawPilot handles the setup behind the scenes and keeps it private to you.
         </p>
 
         {/* CTA */}
-        <div className="mt-9 flex flex-col items-center gap-3">
+        <div className="mt-7 flex flex-col items-center gap-2.5">
           {authStatus === "authenticated" ? (
             <Button asChild className="group" size="hero" variant="brand">
               <Link href="/dashboard/chat">
@@ -150,6 +155,24 @@ export function Hero() {
             For less than a candy bar 🍫 a day &middot; Cancel anytime
           </p>
         </div>
+      </div>
+
+      <div className="pointer-events-none absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+        <div className="flex items-center gap-3">
+          {channelIcons.map((channel) => (
+            <Image
+              key={channel.alt}
+              src={channel.src}
+              alt={channel.alt}
+              width={22}
+              height={22}
+              className="h-[22px] w-[22px] object-contain opacity-80"
+            />
+          ))}
+        </div>
+        <p className="text-center text-xs text-muted-foreground">
+          Instantly connect WhatsApp, Telegram, Discord, iMessage, and more.
+        </p>
       </div>
     </section>
   )

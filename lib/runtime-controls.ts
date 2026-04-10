@@ -140,6 +140,15 @@ export interface RuntimeOpenAICodexOAuthCompleteData {
   raw: unknown
 }
 
+export interface RuntimeModelUpdateData {
+  modelProviderId: string | null
+  modelId: string | null
+  modelAuthMethod: 'api-key' | 'oauth' | null
+  modelOauthConnected: boolean | null
+  persisted: boolean
+  raw: unknown
+}
+
 export interface RuntimeSkillUpdatePayload {
   skillKey: string
   enabled?: boolean
@@ -1650,6 +1659,32 @@ export async function startRuntimeOpenAICodexOAuth(
     sessionId,
     authUrl,
     expiresAt,
+    raw: response.result,
+  }
+}
+
+export async function updateRuntimeModelConfig(
+  tenantId: string,
+  payload: RuntimeModelUpdatePayload,
+): Promise<RuntimeModelUpdateData> {
+  const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+
+  const record = toObject(response.result)
+  const rawModelAuthMethod = readString(record ?? {}, ['modelAuthMethod'])?.toLowerCase() ?? null
+  let modelAuthMethod: 'api-key' | 'oauth' | null = null
+  if (rawModelAuthMethod === 'api-key' || rawModelAuthMethod === 'oauth') {
+    modelAuthMethod = rawModelAuthMethod
+  }
+
+  return {
+    modelProviderId: readString(record ?? {}, ['modelProviderId']),
+    modelId: readString(record ?? {}, ['modelId']),
+    modelAuthMethod,
+    modelOauthConnected: readBoolean(record ?? {}, ['modelOauthConnected']),
+    persisted: readBoolean(record ?? {}, ['persisted']) ?? true,
     raw: response.result,
   }
 }

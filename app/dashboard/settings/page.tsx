@@ -6,17 +6,23 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+import { RuntimeModelsDialog } from '@/components/models/runtime-models-dialog'
 import { Button } from '@/components/ui/button'
 import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
 
 export default function DashboardSettingsPage() {
   const router = useRouter()
   const [checkingSession, setCheckingSession] = useState(true)
+  const [tenantId, setTenantId] = useState('')
+  const [modelsDialogOpen, setModelsDialogOpen] = useState(false)
 
   const openClawSettings = [
     {
       title: 'Models',
-      description: 'Choose providers and switch models inside OpenClaw.',
+      description: 'Choose the hosted provider, model, and provider auth flow.',
+      badgeLabel: 'Configure here',
+      action: 'models',
       logos: [
         { src: '/ai-models-logos/openai-svgrepo-com.svg', alt: 'OpenAI' },
         { src: '/ai-models-logos/google.svg', alt: 'Google Gemini' },
@@ -26,6 +32,7 @@ export default function DashboardSettingsPage() {
     {
       title: 'Channels',
       description: 'Connect WhatsApp, Telegram, and other channels inside OpenClaw.',
+      badgeLabel: 'Managed in OpenClaw',
       logos: [
         { src: '/integrations/whatsapp.svg', alt: 'WhatsApp' },
         { src: '/integrations/telegram.svg', alt: 'Telegram' },
@@ -48,6 +55,7 @@ export default function DashboardSettingsPage() {
         }
 
         if (!cancelled) {
+          setTenantId(deriveTenantIdFromUserId(session.user.id))
           setCheckingSession(false)
         }
       } catch {
@@ -112,37 +120,49 @@ export default function DashboardSettingsPage() {
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-foreground">OpenClaw settings</h2>
             <div className="overflow-hidden rounded-xl border border-border/70 bg-background/60">
-              {openClawSettings.map(({ title, description, logos }, index) => (
-                <div
-                  key={title}
-                  className={`flex items-start gap-4 px-4 py-4 sm:px-5 ${index === 0 ? '' : 'border-t border-border/60'}`}
-                >
-                  <div className="flex shrink-0 items-center -space-x-2 pt-0.5">
-                    {logos.map((logo, logoIndex) => (
-                      <div
-                        key={`${title}-${logo.alt}`}
-                        className={`flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-background p-2 shadow-sm ${
-                          logoIndex === 0 ? '' : 'ring-2 ring-background'
-                        }`}
-                      >
-                        <Image src={logo.src} alt={logo.alt} width={20} height={20} className="h-5 w-5 object-contain" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-                      <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        Managed in OpenClaw
-                      </span>
+              {openClawSettings.map(({ title, description, badgeLabel, action, logos }, index) => {
+                const isModelsRow = action === 'models'
+                return (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => {
+                      if (isModelsRow) {
+                        setModelsDialogOpen(true)
+                      }
+                    }}
+                    disabled={!isModelsRow}
+                    className={`flex w-full items-start gap-4 px-4 py-4 text-left sm:px-5 ${index === 0 ? '' : 'border-t border-border/60'} ${
+                      isModelsRow ? 'transition-colors hover:bg-muted/30' : ''
+                    }`}
+                  >
+                    <div className="flex shrink-0 items-center -space-x-2 pt-0.5">
+                      {logos.map((logo, logoIndex) => (
+                        <div
+                          key={`${title}-${logo.alt}`}
+                          className={`flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-background p-2 shadow-sm ${
+                            logoIndex === 0 ? '' : 'ring-2 ring-background'
+                          }`}
+                        >
+                          <Image src={logo.src} alt={logo.alt} width={20} height={20} className="h-5 w-5 object-contain" />
+                        </div>
+                      ))}
                     </div>
-                    <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
-                  </div>
-                </div>
-              ))}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+                        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {badgeLabel}
+                        </span>
+                      </div>
+                      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              OpenClaw-specific settings are managed inside OpenClaw. Launch OpenClaw to make these changes there.
+              Models can be updated here. Other OpenClaw-specific settings are still managed inside OpenClaw.
             </p>
           </div>
 
@@ -156,6 +176,13 @@ export default function DashboardSettingsPage() {
           </div>
         </section>
       </div>
+
+      <RuntimeModelsDialog
+        tenantId={tenantId}
+        open={modelsDialogOpen}
+        onOpenChange={setModelsDialogOpen}
+        onUnauthorized={() => router.replace(buildSignInPath('/dashboard/settings'))}
+      />
     </main>
   )
 }

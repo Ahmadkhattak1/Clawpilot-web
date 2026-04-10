@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, ExternalLink, FileText, Loader2, Mail, Newspaper, ShieldCheck, X } from 'lucide-react'
 
+import { RuntimeModelsDialog } from '@/components/models/runtime-models-dialog'
 import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -21,20 +22,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
-import {
-  MODEL_PROVIDER_MODEL_STORAGE_KEY,
-  MODEL_PROVIDER_STORAGE_KEY,
-} from '@/lib/model-providers'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
-import {
-  MODEL_PROVIDER_SETUP_STORAGE_KEY,
-  type ProviderSetupRecord,
-  type ProviderSetupStorage,
-} from '@/lib/provider-auth-config'
 import {
   completeRuntimeOpenAICodexOAuth,
   listRuntimeModels,
   startRuntimeOpenAICodexOAuth,
+  type RuntimeModelsData,
 } from '@/lib/runtime-controls'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
@@ -115,32 +108,30 @@ function buildPfpWebUrl(email: string): string | null {
   return `https://pfp.web/${encodeURIComponent(normalized)}`
 }
 
-function getStoredProviderSetup(): ProviderSetupStorage {
-  if (typeof window === 'undefined') return {}
-
-  const raw = window.localStorage.getItem(MODEL_PROVIDER_SETUP_STORAGE_KEY)
-  if (!raw) return {}
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as ProviderSetupStorage
-  } catch {
-    return {}
-  }
-}
-
-function isOpenAIOAuthSetupPending(
-  providerId: string | null | undefined,
-  providerSetup: ProviderSetupRecord | null | undefined,
-): boolean {
-  return providerId === 'openai' && providerSetup?.method === 'oauth' && !providerSetup.oauthConnected
-}
-
 function normalizeOpenAIModelIdForRuntime(modelId: string): string {
   const normalized = modelId.trim()
   if (!normalized.startsWith('openai/')) return normalized
   return `openai-codex/${normalized.slice('openai/'.length)}`
+}
+
+function normalizeStoredOpenAIModelId(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+
+  const normalized = modelId.trim().toLowerCase()
+  if (!normalized) return null
+  if (normalized.startsWith('openai-codex/')) {
+    return `openai/${normalized.slice('openai-codex/'.length)}`
+  }
+  return normalized
+}
+
+function isRuntimeOpenAIOAuthPending(config: RuntimeModelsData['storedModelConfig']): boolean {
+  if (!config || config.modelAuthMethod !== 'oauth') return false
+
+  const providerId = config.modelProviderId?.trim().toLowerCase() ?? ''
+  const modelId = normalizeStoredOpenAIModelId(config.modelId) ?? ''
+  const isOpenAI = providerId === 'openai' || providerId === 'openai-codex' || modelId.startsWith('openai/')
+  return isOpenAI && config.modelOauthConnected !== true
 }
 
 function formatOAuthExpiryCountdown(expiresAt: string, nowMs: number): string {
@@ -165,6 +156,7 @@ export default function ChatPage() {
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [launchError, setLaunchError] = useState('')
   const [fileManagerOpen, setFileManagerOpen] = useState(false)
+  const [modelsDialogOpen, setModelsDialogOpen] = useState(false)
   const [contactOpen, setContactOpen] = useState(false)
   const [contactCopied, setContactCopied] = useState(false)
   const [resourcesOpen, setResourcesOpen] = useState(false)
@@ -178,6 +170,7 @@ export default function ChatPage() {
   const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
   const [oauthCallback, setOauthCallback] = useState('')
   const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
+  const [runtimeStoredModelConfig, setRuntimeStoredModelConfig] = useState<RuntimeModelsData['storedModelConfig']>(null)
 
   const routerRef = useRef(router)
   routerRef.current = router
@@ -187,6 +180,9 @@ export default function ChatPage() {
     () => (oauthExpiresAt ? formatOAuthExpiryCountdown(oauthExpiresAt, oauthNowMs) : null),
     [oauthExpiresAt, oauthNowMs],
   )
+  const selectedRuntimeOpenAIModelId = useMemo(() => (
+    normalizeStoredOpenAIModelId(runtimeStoredModelConfig?.modelId) ?? 'openai/gpt-5.4'
+  ), [runtimeStoredModelConfig])
 
   const redirectToSignIn = useCallback(() => {
     const currentPath =
@@ -222,22 +218,6 @@ export default function ChatPage() {
     }
   }, [])
 
-  const persistOpenAIOAuthConnected = useCallback(() => {
-    if (typeof window === 'undefined') return
-    const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-    if (providerId !== 'openai') return
-
-    const setupStore = getStoredProviderSetup()
-    const currentSetup = setupStore[providerId] ?? {}
-    setupStore[providerId] = {
-      ...currentSetup,
-      method: 'oauth',
-      oauthConnected: true,
-      updatedAt: new Date().toISOString(),
-    }
-    window.localStorage.setItem(MODEL_PROVIDER_SETUP_STORAGE_KEY, JSON.stringify(setupStore))
-  }, [])
-
   const handleStartOpenAIOAuth = useCallback(async (
     options: {
       openWindow?: boolean
@@ -250,11 +230,7 @@ export default function ChatPage() {
     setOauthError('')
     setOauthStatus('')
     try {
-      const selectedModelId =
-        typeof window === 'undefined'
-          ? ''
-          : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
-      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedRuntimeOpenAIModelId)
       const oauthStart = await startRuntimeOpenAICodexOAuth(tenantId, {
         modelId: runtimeModelId || undefined,
       })
@@ -295,7 +271,7 @@ export default function ChatPage() {
     } finally {
       setOauthBusy(false)
     }
-  }, [tenantId])
+  }, [selectedRuntimeOpenAIModelId, tenantId])
 
   const handleOpenOauthWindow = useCallback(() => {
     setOauthModalOpen(true)
@@ -332,11 +308,7 @@ export default function ChatPage() {
     setOauthError('')
     setOauthStatus('Completing OpenAI OAuth...')
     try {
-      const selectedModelId =
-        typeof window === 'undefined'
-          ? ''
-          : window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY) ?? ''
-      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedModelId)
+      const runtimeModelId = normalizeOpenAIModelIdForRuntime(selectedRuntimeOpenAIModelId)
       const result = await completeRuntimeOpenAICodexOAuth(tenantId, {
         sessionId: oauthSessionId,
         callback,
@@ -346,7 +318,12 @@ export default function ChatPage() {
         throw new Error('OAuth did not complete.')
       }
 
-      persistOpenAIOAuthConnected()
+      setRuntimeStoredModelConfig({
+        modelProviderId: result.providerId,
+        modelId: result.modelId,
+        modelAuthMethod: 'oauth',
+        modelOauthConnected: true,
+      })
       setOauthRequired(false)
       setOauthModalOpen(false)
       setOauthStatus('OpenAI OAuth is connected. You can launch OpenClaw now.')
@@ -364,7 +341,7 @@ export default function ChatPage() {
     } finally {
       setOauthBusy(false)
     }
-  }, [oauthCallback, oauthSessionId, persistOpenAIOAuthConnected, tenantId])
+  }, [oauthCallback, oauthSessionId, selectedRuntimeOpenAIModelId, tenantId])
 
   useEffect(() => {
     if (!oauthModalOpen || !oauthExpiresAt) {
@@ -421,20 +398,19 @@ export default function ChatPage() {
           return
         }
 
-        const providerId =
-          typeof window === 'undefined' ? null : window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-        const providerSetupStore = getStoredProviderSetup()
-        const selectedProviderSetup = providerId ? providerSetupStore[providerId] ?? null : null
-        let oauthPending = isOpenAIOAuthSetupPending(providerId, selectedProviderSetup)
+        let storedModelConfig: RuntimeModelsData['storedModelConfig'] = null
+        let oauthPending = false
 
         try {
-          const runtimeModels = await listRuntimeModels(tid, { includeModels: false })
-          const storedModelConfig = runtimeModels.storedModelConfig
-          if (storedModelConfig?.modelProviderId === 'openai' && storedModelConfig.modelAuthMethod === 'oauth') {
-            oauthPending = storedModelConfig.modelOauthConnected !== true
-          }
+          const runtimeModels = await listRuntimeModels(tid, {
+            includeModels: false,
+            syncRuntime: true,
+          })
+          storedModelConfig = runtimeModels.storedModelConfig
+          oauthPending = isRuntimeOpenAIOAuthPending(storedModelConfig)
         } catch {
-          // Fall back to local onboarding storage when runtime model sync is unavailable.
+          storedModelConfig = null
+          oauthPending = false
         }
 
         const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
@@ -458,6 +434,7 @@ export default function ChatPage() {
           setProfileEmail(email)
           setProfileInitial(buildProfileInitial(displayName || email))
           setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
+          setRuntimeStoredModelConfig(storedModelConfig)
           setOauthRequired(oauthPending)
           setOauthModalOpen(oauthPending)
           setOauthError('')
@@ -655,6 +632,19 @@ export default function ChatPage() {
                 <FileText className="h-4 w-4" />
                 Manage Files
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="default"
+                className="mt-2.5 h-10 w-full rounded-xl gap-2 text-[13.5px] font-medium"
+                onClick={() => {
+                  setLaunchError('')
+                  setModelsDialogOpen(true)
+                }}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Models
+              </Button>
             </div>
           </div>
         </main>
@@ -684,6 +674,22 @@ export default function ChatPage() {
         open={fileManagerOpen}
         onOpenChange={setFileManagerOpen}
         onUnauthorized={redirectToSignIn}
+      />
+
+      <RuntimeModelsDialog
+        tenantId={tenantId}
+        open={modelsDialogOpen}
+        onOpenChange={setModelsDialogOpen}
+        onUnauthorized={redirectToSignIn}
+        onConfigured={(config) => {
+          const oauthPending = isRuntimeOpenAIOAuthPending(config)
+          setRuntimeStoredModelConfig(config)
+          setOauthRequired(oauthPending)
+          setOauthModalOpen(oauthPending)
+          setOauthError('')
+          setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '')
+          setLaunchError('')
+        }}
       />
 
       <Dialog.Root

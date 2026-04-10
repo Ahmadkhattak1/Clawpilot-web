@@ -94,16 +94,19 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       id: 'openai/gpt-5.2',
       label: 'GPT-5.2',
       summary: 'Strong general-purpose default for reasoning and coding.',
+      supportedMethods: ['api-key'],
     },
     {
       id: 'openai/gpt-5-mini',
       label: 'GPT-5 Mini',
       summary: 'Faster OpenAI option for lower-latency responses.',
+      supportedMethods: ['api-key'],
     },
     {
       id: 'openai/gpt-5.1-codex',
       label: 'GPT-5.1 Codex',
       summary: 'Popular OpenAI pick for code-heavy agent workflows.',
+      supportedMethods: ['api-key'],
     },
   ],
   google: [
@@ -161,4 +164,21 @@ export function isModelSupportedByProviderSetupMethod(
 export function toOpenClawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   return OPENCLAW_PROVIDER_IDS[providerId as ModelProviderId] ?? providerId
+}
+
+export function fromOpenClawProviderId(providerId: string | null | undefined): string | null {
+  if (!providerId) return null
+  const normalized = providerId.trim().toLowerCase()
+  if (normalized === 'openai-codex') return 'openai'
+  if (normalized === 'google-gemini') return 'google'
+  return normalized
+}
+
+export function fromOpenClawModelId(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  const normalized = modelId.trim().toLowerCase()
+  if (normalized.startsWith('openai-codex/')) {
+    return `openai/${normalized.slice('openai-codex/'.length)}`
+  }
+  return normalized
 }

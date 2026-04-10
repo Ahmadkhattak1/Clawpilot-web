@@ -52,7 +52,7 @@ const comparisonRows = [
     icon: Wallet,
     label: "Upfront cost",
     local: "High upfront cost.",
-    clawpilot: "No upfront cost.",
+    clawpilot: "Subscription instead of machine purchases. Cancel anytime.",
   },
 ] as const
 

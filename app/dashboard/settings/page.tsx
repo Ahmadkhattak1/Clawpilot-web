@@ -19,7 +19,7 @@ export default function DashboardSettingsPage() {
 
   const openClawSettings = [
     {
-      title: 'Models',
+      title: 'Models Config',
       description: 'Choose the hosted provider, model, and provider auth flow.',
       badgeLabel: 'Configure here',
       action: 'models',

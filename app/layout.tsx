@@ -2,6 +2,7 @@ import React from "react"
 import Script from "next/script"
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from 'next'
+import { Toaster } from 'sonner'
 import { ThemeProvider } from "@/components/theme-provider"
 import { GOOGLE_TAG_ID } from "@/lib/google-ads"
 import { seoKeywords, siteName, siteUrl } from "@/lib/site"
@@ -89,6 +90,7 @@ gtag('config', '${GOOGLE_TAG_ID}');`}
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
+          <Toaster closeButton position="top-right" richColors theme="system" />
         </ThemeProvider>
         <VercelAnalytics />
       </body>

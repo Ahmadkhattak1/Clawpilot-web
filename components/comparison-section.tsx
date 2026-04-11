@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Clock3,
   Download,
+  Lock,
   Monitor,
   ShieldCheck,
   Sparkles,
@@ -41,6 +42,12 @@ const comparisonRows = [
     label: "Privacy",
     local: "Private to your own machine.",
     clawpilot: "Private to you.",
+  },
+  {
+    icon: Lock,
+    label: "Security",
+    local: "Not secure.",
+    clawpilot: "Secure cloud hosting.",
   },
   {
     icon: Sparkles,

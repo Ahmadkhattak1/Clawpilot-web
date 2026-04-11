@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
   AVAILABLE_MODEL_PROVIDER_OPTIONS,
+  getModelAuthCueMethods,
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
   getProviderModelOption,
@@ -97,6 +98,10 @@ function OpenCloudStepPageClient() {
       selectedModel?.supportedMethods?.includes(method) ?? true
     ))
   }, [providerConfig, selectedModel])
+  const authCueMethods = useMemo(
+    () => getModelAuthCueMethods(selectedProviderId, selectedModelId),
+    [selectedModelId, selectedProviderId],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -316,6 +321,13 @@ function OpenCloudStepPageClient() {
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
           <CardDescription>{selectedProvider.label} · {selectedModel.label}</CardDescription>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {authCueMethods.map((method) => (
+              <Badge key={`selected-model-${method}`} variant="secondary" className="text-[10px] capitalize">
+                {method === 'api-key' ? 'API key supported' : 'OAuth supported'}
+              </Badge>
+            ))}
+          </div>
           <SetupStepper currentStep="model" />
         </CardHeader>
 

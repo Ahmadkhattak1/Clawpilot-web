@@ -1,15 +1,16 @@
 'use client'
 
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import Image from 'next/image'
-import { Check, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Check, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -21,6 +22,7 @@ import {
   HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS,
   fromOpenClawModelId,
   fromOpenClawProviderId,
+  getModelAuthCueMethods,
   getProviderModelOptions,
   isModelSupportedByProviderSetupMethod,
   toOpenClawProviderId,
@@ -55,6 +57,18 @@ interface DialogModelConfig {
   modelId: string | null
   authMethod: ProviderSetupMethod | null
   oauthConnected: boolean
+}
+
+type DialogStep = 'provider' | 'model' | 'auth'
+
+const DIALOG_STEPS: { id: DialogStep; label: string }[] = [
+  { id: 'provider', label: 'Provider' },
+  { id: 'model', label: 'Model' },
+  { id: 'auth', label: 'Auth' },
+]
+
+function getDialogStepIndex(step: DialogStep): number {
+  return DIALOG_STEPS.findIndex((item) => item.id === step)
 }
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
@@ -130,6 +144,31 @@ function getRuntimeProviderModelOptions(
 ): ProviderModelOption[] {
   if (!providerId) return []
 
+  const toCanonicalModelId = (model: RuntimeModelSummary): string => {
+    const rawModelId = model.id.trim().toLowerCase()
+    if (!rawModelId) return rawModelId
+
+    const normalizedProviderId = (
+      fromOpenClawProviderId(model.providerId)
+      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      ?? providerId
+    )
+
+    if (!rawModelId.includes('/')) {
+      return `${normalizedProviderId}/${rawModelId}`
+    }
+
+    if (rawModelId.startsWith('openai-codex/')) {
+      return `openai/${rawModelId.slice('openai-codex/'.length)}`
+    }
+
+    const slashIndex = rawModelId.indexOf('/')
+    const rawProviderId = rawModelId.slice(0, slashIndex)
+    const modelName = rawModelId.slice(slashIndex + 1)
+    const canonicalProviderId = fromOpenClawProviderId(rawProviderId) ?? rawProviderId
+    return `${canonicalProviderId}/${modelName}`
+  }
+
   const discoveredModels = runtimeModels
     .filter((model) => {
       const normalizedProviderId = fromOpenClawProviderId(model.providerId)
@@ -137,8 +176,8 @@ function getRuntimeProviderModelOptions(
       return normalizedProviderId === providerId
     })
     .map((model) => ({
-      id: fromOpenClawModelId(model.id) ?? model.id,
-      label: model.label?.trim() || (fromOpenClawModelId(model.id) ?? model.id),
+      id: toCanonicalModelId(model),
+      label: model.label?.trim() || toCanonicalModelId(model),
       summary: 'Available in the hosted OpenClaw runtime catalog.',
       supportedMethods: undefined,
     }))
@@ -154,6 +193,64 @@ function getRuntimeProviderModelOptions(
     seen.add(model.id)
     return true
   })
+}
+
+function buildProviderLabel(providerId: string): string {
+  const normalized = providerId.trim()
+  if (!normalized) return 'Provider'
+
+  return normalized
+    .split(/[-_/]+/)
+    .filter(Boolean)
+    .map((part) => {
+      if (part.length <= 3) return part.toUpperCase()
+      return `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`
+    })
+    .join(' ')
+}
+
+function getRuntimeProviderOptions(
+  runtimeModels: RuntimeModelSummary[],
+  selectedProviderId: ModelProviderId | null,
+): ModelProviderOption[] {
+  const seen = new Set<string>()
+  const merged: ModelProviderOption[] = []
+
+  const appendProvider = (provider: ModelProviderOption | null) => {
+    if (!provider || seen.has(provider.id)) return
+    seen.add(provider.id)
+    merged.push(provider)
+  }
+
+  for (const provider of HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS) {
+    appendProvider(provider)
+  }
+
+  if (selectedProviderId) {
+    appendProvider(
+      HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? {
+        id: selectedProviderId,
+        label: buildProviderLabel(selectedProviderId),
+      },
+    )
+  }
+
+  for (const model of runtimeModels) {
+    const normalizedProviderId = fromOpenClawProviderId(model.providerId)
+      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+    if (!isEnabledModelProviderId(normalizedProviderId)) {
+      continue
+    }
+
+    appendProvider(
+      HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === normalizedProviderId) ?? {
+        id: normalizedProviderId,
+        label: buildProviderLabel(normalizedProviderId),
+      },
+    )
+  }
+
+  return merged
 }
 
 function inferProviderIdFromModelId(modelId: string | null | undefined): string | null {
@@ -231,6 +328,8 @@ export function RuntimeModelsDialog({
   onUnauthorized,
   onConfigured,
 }: RuntimeModelsDialogProps) {
+  const reduceMotion = useReducedMotion()
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
@@ -243,10 +342,12 @@ export function RuntimeModelsDialog({
     authMethod: null,
     oauthConnected: false,
   })
+  const [currentStep, setCurrentStep] = useState<DialogStep>('provider')
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelSummary[]>([])
   const [selectedProviderId, setSelectedProviderId] = useState<ModelProviderId | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedAuthMethod, setSelectedAuthMethod] = useState<ProviderSetupMethod | null>(null)
+  const [providerSearchQuery, setProviderSearchQuery] = useState('')
   const [apiKeyValue, setApiKeyValue] = useState('')
   const [replaceApiKey, setReplaceApiKey] = useState(false)
 
@@ -259,6 +360,19 @@ export function RuntimeModelsDialog({
   const [oauthCallback, setOauthCallback] = useState('')
   const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
 
+  const runtimeProviderOptions = useMemo(
+    () => getRuntimeProviderOptions(runtimeModels, selectedProviderId),
+    [runtimeModels, selectedProviderId],
+  )
+  const filteredProviderOptions = useMemo(() => {
+    const query = providerSearchQuery.trim().toLowerCase()
+    if (!query) return runtimeProviderOptions
+
+    return runtimeProviderOptions.filter((provider) => (
+      provider.label.toLowerCase().includes(query)
+      || provider.id.toLowerCase().includes(query)
+    ))
+  }, [providerSearchQuery, runtimeProviderOptions])
   const selectedProviderModels = useMemo(
     () => getRuntimeProviderModelOptions(selectedProviderId, runtimeModels),
     [runtimeModels, selectedProviderId],
@@ -287,6 +401,8 @@ export function RuntimeModelsDialog({
     setOauthCallback('')
     setApiKeyValue('')
     setReplaceApiKey(false)
+    setProviderSearchQuery('')
+    setCurrentStep('provider')
 
     try {
       const runtimeModels = await listRuntimeModels(tenantId, {
@@ -359,6 +475,24 @@ export function RuntimeModelsDialog({
     const timer = window.setInterval(() => setOauthNowMs(Date.now()), 1_000)
     return () => window.clearInterval(timer)
   }, [oauthExpiresAt, open])
+
+  useEffect(() => {
+    if (!open) return
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollContainerRef.current?.scrollTo({
+        top: 0,
+        behavior: reduceMotion ? 'auto' : 'smooth',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [currentStep, open, reduceMotion])
+
+  const navigateToStep = useCallback((nextStep: DialogStep) => {
+    if (nextStep === currentStep) return
+    setCurrentStep(nextStep)
+  }, [currentStep])
 
   const handleProviderSelect = useCallback((providerId: ModelProviderId) => {
     setSelectedProviderId(providerId)
@@ -516,8 +650,11 @@ export function RuntimeModelsDialog({
       setOauthSessionId('')
       setOauthAuthUrl('')
       setOauthExpiresAt(null)
-      onConfigured?.(nextStoredConfig)
+      toast.success('Model updated', {
+        description: 'OpenAI OAuth is connected and saved to your hosted runtime.',
+      })
       onOpenChange(false)
+      onConfigured?.(nextStoredConfig)
     } catch (completeError) {
       setOauthError(extractErrorMessage(completeError, 'Failed to complete OpenAI OAuth.'))
       setOauthStatus('')
@@ -566,8 +703,11 @@ export function RuntimeModelsDialog({
       setApiKeyValue('')
       setReplaceApiKey(false)
       setStatus('Hosted model settings saved.')
-      onConfigured?.(nextStoredConfig)
+      toast.success('Model updated', {
+        description: 'Your hosted OpenClaw runtime is now using the new model settings.',
+      })
       onOpenChange(false)
+      onConfigured?.(nextStoredConfig)
     } catch (saveError) {
       const message = extractErrorMessage(saveError, 'Failed to save hosted model settings.')
       if (isUnauthorizedMessage(message)) {
@@ -595,7 +735,7 @@ export function RuntimeModelsDialog({
 
   const footerDisabled = loading || saving || oauthBusy
   const selectedProvider = selectedProviderId
-    ? HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null
+    ? runtimeProviderOptions.find((provider) => provider.id === selectedProviderId) ?? null
     : null
   const apiKeyLabel = selectedProviderId
     ? MODEL_PROVIDER_AUTH_CONFIG[selectedProviderId]?.apiKeyLabel ?? 'API key'
@@ -603,116 +743,279 @@ export function RuntimeModelsDialog({
   const apiKeyPlaceholder = selectedProviderId
     ? MODEL_PROVIDER_AUTH_CONFIG[selectedProviderId]?.apiKeyPlaceholder ?? ''
     : ''
+  const selectedModelAuthCueMethods = getModelAuthCueMethods(selectedProviderId, selectedModelId)
+  const docsOnlyAuthCueMethods = selectedModelAuthCueMethods.filter((method) => !supportedMethods.includes(method))
+  const stepItems = DIALOG_STEPS
+  const currentStepIndex = getDialogStepIndex(currentStep)
+  const canAdvanceFromProvider = Boolean(selectedProviderId)
+  const canAdvanceFromModel = Boolean(selectedProviderId && selectedModelId)
+  const stepTransition = reduceMotion
+    ? { duration: 0.08, ease: 'easeOut' as const }
+    : { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const }
+  const stepMotion = reduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+      }
+    : {
+        initial: { opacity: 0, x: -20 },
+        animate: { opacity: 1, x: 0 },
+        exit: { opacity: 0, x: 18 },
+      }
+  const cardGridVariants = reduceMotion
+    ? {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { staggerChildren: 0.02 } },
+        exit: { opacity: 0, transition: { staggerChildren: 0.015, staggerDirection: -1 } },
+      }
+    : {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { staggerChildren: 0.035, delayChildren: 0.02 } },
+        exit: { opacity: 0, transition: { staggerChildren: 0.02, staggerDirection: -1 } },
+      }
+  const cardItemVariants = reduceMotion
+    ? {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1 },
+        exit: { opacity: 0 },
+      }
+    : {
+        hidden: { opacity: 0, x: -18 },
+        visible: { opacity: 1, x: 0 },
+        exit: { opacity: 0, x: 14 },
+      }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] w-[95vw] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Models</DialogTitle>
-          <DialogDescription>
-            Choose the hosted provider, model, and provider auth flow for your OpenClaw runtime.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-4xl flex-col overflow-hidden p-0">
+        <div className="shrink-0 space-y-4 border-b border-border/70 bg-background/95 px-6 pb-4 pt-6 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <DialogHeader className="pr-10">
+            <DialogTitle>Models</DialogTitle>
+          </DialogHeader>
 
-        <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Changes are saved to your hosted OpenClaw runtime, not this browser.
-        </div>
+          {status ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700">
+              {status}
+            </div>
+          ) : null}
+          {error ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
 
-        {status ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700">
-            {status}
-          </div>
-        ) : null}
-        {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => void loadRuntimeConfig()}
-            disabled={loading || saving || oauthBusy}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
-          </Button>
-        </div>
-
-        <section className="space-y-4">
-          <p className="text-sm font-semibold text-foreground">Choose provider</p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.map((provider) => {
-              const isSelected = selectedProviderId === provider.id
-              return (
-                <button
-                  key={provider.id}
-                  type="button"
-                  onClick={() => handleProviderSelect(provider.id as ModelProviderId)}
-                  className={cn(
-                    'rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/40',
-                    isSelected
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                      : 'border-border/70',
-                  )}
-                >
-                  <div className="flex h-14 items-center justify-center rounded-md bg-muted/40 p-2">
-                    <ProviderLogo
-                      provider={provider}
-                      onError={handleImageError}
-                      hasImageError={Boolean(imageErrors[provider.id])}
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-foreground">{provider.label}</p>
-                    {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        {selectedProvider ? (
-          <section className="space-y-3 rounded-2xl border border-border/70 bg-card/70 p-4">
-            <p className="text-sm font-semibold text-foreground">Choose model</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {selectedProviderModels.map((model) => {
-                const isSelected = selectedModelId === model.id
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              {stepItems.map((step, index) => {
+                const isActive = currentStep === step.id
+                const isComplete = currentStepIndex > index
                 return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    onClick={() => handleModelSelect(model.id)}
+                  <div
+                    key={step.id}
                     className={cn(
-                      'rounded-xl border bg-background/70 p-3 text-left transition-colors hover:border-primary/40',
-                      isSelected
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                        : 'border-border/70',
+                      'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium',
+                      isActive
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : isComplete
+                          ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700'
+                          : 'border-border/70 text-muted-foreground',
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{model.label}</p>
-                      {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{model.summary}</p>
-                    {model.isRecommended ? (
-                      <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-primary">
-                        Recommended
-                      </p>
-                    ) : null}
-                  </button>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-background text-[11px]">
+                      {index + 1}
+                    </span>
+                    {step.label}
+                  </div>
                 )
               })}
             </div>
-          </section>
-        ) : null}
 
-        {selectedProviderId && selectedModelId && supportedMethods.length > 0 ? (
-          <section className="space-y-3 rounded-2xl border border-border/70 bg-card/70 p-4">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void loadRuntimeConfig()}
+              disabled={loading || saving || oauthBusy}
+              className="shrink-0"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className="relative">
+            <AnimatePresence mode="wait" initial={false}>
+
+              {currentStep === 'provider' ? (
+                <motion.section
+                  key="provider"
+                  className="space-y-4"
+                  initial={stepMotion.initial}
+                  animate={stepMotion.animate}
+                  exit={stepMotion.exit}
+                  transition={stepTransition}
+                >
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">Step 1: Choose provider</p>
+              <p className="text-sm text-muted-foreground">
+                Start with the provider. The model list in the next step is loaded from this runtime when available.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <div className="relative max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={providerSearchQuery}
+                  onChange={(event) => setProviderSearchQuery(event.target.value)}
+                  placeholder="Search providers"
+                  className="h-9 pl-9 text-sm"
+                  aria-label="Search providers"
+                />
+              </div>
+
+              {filteredProviderOptions.length > 0 ? (
+                <motion.div
+                  className="grid gap-4 sm:grid-cols-3"
+                  variants={cardGridVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  {filteredProviderOptions.map((provider) => {
+                    const isSelected = selectedProviderId === provider.id
+                    return (
+                      <motion.button
+                        key={provider.id}
+                        type="button"
+                        variants={cardItemVariants}
+                        transition={stepTransition}
+                        onClick={() => handleProviderSelect(provider.id as ModelProviderId)}
+                        className={cn(
+                          'rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/40',
+                          isSelected
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                            : 'border-border/70',
+                        )}
+                      >
+                        <div className="flex h-14 items-center justify-center rounded-md bg-muted/40 p-2">
+                          <ProviderLogo
+                            provider={provider}
+                            onError={handleImageError}
+                            hasImageError={Boolean(imageErrors[provider.id])}
+                          />
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-foreground">{provider.label}</p>
+                          {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                        </div>
+                      </motion.button>
+                    )
+                  })}
+                </motion.div>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                  No providers match that search.
+                </div>
+              )}
+            </div>
+                </motion.section>
+              ) : null}
+
+              {currentStep === 'model' ? (
+                <motion.section
+                  key="model"
+                  className="space-y-4 rounded-2xl border border-border/70 bg-card/70 p-4"
+                  initial={stepMotion.initial}
+                  animate={stepMotion.animate}
+                  exit={stepMotion.exit}
+                  transition={stepTransition}
+                >
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">Step 2: Choose model</p>
+              <p className="text-sm text-muted-foreground">
+                Select the model you want this runtime to use for {selectedProvider?.label ?? 'the selected provider'}.
+              </p>
+            </div>
+
+            {selectedProviderModels.length > 0 ? (
+              <motion.div
+                className="grid gap-3 sm:grid-cols-2"
+                variants={cardGridVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                {selectedProviderModels.map((model) => {
+                  const isSelected = selectedModelId === model.id
+                  const authCueMethods = getModelAuthCueMethods(selectedProviderId, model.id)
+                  return (
+                    <motion.button
+                      key={model.id}
+                      type="button"
+                      variants={cardItemVariants}
+                      transition={stepTransition}
+                      onClick={() => handleModelSelect(model.id)}
+                      className={cn(
+                        'rounded-xl border bg-background/70 p-3 text-left transition-colors hover:border-primary/40',
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                          : 'border-border/70',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-foreground">{model.label}</p>
+                        {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{model.summary}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {authCueMethods.map((method) => (
+                          <Badge key={`${model.id}-${method}`} variant="secondary" className="text-[10px] capitalize">
+                            {method === 'api-key' ? 'API key' : 'OAuth'}
+                          </Badge>
+                        ))}
+                      </div>
+                      {model.isRecommended ? (
+                        <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-primary">
+                          Recommended
+                        </p>
+                      ) : null}
+                    </motion.button>
+                  )
+                })}
+              </motion.div>
+            ) : (
+              <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                No models were available for this provider in the runtime or fallback catalog.
+              </div>
+            )}
+                </motion.section>
+              ) : null}
+
+              {currentStep === 'auth' ? (
+                <motion.section
+                  key="auth"
+                  className="space-y-3 rounded-2xl border border-border/70 bg-card/70 p-4"
+                  initial={stepMotion.initial}
+                  animate={stepMotion.animate}
+                  exit={stepMotion.exit}
+                  transition={stepTransition}
+                >
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">Step 3: Configure auth</p>
+              <p className="text-sm text-muted-foreground">
+                Choose how this deployed runtime should authenticate for the selected provider and model.
+              </p>
+            </div>
+
+            {docsOnlyAuthCueMethods.length > 0 ? (
+              <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+                OpenClaw docs also mention {docsOnlyAuthCueMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} for this route, but this ClawPilot flow currently configures {supportedMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} directly.
+              </div>
+            ) : null}
+
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-foreground">Choose auth method</p>
               {supportedMethods.length === 1 ? (
@@ -793,11 +1096,7 @@ export function RuntimeModelsDialog({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        onClick={handleOpenOauthWindow}
-                        disabled={oauthBusy}
-                      >
+                      <Button type="button" onClick={handleOpenOauthWindow} disabled={oauthBusy}>
                         {oauthBusy ? 'Preparing OAuth...' : oauthUrlExpired ? 'Refresh OAuth Window' : 'Open OAuth Window'}
                         <ExternalLink className="h-4 w-4" />
                       </Button>
@@ -842,23 +1141,61 @@ export function RuntimeModelsDialog({
                 )}
               </div>
             ) : null}
-          </section>
-        ) : null}
+                </motion.section>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={footerDisabled}>
-            Close
-          </Button>
-          {selectedAuthMethod === 'api-key' ? (
-            <Button
-              type="button"
-              onClick={() => void handleSaveApiKeySelection()}
-              disabled={!hasSelection || footerDisabled || (apiKeyRequired && !apiKeyValue.trim())}
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save
+        <DialogFooter className="shrink-0 flex-col gap-2 border-t border-border/70 bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:flex-row sm:justify-between">
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={footerDisabled}>
+              Close
             </Button>
-          ) : null}
+            {currentStep !== 'provider' ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigateToStep(currentStep === 'auth' ? 'model' : 'provider')}
+                disabled={footerDisabled}
+              >
+                Back
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex gap-2">
+            {currentStep === 'provider' ? (
+              <Button
+                type="button"
+                onClick={() => navigateToStep('model')}
+                disabled={footerDisabled || !canAdvanceFromProvider}
+              >
+                Next
+              </Button>
+            ) : null}
+
+            {currentStep === 'model' ? (
+              <Button
+                type="button"
+                onClick={() => navigateToStep('auth')}
+                disabled={footerDisabled || !canAdvanceFromModel}
+              >
+                Next
+              </Button>
+            ) : null}
+
+            {currentStep === 'auth' && selectedAuthMethod === 'api-key' ? (
+              <Button
+                type="button"
+                onClick={() => void handleSaveApiKeySelection()}
+                disabled={!hasSelection || footerDisabled || (apiKeyRequired && !apiKeyValue.trim())}
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
+            ) : null}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

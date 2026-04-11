@@ -16,6 +16,7 @@ export interface ProviderModelOption {
   summary: string
   isRecommended?: boolean
   supportedMethods?: readonly ('oauth' | 'api-key')[]
+  authCueMethods?: readonly ('oauth' | 'api-key')[]
 }
 
 export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
@@ -68,16 +69,19 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'deepseek',
     label: 'DeepSeek',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/deepseek-logo.png',
   },
   {
     id: 'groq',
     label: 'Groq',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/groq-logo.svg',
   },
   {
     id: 'mistral',
     label: 'Mistral',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/mistral-ai-logo.svg',
   },
   {
     id: 'qianfan',
@@ -95,6 +99,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'kimi',
     label: 'Kimi Coding',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/kimi-logo.png',
   },
   {
     id: 'together',
@@ -124,6 +129,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'kilocode',
     label: 'Kilo Gateway',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/kilocode-logo.svg',
   },
   {
     id: 'opencode',
@@ -141,16 +147,19 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'synthetic',
     label: 'Synthetic',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/synthetic-logo.png',
   },
   {
     id: 'stepfun',
     label: 'StepFun',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/stepfun-favicon.svg',
   },
   {
     id: 'stepfun-plan',
     label: 'StepFun Plan',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/stepfun-favicon.svg',
   },
   {
     id: 'xiaomi',
@@ -162,15 +171,18 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'fireworks',
     label: 'Fireworks',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/fireworks-logo.svg',
   },
   {
     id: 'chutes',
     label: 'Chutes',
     isHostedRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/chutes-favicon.png',
   },
   {
     id: 'minimax',
     label: 'MiniMax',
+    isHostedRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/minimax-color.svg',
   },
   {
@@ -564,12 +576,31 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       summary: 'Default Chutes hosted model route for general text tasks.',
       isRecommended: true,
       supportedMethods: ['api-key'],
+      authCueMethods: ['oauth', 'api-key'],
     },
     {
       id: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE',
       label: 'DeepSeek V3.2 TEE',
       summary: 'Chutes route for private reasoning on DeepSeek.',
       supportedMethods: ['api-key'],
+      authCueMethods: ['oauth', 'api-key'],
+    },
+  ],
+  minimax: [
+    {
+      id: 'minimax/MiniMax-M2.7',
+      label: 'MiniMax M2.7',
+      summary: 'Default MiniMax hosted model on the API-key route.',
+      isRecommended: true,
+      supportedMethods: ['api-key'],
+      authCueMethods: ['oauth', 'api-key'],
+    },
+    {
+      id: 'minimax/MiniMax-M2.7-highspeed',
+      label: 'MiniMax M2.7 Highspeed',
+      summary: 'High-speed MiniMax variant for lower-latency responses.',
+      supportedMethods: ['api-key'],
+      authCueMethods: ['oauth', 'api-key'],
     },
   ],
 }
@@ -584,6 +615,7 @@ const OPENCLAW_PROVIDER_IDS: Partial<Record<ModelProviderId, string>> = {
   groq: 'groq',
   kimi: 'kimi',
   kilocode: 'kilocode',
+  minimax: 'minimax',
   mistral: 'mistral',
   moonshot: 'moonshot',
   openai: 'openai',
@@ -639,6 +671,37 @@ export function isModelSupportedByProviderSetupMethod(
   return model.supportedMethods?.includes(method) ?? true
 }
 
+export function getModelAuthCueMethods(
+  providerId: string | null | undefined,
+  modelId: string | null | undefined,
+): readonly ('oauth' | 'api-key')[] {
+  const normalizedProviderId = fromOpenClawProviderId(providerId) ?? providerId ?? null
+  const normalizedModelId = fromOpenClawModelId(modelId) ?? modelId ?? null
+  const model = getProviderModelOption(normalizedProviderId, normalizedModelId)
+  if (model?.authCueMethods?.length) {
+    return model.authCueMethods
+  }
+  if (model?.supportedMethods?.length) {
+    return model.supportedMethods
+  }
+
+  if (normalizedProviderId === 'openai') {
+    if (
+      normalizedModelId === 'openai/gpt-5.4'
+      || normalizedModelId === 'openai/gpt-5.3-codex-spark'
+    ) {
+      return ['oauth', 'api-key']
+    }
+    return ['api-key']
+  }
+
+  if (normalizedProviderId === 'chutes') {
+    return ['oauth', 'api-key']
+  }
+
+  return ['api-key']
+}
+
 export function toOpenClawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   return OPENCLAW_PROVIDER_IDS[providerId as ModelProviderId] ?? providerId
@@ -653,6 +716,7 @@ export function fromOpenClawProviderId(providerId: string | null | undefined): s
   if (normalized === 'together-ai') return 'together'
   if (normalized === 'venice-ai') return 'venice'
   if (normalized === 'opencode-zen') return 'opencode'
+  if (normalized === 'minimax-portal') return 'minimax'
   return normalized
 }
 
@@ -667,6 +731,9 @@ export function fromOpenClawModelId(modelId: string | null | undefined): string 
   }
   if (normalized.startsWith('z.ai/')) {
     return `zai/${normalized.slice('z.ai/'.length)}`
+  }
+  if (normalized.startsWith('minimax-portal/')) {
+    return `minimax/${normalized.slice('minimax-portal/'.length)}`
   }
   return normalized
 }

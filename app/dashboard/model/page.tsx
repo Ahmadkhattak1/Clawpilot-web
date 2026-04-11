@@ -20,6 +20,7 @@ import {
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
   AVAILABLE_MODEL_PROVIDER_OPTIONS,
+  getModelAuthCueMethods,
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
   getProviderModelOptions,
@@ -408,6 +409,7 @@ function ModelStepPageClient() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   {selectedProviderModels.map((model) => {
                     const isSelected = selectedModelId === model.id
+                    const authCueMethods = getModelAuthCueMethods(selectedProviderId, model.id)
                     return (
                       <button
                         key={model.id}
@@ -423,6 +425,16 @@ function ModelStepPageClient() {
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-medium text-foreground">{model.label}</p>
                           {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {authCueMethods.map((method) => (
+                            <span
+                              key={`${model.id}-${method}`}
+                              className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground"
+                            >
+                              {method === 'api-key' ? 'API key' : 'OAuth'}
+                            </span>
+                          ))}
                         </div>
                         {model.isRecommended ? (
                           <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-primary">

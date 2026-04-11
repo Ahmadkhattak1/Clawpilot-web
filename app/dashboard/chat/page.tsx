@@ -643,7 +643,7 @@ export default function ChatPage() {
                 }}
               >
                 <ShieldCheck className="h-4 w-4" />
-                Models
+                Models Config
               </Button>
             </div>
           </div>

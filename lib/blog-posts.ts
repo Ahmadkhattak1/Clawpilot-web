@@ -15,6 +15,233 @@ export type BlogPost = {
 
 const blogPosts: BlogPost[] = [
   {
+    slug: "dont-run-openclaw-on-your-main-machine",
+    title: "Don't Run OpenClaw on Your Main Machine: Safer OpenClaw Hosting on ClawPilot",
+    description:
+      "OpenClaw can execute shell commands, read files, browse the web, and access connected services. This guide explains why your main machine is the wrong place for it and where ClawPilot fits.",
+    publishedAt: "2026-04-11",
+    readMinutes: 10,
+    primaryKeyword: "don't run openclaw on your main machine",
+    content: `
+## The short version
+
+Do not run OpenClaw on the same machine that holds your day-to-day browser sessions, SSH keys, local files, saved credentials, and work apps.
+
+That is not fear-based marketing. It is just the logical consequence of what OpenClaw is designed to do.
+
+OpenClaw is powerful because it can:
+
+- execute shell commands
+- browse the web
+- read and write files
+- use connected services and messaging channels
+- keep working across ongoing sessions
+
+Those capabilities are exactly why your main machine is the wrong place for it.
+
+## Once you decide to isolate it
+
+The first decision is easy:
+
+OpenClaw should not live on the same machine you use for normal work.
+
+The next decision is the one that actually shapes your setup:
+
+Once OpenClaw belongs off your main machine, what is the best way to run it in the cloud?
+
+For some people, the answer is a DIY cloud VM.
+
+For many teams, the better answer is [OpenClaw hosting](/openclaw-hosting) on ClawPilot, where you get the isolation benefits without taking on the full infrastructure burden yourself.
+
+## What makes OpenClaw risky on a personal machine
+
+OpenClaw is not a read-only chatbot living in a browser tab.
+
+It is an AI agent runtime with broad system-level reach. If you put it on your main machine, the blast radius is tied to everything that machine can already access.
+
+That usually includes:
+
+- browser cookies and active logins
+- \`.env\` files and local secrets
+- SSH keys and API tokens
+- local notes, downloads, and project files
+- messaging sessions and linked accounts
+- anything your user account can read, modify, or launch
+
+Even if you trust your own prompts, that is not the whole threat model.
+
+The real issue is that OpenClaw can process outside content: chats, links, websites, pasted text, tools, and workflows. That creates room for prompt injection, unsafe actions, and unintended tool use.
+
+Running that on your primary machine is a bad default because the machine already contains the things you care about most.
+
+## The real security goal is blast-radius control
+
+When people say "do not run OpenClaw on your main machine," what they really mean is:
+
+> if something goes wrong, keep the fallout contained
+
+That is the whole point of isolation.
+
+You want OpenClaw on a machine that:
+
+- does not contain your personal history
+- does not share your main browser state
+- does not hold unrelated local projects
+- can be reset or rebuilt without wrecking your daily setup
+
+That is why cloud deployment is the right default for serious use.
+
+## Your isolation options
+
+Once you decide not to run OpenClaw locally, there are four practical paths:
+
+1. Docker on your laptop
+2. Dedicated extra hardware
+3. Self-managed cloud VM
+4. Managed OpenClaw on ClawPilot
+
+They are not equal.
+
+| Option | Isolation level | Operational burden | Best fit |
+| --- | --- | --- | --- |
+| Docker on your laptop | Better than native local install, but still on your main machine | Medium | Individual tinkerers |
+| Dedicated extra machine | Strong physical separation | Medium to high | Power users willing to maintain extra hardware |
+| DIY cloud VM | Strong cloud isolation | High | Infra-comfortable teams |
+| ClawPilot managed hosting | Strong cloud isolation | Lower | Teams that want reliable OpenClaw without DIY ops |
+
+## Docker is not the same as getting it off your machine
+
+Docker can be a reasonable improvement over a raw local install, but it does not fully solve the problem.
+
+The runtime is still on the same laptop you use every day. You are still sharing the same device, the same network context, and the same personal work environment.
+
+For lightweight experimentation, that may be acceptable.
+
+For anything persistent, connected, or business-critical, it is still not where you want to stop.
+
+## A separate physical machine works, but it creates its own maintenance job
+
+Some people solve this by putting OpenClaw on a spare desktop, a NUC, or a Mac mini.
+
+That gives you real separation, which is good.
+
+It also means:
+
+- you buy and maintain another machine
+- you keep its OS and dependencies updated
+- you manage access and recovery yourself
+- you still own the uptime problem
+
+That can be fine if you enjoy running extra hardware.
+
+It is usually not the cleanest option for a team that just wants OpenClaw running safely.
+
+## A cloud VM is the right architecture, but not always the right workload
+
+A cloud VM is the strongest general-purpose answer because it keeps OpenClaw away from your primary device and gives you an environment that can be isolated, controlled, and replaced.
+
+But a self-managed VM still leaves you with real work:
+
+- picking the instance size
+- provisioning the server
+- installing Node and OpenClaw
+- managing secrets and auth tokens
+- keeping ports private
+- handling SSH access
+- doing updates and troubleshooting over time
+- stopping and starting machines so costs do not drift
+
+That is not just setup. It is ownership.
+
+For some builders, that is acceptable.
+
+For many teams, it is a distraction.
+
+## This is where ClawPilot fits
+
+ClawPilot exists for teams that agree with the isolation argument but do not want to turn OpenClaw into a cloud infrastructure project.
+
+That means:
+
+- OpenClaw runs away from your main machine
+- the runtime lives in a private cloud environment
+- hosting, updates, and uptime are handled for you
+- your team can focus on workflows, prompts, channels, and outcomes instead of server maintenance
+
+That is the practical difference between **DIY cloud hosting** and **managed OpenClaw**.
+
+You still get the safer architecture.
+
+You just do not have to babysit it.
+
+## OpenClaw on ClawPilot vs OpenClaw on a DIY cloud VM
+
+This is the simplest way to frame it:
+
+| Decision area | DIY cloud VM | OpenClaw on ClawPilot |
+| --- | --- | --- |
+| Isolation from your main machine | Yes | Yes |
+| Server provisioning | You own it | Managed |
+| Dependency upkeep | You own it | Managed |
+| Access and onboarding friction | Higher | Lower |
+| Ongoing maintenance | Higher | Lower |
+| Best fit | Infrastructure-heavy teams | Product, ops, support, and growth teams |
+
+The key point is not that self-hosting is wrong.
+
+The key point is that **once you already know OpenClaw should live in the cloud, managed hosting becomes the cleaner default for most teams**.
+
+## Who should still self-manage OpenClaw
+
+Self-managed OpenClaw is still a valid choice if:
+
+- you already operate production infrastructure comfortably
+- you need deeper environment-level control
+- you want to experiment with custom runtime patterns
+- your team is happy to own patching, debugging, and VM lifecycle decisions
+
+That is a real use case.
+
+It is just not the default use case for everyone discovering OpenClaw.
+
+## Who should use ClawPilot
+
+ClawPilot is the better fit if:
+
+- you want OpenClaw in the cloud quickly
+- you do not want it anywhere near your main machine
+- you want less terminal work and less environment drift
+- you care more about reliable usage than infrastructure craftsmanship
+- you are connecting workflows like support, research, and [OpenClaw WhatsApp automation](/openclaw-whatsapp-automation)
+
+In other words, ClawPilot is for teams that want the benefit of hosted OpenClaw, not the weekly chores that come with building the host yourself.
+
+## The mistake most teams make
+
+The common mistake is asking only:
+
+> where should OpenClaw run?
+
+The better question is:
+
+> where should OpenClaw run, and who should own everything around that runtime?
+
+Those are different questions.
+
+If you answer only the first one, you can end up with a technically isolated system that is still painful to maintain.
+
+## Final takeaway
+
+If you take one thing from this post, let it be this:
+
+**Do not run OpenClaw on your main machine.**
+
+Put it in an isolated environment with a smaller blast radius.
+
+And if you want that isolated setup without taking on the extra infrastructure job yourself, start with [managed OpenClaw](/managed-openclaw) on ClawPilot or compare the tradeoffs in our [OpenClaw VPS vs managed hosting guide](/openclaw-vps-hosting).
+`,
+  },
+  {
     slug: "how-to-uninstall-openclaw-cleanly-on-windows",
     title: "How to Uninstall OpenClaw Cleanly on Windows",
     description:

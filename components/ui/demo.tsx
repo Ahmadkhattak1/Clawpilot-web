@@ -152,10 +152,7 @@ export function Hero() {
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            Includes a 3-day trial before billing begins
-          </p>
-          <p className="text-xs text-muted-foreground">
-            For less than a candy bar 🍫 a day &middot; Cancel anytime
+            Includes a 3-day trial before billing begins 🎉
           </p>
         </div>
       </div>

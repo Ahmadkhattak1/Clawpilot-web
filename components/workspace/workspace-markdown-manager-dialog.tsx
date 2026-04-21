@@ -57,6 +57,23 @@ interface WorkspaceManagerStatus {
   message: string
 }
 
+function collectWorkspaceDirectories(relativePaths: string[]): string[] {
+  const directories = new Set<string>()
+
+  for (const relativePath of relativePaths) {
+    const segments = relativePath
+      .split(/[\\/]/)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+
+    for (let index = 1; index < segments.length; index += 1) {
+      directories.add(segments.slice(0, index).join('/'))
+    }
+  }
+
+  return Array.from(directories).sort((left, right) => left.localeCompare(right))
+}
+
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim()
   return fallback
@@ -178,6 +195,10 @@ export function WorkspaceMarkdownManagerDialog({
       || getPathFileName(relativePath).toLowerCase().includes(query)
     ))
   }, [markdownFiles, search])
+
+  const visibleDirectories = useMemo(() => (
+    collectWorkspaceDirectories(filteredFiles)
+  ), [filteredFiles])
 
   const hasUnsavedChanges = useMemo(() => (
     activeFileMode === 'edit' && activeFileContent !== activeFileOriginalContent
@@ -460,7 +481,17 @@ export function WorkspaceMarkdownManagerDialog({
                     Loading
                   </p>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">{filteredFiles.length} file(s)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {filteredFiles.length}
+                    {' '}
+                    file(s)
+                    {' '}
+                    |
+                    {' '}
+                    {visibleDirectories.length}
+                    {' '}
+                    director{visibleDirectories.length === 1 ? 'y' : 'ies'}
+                  </p>
                 )}
               </div>
               {searchExpanded ? (
@@ -526,77 +557,104 @@ export function WorkspaceMarkdownManagerDialog({
               </div>
             ) : null}
 
-            <div className="max-h-[45vh] space-y-1 overflow-auto">
-              {filteredFiles.length > 0 ? filteredFiles.map((relativePath) => {
-                const fileRisk = workspaceFileRisk(relativePath)
-                const deleteKey = `delete:${relativePath}`
-                const openKey = `open:${relativePath}`
-                const active = activeFilePath.trim() === relativePath.trim()
-                return (
-                  <div
-                    key={relativePath}
-                    className={`rounded-md border px-2 py-2 ${active ? 'border-primary/40 bg-primary/5' : 'border-transparent hover:border-border/70 hover:bg-muted/30'}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 text-left"
-                        onClick={() => void handleOpenFile(relativePath)}
-                      >
-                        <p className="truncate text-xs font-medium">{getPathFileName(relativePath)}</p>
-                        <p className="truncate text-[11px] text-muted-foreground" title={relativePath}>
-                          {relativePath}
-                        </p>
-                      </button>
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                            fileRisk.level === 'critical'
-                              ? 'bg-destructive/15 text-destructive'
-                              : fileRisk.level === 'operational'
-                                ? 'bg-amber-500/15 text-amber-700'
-                                : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {fileRisk.label}
-                        </span>
-                        <Button
+            <div className="max-h-[45vh] space-y-3 overflow-auto">
+              {visibleDirectories.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Directories
+                  </p>
+                  {visibleDirectories.map((directoryPath) => (
+                    <div
+                      key={directoryPath}
+                      className="rounded-md border border-border/70 bg-muted/20 px-2 py-2"
+                    >
+                      <p className="truncate text-xs font-medium">{getPathFileName(directoryPath)}</p>
+                      <p className="truncate text-[11px] text-muted-foreground" title={directoryPath}>
+                        {directoryPath}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="space-y-1">
+                {visibleDirectories.length > 0 ? (
+                  <p className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Files
+                  </p>
+                ) : null}
+
+                {filteredFiles.length > 0 ? filteredFiles.map((relativePath) => {
+                  const fileRisk = workspaceFileRisk(relativePath)
+                  const deleteKey = `delete:${relativePath}`
+                  const openKey = `open:${relativePath}`
+                  const active = activeFilePath.trim() === relativePath.trim()
+                  return (
+                    <div
+                      key={relativePath}
+                      className={`rounded-md border px-2 py-2 ${active ? 'border-primary/40 bg-primary/5' : 'border-transparent hover:border-border/70 hover:bg-muted/30'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
                           type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0"
+                          className="min-w-0 flex-1 text-left"
                           onClick={() => void handleOpenFile(relativePath)}
-                          disabled={actionPendingKey === openKey}
                         >
-                          {actionPendingKey === openKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Pencil className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-destructive"
-                          onClick={() => void handleDeleteFile(relativePath)}
-                          disabled={actionPendingKey === deleteKey}
-                        >
-                          {actionPendingKey === deleteKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
+                          <p className="truncate text-xs font-medium">{getPathFileName(relativePath)}</p>
+                          <p className="truncate text-[11px] text-muted-foreground" title={relativePath}>
+                            {relativePath}
+                          </p>
+                        </button>
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                              fileRisk.level === 'critical'
+                                ? 'bg-destructive/15 text-destructive'
+                                : fileRisk.level === 'operational'
+                                  ? 'bg-amber-500/15 text-amber-700'
+                                  : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {fileRisk.label}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            onClick={() => void handleOpenFile(relativePath)}
+                            disabled={actionPendingKey === openKey}
+                          >
+                            {actionPendingKey === openKey ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Pencil className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive"
+                            onClick={() => void handleDeleteFile(relativePath)}
+                            disabled={actionPendingKey === deleteKey}
+                          >
+                            {actionPendingKey === deleteKey ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              }) : (
-                <p className="px-2 py-3 text-xs text-muted-foreground">
-                  No markdown files matched your search.
-                </p>
-              )}
+                  )
+                }) : (
+                  <p className="px-2 py-3 text-xs text-muted-foreground">
+                    No markdown files matched your search.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

@@ -93,16 +93,16 @@ export default function SubscriptionSuccessPage() {
         <CardHeader className="space-y-2">
           <CardTitle className="flex items-center gap-2 type-h4">
             <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            Subscription confirmed
+            Billing confirmed
           </CardTitle>
           <CardDescription>
-            Your plan is active. Saving Google Ads conversion and redirecting you to your workspace.
+            Your access is active. Saving Google Ads conversion and redirecting you to your workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Finalizing confirmation...
+            Finalizing access...
           </p>
           <Button asChild className="w-full">
             <Link href={CONTINUE_PATH}>Continue now</Link>

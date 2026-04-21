@@ -132,7 +132,7 @@ export function Header() {
             className="gap-1.5"
           >
             {isGoogleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {isGoogleLoading ? "Connecting..." : "Get Started"}
+            {isGoogleLoading ? "Connecting..." : "Start free"}
           </Button>
         )}
       </nav>

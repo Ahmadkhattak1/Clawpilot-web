@@ -194,7 +194,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
                 variant="brand"
               >
                 {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {authStatus === "loading" ? "Loading..." : "Get Started"}
+                {authStatus === "loading" ? "Loading..." : "Start free"}
                 {!isGoogleLoading && authStatus !== "loading" ? (
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 ) : null}
@@ -356,7 +356,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
         <ClawContainer size="sm">
           <ClawSectionIntro
             title="Ready to try it?"
-            description="Your private instance is a few clicks away."
+            description="Your private instance is a few clicks away, with a 3-day trial before billing begins."
           />
           <div className="mt-8 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
@@ -376,7 +376,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
                 variant="brand"
               >
                 {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {authStatus === "loading" ? "Loading..." : "Get Started"}
+                {authStatus === "loading" ? "Loading..." : "Start free"}
                 {!isGoogleLoading && authStatus !== "loading" ? (
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 ) : null}

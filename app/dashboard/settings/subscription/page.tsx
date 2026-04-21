@@ -28,13 +28,17 @@ type CancelMode = 'immediate'
 const STRIPE_CHECKOUT_SESSION_ID_TOKEN = '{CHECKOUT_SESSION_ID}'
 const STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY = 'clawpilot:last-stripe-checkout-session-id'
 const SUBSCRIPTION_SUCCESS_PATH = '/dashboard/settings/subscription/success'
+const STRIPE_TRIAL_DAYS = 3
 
 interface SubscriptionSnapshot {
   state?: string
   plan?: string
   billingStatus?: string
   isPaidPlan?: boolean
+  providerSubscriptionId?: string | null
+  currentPeriodStartAt?: string | null
   currentPeriodEndAt?: string | null
+  trialStartedAt?: string | null
   subscriptionEndsAt?: string | null
   cancelAtPeriodEnd?: boolean
   graceEndsAt?: string | null
@@ -113,6 +117,21 @@ function resolveManagedHostingEntitlement(snapshot: SubscriptionSnapshot | null)
   return billingStatus === 'ACTIVE' || billingStatus === 'TRIALING' || billingStatus === 'PAST_DUE'
 }
 
+function isTrialingSnapshot(snapshot: SubscriptionSnapshot | null): boolean {
+  return (readString(snapshot?.billingStatus)?.toUpperCase() ?? '') === 'TRIALING'
+}
+
+function isEligibleForManagedTrial(snapshot: SubscriptionSnapshot | null): boolean {
+  if (!snapshot) {
+    return true
+  }
+
+  return !readString(snapshot.providerSubscriptionId)
+    && !readString(snapshot.currentPeriodStartAt)
+    && !readString(snapshot.trialStartedAt)
+    && !readString(snapshot.lastPaymentAt)
+}
+
 function formatDateTime(value: unknown): string {
   const iso = readString(value)
   if (!iso) return '—'
@@ -146,9 +165,10 @@ function toDisplayPlan(plan: BillingPlan | null): string {
 
 function toDisplayStatus(snapshot: SubscriptionSnapshot | null): string {
   if (!snapshot) return 'Unknown'
-  if (snapshot.isPaidPlan === true) return 'Active'
   const state = readString(snapshot.state)?.toUpperCase() ?? ''
   const billingStatus = readString(snapshot.billingStatus)?.toUpperCase() ?? ''
+  if (billingStatus === 'TRIALING') return 'Trialing'
+  if (snapshot.isPaidPlan === true) return 'Active'
   if (state === 'TERMINATED') return 'Ended'
   if (snapshot.cancelAtPeriodEnd) return 'Cancel scheduled'
   if (state === 'GRACE') return 'Grace'
@@ -159,6 +179,9 @@ function toDisplayStatus(snapshot: SubscriptionSnapshot | null): string {
 
 function statusBadgeClass(snapshot: SubscriptionSnapshot | null): string {
   if (!snapshot) return 'border-border text-foreground'
+  if (isTrialingSnapshot(snapshot)) {
+    return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400'
+  }
   if (snapshot.isPaidPlan === true) {
     return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
   }
@@ -388,7 +411,11 @@ function SettingsSubscriptionPageClient() {
           })()
 
     setPortalRedirecting(true)
-    setStatusMessage('Redirecting to Stripe checkout...')
+    setStatusMessage(
+      isEligibleForManagedTrial(snapshot)
+        ? 'Redirecting to Stripe...'
+        : 'Redirecting to Stripe checkout...',
+    )
     setActionError('')
 
     try {
@@ -430,7 +457,7 @@ function SettingsSubscriptionPageClient() {
       setActionError(error instanceof Error ? error.message : 'Could not open Stripe checkout.')
       setPortalRedirecting(false)
     }
-  }, [customerEmail, customerName, pathname, searchParams, tenantId])
+  }, [customerEmail, customerName, pathname, searchParams, snapshot, tenantId])
 
   const confirmStripeCheckoutSession = useCallback(async (targetTenantId: string, sessionId: string): Promise<boolean> => {
     const normalizedTenantId = targetTenantId.trim()
@@ -552,6 +579,8 @@ function SettingsSubscriptionPageClient() {
 
   const normalizedPlan = normalizeBillingPlan(snapshot?.plan)
   const hasPaidPlan = resolveManagedHostingEntitlement(snapshot)
+  const isTrialing = isTrialingSnapshot(snapshot)
+  const eligibleForTrial = isEligibleForManagedTrial(snapshot)
   const requiredBilling = searchParams.get('required') === '1'
   const stripeReturn = searchParams.get('stripe_return') === '1'
   const checkoutStatus = searchParams.get('checkout')
@@ -581,7 +610,7 @@ function SettingsSubscriptionPageClient() {
   const backHref = onboardingComplete ? '/dashboard/chat' : '/dashboard/model'
   const statusLabel = toDisplayStatus(snapshot)
   const activePlanLabel = toDisplayPlan(normalizedPlan)
-  const periodLabel = snapshot?.cancelAtPeriodEnd ? 'Ends' : hasPaidPlan ? 'Renews' : 'Trial ends'
+  const periodLabel = snapshot?.cancelAtPeriodEnd ? 'Ends' : isTrialing ? 'Trial ends' : hasPaidPlan ? 'Renews' : 'Trial ends'
   const periodValue = useMemo(() => {
     if (snapshot?.cancelAtPeriodEnd) {
       return formatDateTime(snapshot.subscriptionEndsAt ?? snapshot.currentPeriodEndAt)
@@ -638,7 +667,7 @@ function SettingsSubscriptionPageClient() {
     let cancelled = false
     let pendingTimeout: ReturnType<typeof setTimeout> | null = null
     async function waitForStripeSync() {
-      setStatusMessage('Finalizing your payment...')
+      setStatusMessage('Finalizing your billing...')
       setActionError('')
 
       if (checkoutSucceeded && effectiveCheckoutSessionId) {
@@ -739,13 +768,17 @@ function SettingsSubscriptionPageClient() {
         <div className="w-full max-w-md space-y-4 rounded-xl border border-border/70 bg-card p-6 text-center">
           <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {stripeReturn ? 'Finalizing payment...' : 'Redirecting to Stripe checkout...'}
+            {stripeReturn
+              ? 'Finalizing billing...'
+              : eligibleForTrial
+                ? 'Redirecting to Stripe...'
+                : 'Redirecting to Stripe checkout...'}
           </p>
           {statusMessage ? <p className="text-xs text-muted-foreground">{statusMessage}</p> : null}
           {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
           <Button onClick={() => void startStripeCheckout()} disabled={portalRedirecting} className="w-full">
             {portalRedirecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Continue to Stripe
+            {eligibleForTrial ? 'Start free in Stripe' : 'Continue to Stripe'}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -842,7 +875,11 @@ function SettingsSubscriptionPageClient() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              We send you directly to Stripe checkout for purchase.
+              {hasPaidPlan
+                ? 'We send you directly to Stripe to manage billing and cancellation.'
+                : eligibleForTrial
+                  ? `We send you directly to Stripe to start your ${STRIPE_TRIAL_DAYS}-day trial. Card required. You are charged automatically when the trial ends unless you cancel first.`
+                  : 'We send you directly to Stripe checkout. Your card is charged immediately unless Stripe shows a different promotion.'}
             </p>
 
             <Button
@@ -851,7 +888,11 @@ function SettingsSubscriptionPageClient() {
               className="w-full"
             >
               {portalRedirecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {hasPaidPlan ? 'Manage in Stripe' : 'Continue to Stripe checkout'}
+              {hasPaidPlan
+                ? 'Manage in Stripe'
+                : eligibleForTrial
+                  ? 'Start free in Stripe'
+                  : 'Continue to Stripe checkout'}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>

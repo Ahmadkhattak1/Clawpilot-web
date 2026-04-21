@@ -142,7 +142,7 @@ export function Hero() {
               ) : null}
               {authStatus === "loading"
                 ? "Loading..."
-                : "Get Started"}
+                : "Start free"}
               {!isGoogleLoading && authStatus !== "loading" ? (
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               ) : null}
@@ -151,6 +151,9 @@ export function Hero() {
           {authError ? (
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
+          <p className="text-xs text-muted-foreground">
+            Includes a 3-day trial before billing begins
+          </p>
           <p className="text-xs text-muted-foreground">
             For less than a candy bar 🍫 a day &middot; Cancel anytime
           </p>

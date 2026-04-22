@@ -96,7 +96,7 @@ export default function SubscriptionSuccessPage() {
             Billing confirmed
           </CardTitle>
           <CardDescription>
-            Your access is active. Saving Google Ads conversion and redirecting you to your workspace.
+            Your access is active. Redirecting you to your workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

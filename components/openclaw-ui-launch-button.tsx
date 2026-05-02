@@ -229,6 +229,8 @@ export function OpenClawUiLaunchButton({
 
       const launchAttemptStartedAtMs = Date.now()
       let launchUrl: string | null = null
+      let launchSucceeded = false
+      let lastLaunchErrorMessage: string | null = null
 
       while (Date.now() - launchAttemptStartedAtMs <= OPENCLAW_LAUNCH_RETRY_WINDOW_MS) {
         const response = await fetch('/api/openclaw/launch', {
@@ -258,8 +260,11 @@ export function OpenClawUiLaunchButton({
         launchUrl = readTrimmedString(launchRecord?.url)
 
         if (response.ok) {
+          launchSucceeded = true
           break
         }
+
+        lastLaunchErrorMessage = message ?? 'Unable to open OpenClaw right now.'
 
         if (isRetryableLaunchError(response.status, errorCode)) {
           updateLaunchPlaceholder(openedWindow, {
@@ -273,6 +278,9 @@ export function OpenClawUiLaunchButton({
         throw new Error(message ?? 'Unable to open OpenClaw right now.')
       }
 
+      if (!launchSucceeded) {
+        throw new Error(lastLaunchErrorMessage ?? 'OpenClaw secure launch is still preparing. Please try again.')
+      }
       if (!launchUrl) {
         throw new Error('Launch URL is missing. Please try again.')
       }

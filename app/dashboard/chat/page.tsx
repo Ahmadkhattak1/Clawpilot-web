@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, ExternalLink, FileText, Loader2, Mail, Newspaper, ShieldCheck, X } from 'lucide-react'
 
 import { RuntimeModelsDialog } from '@/components/models/runtime-models-dialog'
+import { ConsoleLaunchButton } from '@/components/console-launch-button'
 import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -500,6 +501,16 @@ export default function ChatPage() {
                 <Mail className="h-4 w-4" />
                 <span>Contact us</span>
               </button>
+
+              <ConsoleLaunchButton
+                tenantId={tenantId}
+                onUnauthorized={redirectToSignIn}
+                onLaunchStart={() => setLaunchError('')}
+                onError={setLaunchError}
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-full gap-2 px-3 text-[13px] font-medium"
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

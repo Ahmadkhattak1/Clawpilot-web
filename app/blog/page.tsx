@@ -5,7 +5,7 @@ import { BlogCollectionSchema } from "@/components/blog/blog-schema"
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
 import { getAllBlogPosts } from "@/lib/blog-posts"
-import { siteName } from "@/lib/site"
+import { siteName, siteOgImage } from "@/lib/site"
 
 export const metadata: Metadata = {
   title: "Blog",
@@ -19,20 +19,13 @@ export const metadata: Metadata = {
     url: "/blog",
     siteName,
     type: "website",
-    images: [
-      {
-        url: "/logo.webp",
-        width: 512,
-        height: 512,
-        alt: "ClawPilot mascot logo",
-      },
-    ],
+    images: [siteOgImage],
   },
   twitter: {
     card: "summary_large_image",
     title: `${siteName} Blog`,
     description: "OpenClaw hosting guides, comparisons, and setup posts.",
-    images: ["/logo.webp"],
+    images: [siteOgImage.url],
   },
 }
 

@@ -5,7 +5,7 @@ import type { Metadata, Viewport } from 'next'
 import { Toaster } from 'sonner'
 import { ThemeProvider } from "@/components/theme-provider"
 import { GOOGLE_TAG_ID } from "@/lib/google-ads"
-import { seoKeywords, siteName, siteUrl } from "@/lib/site"
+import { seoKeywords, siteName, siteOgImage, siteUrl } from "@/lib/site"
 
 import './globals.css'
 
@@ -34,14 +34,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName,
     locale: "en_US",
-    images: [
-      {
-        url: "/logo.webp",
-        width: 512,
-        height: 512,
-        alt: "ClawPilot mascot logo",
-      },
-    ],
+    images: [siteOgImage],
     type: "website",
   },
   twitter: {
@@ -49,7 +42,7 @@ export const metadata: Metadata = {
     title: "ClawPilot | Your Own OpenClaw in the Cloud",
     description:
       "A private OpenClaw instance running in minutes. No servers, no Docker, no terminal.",
-    images: ["/logo.webp"],
+    images: [siteOgImage.url],
   },
   robots: {
     index: true,

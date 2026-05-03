@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { siteName } from "@/lib/site"
+import { siteName, siteOgImage } from "@/lib/site"
 
 export type LandingPageLink = {
   href: string
@@ -521,13 +521,13 @@ export function buildLandingMetadata(page: LandingPageConfig): Metadata {
       description: page.metaDescription,
       url: page.path,
       type: "website",
-      images: ["/logo.webp"],
+      images: [siteOgImage],
     },
     twitter: {
       card: "summary_large_image",
       title: `${siteName} | ${page.metaTitle}`,
       description: page.metaDescription,
-      images: ["/logo.webp"],
+      images: [siteOgImage.url],
     },
   }
 }

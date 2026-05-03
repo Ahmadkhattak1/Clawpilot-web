@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { siteName, siteUrl } from "@/lib/site"
+import { siteName, siteOgImage, siteUrl } from "@/lib/site"
 
 const pageTitle = "Agent Risk Disclaimer"
 const pageDescription =
@@ -16,14 +16,14 @@ export const metadata: Metadata = {
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
     url: "/disclaimer",
-    images: ["/logo.webp"],
+    images: [siteOgImage],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
-    images: ["/logo.webp"],
+    images: [siteOgImage.url],
   },
 }
 

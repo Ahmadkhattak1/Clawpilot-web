@@ -6,23 +6,34 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, ExternalLink, FileText, Loader2, Mail, Newspaper, ShieldCheck, X } from 'lucide-react'
+import {
+  ChevronLeft,
+  Copy,
+  ExternalLink,
+  FileText,
+  Globe2,
+  Loader2,
+  Mail,
+  MessageSquare,
+  Newspaper,
+  Server,
+  ShieldCheck,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react'
 
 import { RuntimeModelsDialog } from '@/components/models/runtime-models-dialog'
 import { ConsoleLaunchButton } from '@/components/console-launch-button'
+import {
+  DashboardHeader,
+  resolveDashboardProfile,
+  type DashboardProfile,
+} from '@/components/dashboard/dashboard-header'
+import { AgentReadinessPanel } from '@/components/dashboard/agent-readiness-panel'
 import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
+import { isTenantDeploymentStillStartingFromSnapshot } from '@/lib/deploy-progress'
 import { isOnboardingComplete } from '@/lib/onboarding-state'
 import {
   completeRuntimeOpenAICodexOAuth,
@@ -30,9 +41,16 @@ import {
   startRuntimeOpenAICodexOAuth,
   type RuntimeModelsData,
 } from '@/lib/runtime-controls'
+import { getRuntimeProduct, inferRuntimeKindFromGatewayPort } from '@/lib/runtime-products'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
-import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatusSnapshot,
+  resolveTenantMachineLabel,
+  tenantHasReadyGateway,
+  type TenantDaemonStatus,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 type OpenClawResourceArticle = {
@@ -73,6 +91,12 @@ const OPENCLAW_RESOURCE_ARTICLES: OpenClawResourceArticle[] = [
 ]
 
 const CONTACT_EMAIL = 'support@clawpilot.app'
+const DEFAULT_PROFILE: DashboardProfile = {
+  name: 'Account',
+  email: '',
+  initial: 'A',
+  imageUrl: null,
+}
 
 function getArticleDomain(url: string): string {
   try {
@@ -86,27 +110,14 @@ function buildArticleFaviconUrl(url: string): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(getArticleDomain(url))}&sz=64`
 }
 
-function buildProfileInitial(value: string): string {
-  const normalized = value.trim()
-  if (!normalized) return 'A'
-
-  const parts = normalized.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) {
-    const initials = `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase()
-    if (initials.trim()) {
-      return initials
-    }
-  }
-
-  return normalized[0]?.toUpperCase() ?? 'A'
+function resolveMachineLabel(status: TenantDaemonStatus | null): string {
+  return resolveTenantMachineLabel(status)
 }
 
-function buildPfpWebUrl(email: string): string | null {
-  const normalized = email.trim().toLowerCase()
-  if (!normalized) {
-    return null
-  }
-  return `https://pfp.web/${encodeURIComponent(normalized)}`
+function resolveGatewayLabel(status: TenantDaemonStatus | null): string {
+  const port = status?.instance?.gatewayProbe?.gatewayPort ?? 18789
+  const reachableVia = status?.instance?.gatewayProbe?.reachableVia
+  return reachableVia ? `${reachableVia} :${port}` : `gateway :${port}`
 }
 
 function normalizeOpenAIModelIdForRuntime(modelId: string): string {
@@ -150,10 +161,8 @@ export default function ChatPage() {
   const router = useRouter()
   const [checkingSession, setCheckingSession] = useState(true)
   const [tenantId, setTenantId] = useState('')
-  const [profileName, setProfileName] = useState('Account')
-  const [profileEmail, setProfileEmail] = useState('')
-  const [profileInitial, setProfileInitial] = useState('A')
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [profile, setProfile] = useState<DashboardProfile>(DEFAULT_PROFILE)
+  const [runtimeStatus, setRuntimeStatus] = useState<TenantDaemonStatus | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [launchError, setLaunchError] = useState('')
   const [fileManagerOpen, setFileManagerOpen] = useState(false)
@@ -376,65 +385,58 @@ export default function ChatPage() {
         }
 
         const tid = deriveTenantIdFromUserId(session.user.id)
-        const [subscription, deploymentStillStarting] = await Promise.all([
+        const [subscription, daemonSnapshot] = await Promise.all([
           fetchSubscriptionSnapshot(tid),
-          isTenantDeploymentStillStarting(tid),
+          fetchTenantDaemonStatusSnapshot(tid),
         ])
+        const deploymentStillStarting = isTenantDeploymentStillStartingFromSnapshot(daemonSnapshot)
+        const daemonStatus = daemonSnapshot.kind === 'ok' ? daemonSnapshot.status : null
+        const runtimeKind = inferRuntimeKindFromGatewayPort(daemonStatus?.instance?.gatewayProbe?.gatewayPort)
 
         if (!hasManagedHostingPlan(subscription)) {
           router.replace(
-            buildBillingRequiredPath(deploymentStillStarting ? '/dashboard/deploy' : '/dashboard/model'),
+            buildBillingRequiredPath(deploymentStillStarting ? '/dashboard/chat' : '/dashboard/runtime'),
           )
           return
         }
 
-        if (deploymentStillStarting) {
-          router.replace('/dashboard/deploy')
+        if (runtimeKind === 'hermes') {
+          router.replace('/dashboard/hermes')
           return
         }
 
-        const onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        if (!onboardingComplete) {
-          router.replace('/dashboard/model?restart=1')
+        const onboardingComplete = deploymentStillStarting
+          ? true
+          : await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+        if (!deploymentStillStarting && !onboardingComplete) {
+          router.replace('/dashboard/runtime?restart=1')
           return
         }
 
         let storedModelConfig: RuntimeModelsData['storedModelConfig'] = null
         let oauthPending = false
 
-        try {
-          const runtimeModels = await listRuntimeModels(tid, {
-            includeModels: false,
-            syncRuntime: true,
-          })
-          storedModelConfig = runtimeModels.storedModelConfig
-          oauthPending = isRuntimeOpenAIOAuthPending(storedModelConfig)
-        } catch {
-          storedModelConfig = null
-          oauthPending = false
+        if (!deploymentStillStarting) {
+          try {
+            const runtimeModels = await listRuntimeModels(tid, {
+              includeModels: false,
+              syncRuntime: true,
+            })
+            storedModelConfig = runtimeModels.storedModelConfig
+            oauthPending = isRuntimeOpenAIOAuthPending(storedModelConfig)
+          } catch {
+            storedModelConfig = null
+            oauthPending = false
+          }
         }
-
-        const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
-        const fullName =
-          typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : ''
-        const fallbackName =
-          typeof userMetadata.name === 'string' ? userMetadata.name.trim() : ''
-        const email = session.user.email?.trim() ?? ''
-        const displayName = fullName || fallbackName || email || 'Account'
-        const pfpWebAvatar = buildPfpWebUrl(email)
-        const metadataAvatar =
-          typeof userMetadata.avatar_url === 'string' && userMetadata.avatar_url.trim()
-            ? userMetadata.avatar_url.trim()
-            : typeof userMetadata.picture === 'string' && userMetadata.picture.trim()
-              ? userMetadata.picture.trim()
-              : null
 
         if (!cancelled) {
           setTenantId(tid)
-          setProfileName(displayName)
-          setProfileEmail(email)
-          setProfileInitial(buildProfileInitial(displayName || email))
-          setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
+          setProfile(resolveDashboardProfile({
+            email: session.user.email,
+            userMetadata: (session.user.user_metadata ?? {}) as Record<string, unknown>,
+          }))
+          setRuntimeStatus(daemonStatus)
           setRuntimeStoredModelConfig(storedModelConfig)
           setOauthRequired(oauthPending)
           setOauthModalOpen(oauthPending)
@@ -456,6 +458,53 @@ export default function ChatPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!tenantId || tenantHasReadyGateway(runtimeStatus)) {
+      return
+    }
+
+    let cancelled = false
+    const pollStatus = async () => {
+      const snapshot = await fetchTenantDaemonStatusSnapshot(tenantId, { cache: 'no-store' })
+      if (cancelled) return
+      const nextStatus = snapshot.kind === 'ok' ? snapshot.status : null
+      const runtimeKind = inferRuntimeKindFromGatewayPort(nextStatus?.instance?.gatewayProbe?.gatewayPort)
+      if (runtimeKind === 'hermes') {
+        router.replace('/dashboard/hermes')
+        return
+      }
+      if (nextStatus) {
+        setRuntimeStatus(nextStatus)
+        if (tenantHasReadyGateway(nextStatus)) {
+          try {
+            const runtimeModels = await listRuntimeModels(tenantId, {
+              includeModels: false,
+              syncRuntime: true,
+            })
+            const storedModelConfig = runtimeModels.storedModelConfig
+            const oauthPending = isRuntimeOpenAIOAuthPending(storedModelConfig)
+            setRuntimeStoredModelConfig(storedModelConfig)
+            setOauthRequired(oauthPending)
+            setOauthModalOpen(oauthPending)
+            setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '')
+          } catch {
+            // The runtime is reachable enough for the readiness probe; model sync can be retried from Models.
+          }
+        }
+      }
+    }
+
+    const timer = window.setInterval(() => {
+      void pollStatus()
+    }, 2_500)
+    void pollStatus()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [router, runtimeStatus, tenantId])
+
   if (checkingSession) {
     return (
       <div className="grid min-h-[100svh] place-items-center bg-background">
@@ -466,6 +515,9 @@ export default function ChatPage() {
     )
   }
 
+  const runtimeReady = tenantHasReadyGateway(runtimeStatus)
+  const product = getRuntimeProduct('openclaw')
+
   return (
     <div className="relative min-h-[100svh] overflow-hidden bg-background">
       {/* Ambient background */}
@@ -475,209 +527,252 @@ export default function ChatPage() {
       />
 
       <div className="relative z-10 flex min-h-[100svh] flex-col">
-        {/* Header */}
-        <header className="px-5 py-4 sm:px-8 sm:py-5">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <Image
-                src="/logo.webp"
-                alt="ClawPilot"
-                width={32}
-                height={32}
-                className="h-8 w-8 object-contain"
-              />
-              <span className="type-brand text-foreground">ClawPilot</span>
-            </div>
-
-            <div className="flex items-center gap-2.5">
+        <DashboardHeader
+          profile={profile}
+          isSigningOut={isSigningOut}
+          onSignOut={() => void handleSignOut()}
+          actions={(
+            <>
               <button
                 type="button"
                 onClick={() => setContactOpen(true)}
                 aria-haspopup="dialog"
                 aria-expanded={contactOpen}
                 aria-controls="dashboard-contact-modal"
-                className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-[13px] font-medium tracking-tight text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+                className="hidden h-9 items-center gap-2 rounded-full px-3 text-[13px] font-medium tracking-tight text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground sm:inline-flex"
               >
                 <Mail className="h-4 w-4" />
                 <span>Contact us</span>
               </button>
+            </>
+          )}
+        />
 
-              <ConsoleLaunchButton
-                tenantId={tenantId}
-                onUnauthorized={redirectToSignIn}
-                onLaunchStart={() => setLaunchError('')}
-                onError={setLaunchError}
-                variant="outline"
-                size="sm"
-                className="h-9 rounded-full gap-2 px-3 text-[13px] font-medium"
+        <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8 md:py-10">
+          <nav className="mb-10 flex items-center gap-4 text-sm font-medium text-muted-foreground">
+            <Link href="/dashboard" className="inline-flex items-center gap-2 transition-colors hover:text-foreground">
+              <ChevronLeft className="h-4 w-4" />
+              Instances
+            </Link>
+            <span className="text-border">/</span>
+            <span className="text-foreground">{product.name}</span>
+          </nav>
+
+          <section className="grid gap-8 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-start">
+            <div className="mx-auto grid aspect-square w-full max-w-[168px] place-items-center rounded-full border border-border/70 bg-card shadow-[0_18px_44px_rgba(0,0,0,0.08)]">
+              <Image
+                src="/pfp.png"
+                alt="OpenClaw"
+                width={190}
+                height={190}
+                className="h-[58%] w-[58%] object-contain"
+                priority
               />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    aria-label="Open account menu"
-                  >
-                    <Avatar className="h-8 w-8 border border-border/60">
-                      {profileImageUrl ? (
-                        <AvatarImage src={profileImageUrl} alt={profileName} />
-                      ) : null}
-                      <AvatarFallback className="bg-foreground text-[11px] font-semibold text-background">
-                        {profileInitial}
-                      </AvatarFallback>
-                    </Avatar>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="py-2">
-                    <p className="truncate text-xs font-medium text-foreground">{profileName}</p>
-                    {profileEmail ? (
-                      <p className="truncate text-[11px] text-muted-foreground">{profileEmail}</p>
-                    ) : null}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings">Settings</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings/subscription">Subscription</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      void handleSignOut()
-                    }}
-                    disabled={isSigningOut}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    {isSigningOut ? 'Signing out...' : 'Sign out'}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
-          </div>
-        </header>
 
-        {/* Main Content */}
-        <main className="flex flex-1 flex-col items-center justify-center px-5 pb-16 pt-4 sm:px-8">
-          <div className="w-full max-w-[390px] rounded-[34px] border border-border/70 bg-card/70 p-5 shadow-[0_18px_44px_rgba(0,0,0,0.10)] backdrop-blur-sm sm:p-6">
-            <div aria-hidden="true" className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-muted-foreground/25" />
+            <div className="min-w-0 pt-1">
+              <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">{product.name}</h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
+                Managed deployment on your ClawPilot machine.
+              </p>
 
-            <div className="flex flex-col items-center text-center">
-              {/* Logo with glow */}
-              <div className="relative">
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 scale-150 rounded-full bg-[radial-gradient(circle,rgba(179,33,40,0.06),transparent_70%)]"
-                />
-                <div className="relative rounded-[18px] border border-border/40 bg-gradient-to-b from-card to-background p-3.5 shadow-sm">
-                  <Image
-                    src="/logo.webp"
-                    alt="OpenClaw"
-                    width={56}
-                    height={56}
-                    className="h-14 w-14 object-contain"
-                  />
-                </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <span
+                  className={cn(
+                    'inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium',
+                    runtimeReady
+                      ? 'bg-emerald-500/10 text-emerald-700'
+                      : 'bg-amber-500/10 text-amber-700',
+                  )}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-current" />
+                  {runtimeReady ? 'Running' : 'Starting'}
+                </span>
+                <span className="inline-flex h-10 items-center rounded-xl bg-primary/10 px-4 text-sm font-medium text-primary">
+                  OpenClaw
+                </span>
               </div>
 
-              <h1 className="mt-6 text-[30px] font-semibold tracking-tight text-foreground sm:text-[32px]">
-                OpenClaw Gateway
-              </h1>
-
-              {/* Error */}
-              {launchError ? (
-                <div className="mt-4 w-full rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-left text-[12.5px] leading-relaxed text-destructive">
-                  {launchError}
+              <dl className="mt-8 grid gap-5 sm:grid-cols-3">
+                <div className="flex items-center gap-3 border-border/70 sm:border-r">
+                  <Server className="h-7 w-7 text-muted-foreground" />
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Provider</dt>
+                    <dd className="mt-1 font-medium text-foreground">DigitalOcean</dd>
+                  </div>
                 </div>
-              ) : null}
-
-              {oauthRequired ? (
-                <div className="mt-4 w-full rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-left">
-                  <p className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-                    <ShieldCheck className="h-4 w-4" />
-                    Connect OpenAI before launch
-                  </p>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-                    Finish the OAuth step first. You will sign in to OpenAI, then paste the localhost callback URL here.
-                  </p>
+                <div className="flex items-center gap-3 border-border/70 sm:border-r">
+                  <ShieldCheck className="h-7 w-7 text-muted-foreground" />
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Machine</dt>
+                    <dd className="mt-1 font-medium text-foreground">{resolveMachineLabel(runtimeStatus)}</dd>
+                  </div>
                 </div>
-              ) : null}
+                <div className="flex items-center gap-3">
+                  <Globe2 className="h-7 w-7 text-muted-foreground" />
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Endpoint</dt>
+                    <dd className="mt-1 font-medium text-foreground">{resolveGatewayLabel(runtimeStatus)}</dd>
+                  </div>
+                </div>
+              </dl>
 
-              {/* Launch button */}
-              {oauthRequired ? (
-                <Button
-                  type="button"
-                  onClick={handleOpenOauthWindow}
-                  disabled={oauthBusy || !tenantId.trim()}
-                  className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
-                >
-                  {oauthBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
-                  Connect OpenAI OAuth
-                </Button>
-              ) : (
-                <OpenClawUiLaunchButton
+              <div className="mt-9 grid gap-3 sm:grid-cols-4">
+                {oauthRequired ? (
+                  <Button
+                    type="button"
+                    onClick={handleOpenOauthWindow}
+                    disabled={oauthBusy || !tenantId.trim()}
+                    className="h-12 rounded-xl gap-2 text-sm font-semibold"
+                  >
+                    {oauthBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                    Connect OAuth
+                  </Button>
+                ) : (
+                  <OpenClawUiLaunchButton
+                    tenantId={tenantId}
+                    onUnauthorized={redirectToSignIn}
+                    onLaunchStart={() => setLaunchError('')}
+                    onError={setLaunchError}
+                    label="Launch agent"
+                    variant="default"
+                    size="default"
+                    className="h-12 rounded-xl gap-2 text-sm font-semibold"
+                    disabled={!runtimeReady}
+                  />
+                )}
+
+                <ConsoleLaunchButton
                   tenantId={tenantId}
                   onUnauthorized={redirectToSignIn}
                   onLaunchStart={() => setLaunchError('')}
                   onError={setLaunchError}
-                  label="Launch OpenClaw"
-                  variant="default"
+                  label="Console"
+                  variant="outline"
                   size="default"
-                  className="mt-4 h-10 w-full rounded-xl gap-2 text-[13.5px] font-semibold shadow-sm transition-all hover:shadow-md"
+                  className="h-12 rounded-xl gap-2 text-sm font-semibold"
+                  disabled={!runtimeReady}
                 />
-              )}
-
-              <Button
-                type="button"
-                variant="outline"
-                size="default"
-                className="mt-2.5 h-10 w-full rounded-xl gap-2 text-[13.5px] font-medium"
-                onClick={() => {
-                  setLaunchError('')
-                  setFileManagerOpen(true)
-                }}
-              >
-                <FileText className="h-4 w-4" />
-                Manage Files
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="default"
-                className="mt-2.5 h-10 w-full rounded-xl gap-2 text-[13.5px] font-medium"
-                onClick={() => {
-                  setLaunchError('')
-                  setModelsDialogOpen(true)
-                }}
-              >
-                <ShieldCheck className="h-4 w-4" />
-                Models Config
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="default"
+                  className="h-12 rounded-xl gap-2 text-sm font-semibold"
+                  onClick={() => {
+                    setLaunchError('')
+                    setFileManagerOpen(true)
+                  }}
+                  disabled={!runtimeReady}
+                >
+                  <FileText className="h-4 w-4" />
+                  Files
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="default"
+                  className="h-12 rounded-xl gap-2 text-sm font-semibold"
+                  onClick={() => {
+                    setLaunchError('')
+                    setModelsDialogOpen(true)
+                  }}
+                  disabled={!runtimeReady}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Models
+                </Button>
+              </div>
             </div>
-          </div>
-        </main>
+          </section>
 
-        {/* Footer hint */}
-        <footer className="pb-6 text-center">
-          <button
-            type="button"
-            onClick={() => setResourcesOpen(true)}
-            aria-haspopup="dialog"
-            aria-expanded={resourcesOpen}
-            aria-controls="openclaw-resources-panel"
-            aria-label="See what people are doing with OpenClaw"
-            className={cn(
-              'inline-flex h-9 items-center gap-2 rounded-full px-2.5 text-[13px] font-medium tracking-tight text-muted-foreground transition-colors hover:text-foreground md:px-3.5',
-              resourcesOpen ? 'bg-muted text-foreground shadow-sm' : 'hover:bg-muted/70',
-            )}
-          >
-            <Newspaper className="h-4 w-4" />
-            <span>See what people are doing with OpenClaw</span>
-          </button>
-        </footer>
+          <AgentReadinessPanel
+            runtimeKind="openclaw"
+            status={runtimeStatus}
+            ready={runtimeReady}
+            error={launchError}
+          />
+
+          <section className="mx-auto mt-8 w-full max-w-6xl">
+            <div className="mb-4 flex flex-col gap-1">
+              <h2 className="text-xl font-semibold tracking-tight text-foreground">OpenClaw settings</h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Runtime-specific configuration lives with this agent.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <article className="rounded-2xl border border-border/70 bg-card/80 p-5 shadow-sm shadow-black/5">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <SlidersHorizontal className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold tracking-tight text-foreground">Models config</h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      Choose provider, model, API key, or OpenAI OAuth from ClawPilot.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-4 h-10 rounded-xl"
+                      onClick={() => {
+                        setLaunchError('')
+                        setModelsDialogOpen(true)
+                      }}
+                      disabled={!tenantId.trim()}
+                    >
+                      Configure models
+                    </Button>
+                  </div>
+                </div>
+              </article>
+
+              <article className="rounded-2xl border border-border/70 bg-card/80 p-5 shadow-sm shadow-black/5">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <MessageSquare className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold tracking-tight text-foreground">Channels</h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      Connect WhatsApp, Telegram, Slack, and other channels inside OpenClaw.
+                    </p>
+                    <OpenClawUiLaunchButton
+                      tenantId={tenantId}
+                      onUnauthorized={redirectToSignIn}
+                      onLaunchStart={() => setLaunchError('')}
+                      onError={setLaunchError}
+                      label={oauthRequired ? 'Connect OAuth first' : 'Open channel settings'}
+                      variant="outline"
+                      size="default"
+                      className="mt-4 h-10 rounded-xl"
+                      disabled={!runtimeReady || oauthRequired}
+                    />
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <footer className="mt-14 border-t border-border/70 pt-6 text-center">
+            <button
+              type="button"
+              onClick={() => setResourcesOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={resourcesOpen}
+              aria-controls="openclaw-resources-panel"
+              aria-label="See what people are doing with OpenClaw"
+              className={cn(
+                'inline-flex h-10 items-center gap-3 rounded-full px-3 text-sm font-medium tracking-tight text-muted-foreground transition-colors hover:text-foreground md:px-4',
+                resourcesOpen ? 'bg-muted text-foreground shadow-sm' : 'hover:bg-muted/70',
+              )}
+            >
+              <Newspaper className="h-4 w-4" />
+              <span>See what people are doing with OpenClaw</span>
+              <ExternalLink className="h-4 w-4" />
+            </button>
+          </footer>
+        </main>
       </div>
 
       <WorkspaceMarkdownManagerDialog

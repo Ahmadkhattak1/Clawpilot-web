@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     title: "ClawPilot | Your Own OpenClaw in the Cloud",
     description:
       "A private OpenClaw instance running in minutes. No servers, no Docker, no terminal.",
-    images: [siteOgImage.url],
+    images: [siteOgImage],
   },
   robots: {
     index: true,

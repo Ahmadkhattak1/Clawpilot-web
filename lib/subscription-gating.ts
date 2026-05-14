@@ -11,6 +11,16 @@ export interface SubscriptionSnapshot {
   isPaidPlan?: boolean
 }
 
+const SUBSCRIPTION_SNAPSHOT_ACTIVE_CACHE_MS = 120_000
+const SUBSCRIPTION_SNAPSHOT_INACTIVE_CACHE_MS = 5_000
+const subscriptionSnapshotCache = new Map<
+  string,
+  {
+    expiresAtMs: number
+    promise: Promise<SubscriptionSnapshot | null>
+  }
+>()
+
 function readRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
@@ -51,12 +61,49 @@ export function hasManagedHostingPlan(snapshot: SubscriptionSnapshot | null): bo
   return billingStatus === 'ACTIVE' || billingStatus === 'TRIALING' || billingStatus === 'PAST_DUE'
 }
 
-export async function fetchSubscriptionSnapshot(tenantId: string): Promise<SubscriptionSnapshot | null> {
+export async function fetchSubscriptionSnapshot(
+  tenantId: string,
+  options: { cache?: 'default' | 'no-store' } = {},
+): Promise<SubscriptionSnapshot | null> {
   const normalizedTenantId = tenantId.trim()
   if (!normalizedTenantId) return null
 
+  const canUseCache = options.cache !== 'no-store' && typeof window !== 'undefined'
+
+  if (canUseCache) {
+    const cached = subscriptionSnapshotCache.get(normalizedTenantId)
+    if (cached && Date.now() < cached.expiresAtMs) {
+      return cached.promise
+    }
+  } else if (typeof window !== 'undefined') {
+    subscriptionSnapshotCache.delete(normalizedTenantId)
+  }
+
+  const snapshotPromise = fetchSubscriptionSnapshotUncached(normalizedTenantId)
+  if (canUseCache) {
+    subscriptionSnapshotCache.set(normalizedTenantId, {
+      expiresAtMs: Date.now() + 5_000,
+      promise: snapshotPromise,
+    })
+    void snapshotPromise
+      .then((snapshot) => {
+        const cacheMs = resolveSubscriptionSnapshotCacheMs(snapshot)
+        subscriptionSnapshotCache.set(normalizedTenantId, {
+          expiresAtMs: Date.now() + cacheMs,
+          promise: Promise.resolve(snapshot),
+        })
+      })
+      .catch(() => {
+        subscriptionSnapshotCache.delete(normalizedTenantId)
+      })
+  }
+
+  return snapshotPromise
+}
+
+async function fetchSubscriptionSnapshotUncached(tenantId: string): Promise<SubscriptionSnapshot | null> {
   try {
-    const headers = await buildTenantAuthHeaders(normalizedTenantId)
+    const headers = await buildTenantAuthHeaders(tenantId)
     const response = await fetch(`${getBackendUrl()}/api/v1/subscription`, {
       method: 'GET',
       headers,
@@ -83,9 +130,15 @@ export async function fetchSubscriptionSnapshot(tenantId: string): Promise<Subsc
   }
 }
 
-export function buildBillingRequiredPath(nextPath = '/dashboard/model'): string {
+function resolveSubscriptionSnapshotCacheMs(snapshot: SubscriptionSnapshot | null): number {
+  return hasManagedHostingPlan(snapshot)
+    ? SUBSCRIPTION_SNAPSHOT_ACTIVE_CACHE_MS
+    : SUBSCRIPTION_SNAPSHOT_INACTIVE_CACHE_MS
+}
+
+export function buildBillingRequiredPath(nextPath = '/dashboard/runtime'): string {
   const query = new URLSearchParams()
   query.set('required', '1')
-  query.set('next', getSafeNextPath(nextPath, '/dashboard/model'))
+  query.set('next', getSafeNextPath(nextPath, '/dashboard/runtime'))
   return `/dashboard/settings/subscription?${query.toString()}`
 }

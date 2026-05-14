@@ -4,10 +4,11 @@ import * as Dialog from '@radix-ui/react-dialog'
 import type { Session } from '@supabase/supabase-js'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Copy, Loader2, Mail, Rocket, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock3, Copy, Loader2, Mail, Rocket, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { OnboardingAccountMenu } from '@/components/dashboard/onboarding-account-menu'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SetupStepper } from '@/components/ui/setup-stepper'
@@ -20,9 +21,18 @@ import {
 import {
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
+  isProviderAvailableForRuntime,
   isModelSupportedByProvider,
+  isModelSupportedByProviderSetupMethod,
 } from '@/lib/model-providers'
 import { isOnboardingComplete, markOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import {
+  getRuntimeAgentPath,
+  getRuntimeProduct,
+  readStoredRuntimeKind,
+  type RuntimeKind,
+  type RuntimeProduct,
+} from '@/lib/runtime-products'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 import {
@@ -51,8 +61,16 @@ function getStoredProviderSetup(): ProviderSetupStorage {
   }
 }
 
-const DEPLOY_STATUS_POLL_INTERVAL_MS = 5_000
+const DEPLOY_STATUS_POLL_INTERVAL_MS = 2_500
+const DEPLOY_TERMINATED_CONFIRMATION_WINDOW_MS = 15_000
+const DEPLOY_TERMINATED_CONFIRMATION_POLLS = Math.ceil(
+  DEPLOY_TERMINATED_CONFIRMATION_WINDOW_MS / DEPLOY_STATUS_POLL_INTERVAL_MS,
+)
 const CONTACT_EMAIL = 'support@clawpilot.app'
+const RUNTIME_GATEWAY_PORTS: Record<RuntimeKind, number> = {
+  openclaw: 18789,
+  hermes: 9119,
+}
 
 interface ConfettiPiece {
   id: number
@@ -174,14 +192,60 @@ function DeployTerminal({
   )
 }
 
-function resolveDeploymentStatusText(status: TenantDaemonStatus | null): string {
+function DeploymentProgressCue({
+  runtimeProduct,
+  elapsedSeconds,
+  running,
+}: {
+  runtimeProduct: RuntimeProduct
+  elapsedSeconds: number
+  running: boolean
+}) {
+  const elapsedMinutes = Math.max(0, Math.floor(elapsedSeconds / 60))
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/85 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+            {running ? (
+              <span className="absolute inset-0 rounded-full border border-foreground/40 animate-ping" />
+            ) : null}
+            <Clock3 className="h-4 w-4" />
+          </span>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              Preparing your hosted {runtimeProduct.shortName}
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              This usually takes about 10 minutes. You can come back later.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-full border border-border/70 px-3 py-1 text-xs text-muted-foreground">
+          {elapsedMinutes < 1 ? 'Starting now' : `${elapsedMinutes} min elapsed`}
+        </div>
+      </div>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
+        <motion.div
+          className="h-full w-1/3 rounded-full bg-foreground"
+          animate={{ x: ['-120%', '320%'] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function resolveDeploymentStatusText(status: TenantDaemonStatus | null, runtimeKind: RuntimeKind | null): string {
+  const runtimeProduct = getRuntimeProduct(runtimeKind)
   const daemonState = status?.daemon?.status?.trim().toUpperCase() ?? null
   if (!status) {
-    return 'Getting your workspace ready...'
+    return `Getting your ${runtimeProduct.deploymentNoun} ready...`
   }
 
   if (tenantHasReadyGateway(status)) {
-    return 'OpenClaw is ready.'
+    return runtimeProduct.readyText
   }
 
   if (daemonState === 'TERMINATED') {
@@ -189,18 +253,66 @@ function resolveDeploymentStatusText(status: TenantDaemonStatus | null): string 
   }
 
   if (tenantHasProvisionedInstance(status)) {
-    return 'Your hosted workspace is ready. OpenClaw is still starting.'
+    return `Your hosted machine is ready. ${runtimeProduct.shortName} is still starting.`
   }
 
   if (daemonState === 'RUNNING') {
-    return 'Reserving your hosted workspace...'
+    return 'Reserving your hosted machine...'
   }
 
   if (daemonState === 'STOPPED') {
-    return 'Your hosted workspace is waiting to start.'
+    return 'Your hosted machine is waiting to start.'
   }
 
-  return 'Getting your workspace ready...'
+  return `Getting your ${runtimeProduct.deploymentNoun} ready...`
+}
+
+function statusMatchesSelectedRuntime(status: TenantDaemonStatus | null, runtimeKind: RuntimeKind | null): boolean {
+  if (!runtimeKind) return true
+  const reportedPort = status?.instance?.gatewayProbe?.gatewayPort
+  return reportedPort === undefined || reportedPort === RUNTIME_GATEWAY_PORTS[runtimeKind]
+}
+
+function getRuntimeMismatchMessage() {
+  return 'This account already has a different hosted runtime. Use the instance on the dashboard; additional runtimes are disabled in this build.'
+}
+
+function isProviderSetupCompleteForDeploy(input: {
+  runtimeKind: RuntimeKind | null
+  providerId: string | null
+  modelId: string | null
+  providerSetup: ProviderSetupRecord | null
+}): boolean {
+  if (!input.runtimeKind || !input.providerId || !input.modelId || !input.providerSetup) {
+    return false
+  }
+
+  if (!isProviderAvailableForRuntime(input.providerId, input.runtimeKind)) {
+    return false
+  }
+
+  if (!isModelSupportedByProvider(input.providerId, input.modelId)) {
+    return false
+  }
+
+  if (!isModelSupportedByProviderSetupMethod(input.providerId, input.modelId, input.providerSetup.method)) {
+    return false
+  }
+
+  const isHermesNousOAuth =
+    input.runtimeKind === 'hermes'
+    && input.providerId === 'nous'
+    && input.providerSetup.method === 'oauth'
+
+  if (input.runtimeKind === 'hermes' && input.providerSetup.method !== 'api-key' && !isHermesNousOAuth) {
+    return false
+  }
+
+  if (input.providerSetup.method === 'api-key') {
+    return Boolean(input.providerSetup.apiKey?.trim())
+  }
+
+  return true
 }
 
 function HooksPageClient() {
@@ -226,6 +338,7 @@ function HooksPageClient() {
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const [contactOpen, setContactOpen] = useState(false)
   const [contactCopied, setContactCopied] = useState(false)
+  const [runtimeKind, setRuntimeKind] = useState<RuntimeKind | null>(null)
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const terminatedPollStreakRef = useRef(0)
 
@@ -240,21 +353,37 @@ function HooksPageClient() {
 
   useEffect(() => {
     let cancelled = false
+    const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+    const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
+    const providerSetupStore = getStoredProviderSetup()
+    const selectedSetup = providerId ? providerSetupStore[providerId] ?? null : null
+    const storedRuntimeKind = readStoredRuntimeKind()
+
+    if (!storedRuntimeKind) {
+      router.replace(forceRestartOnboarding ? '/dashboard/runtime?restart=1' : '/dashboard/runtime')
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setSelectedModelProviderId(providerId)
+    setSelectedModelId(isModelSupportedByProvider(providerId, modelId) ? modelId : null)
+    setProviderSetup(selectedSetup)
+    setRuntimeKind(storedRuntimeKind)
+    setCheckingSession(false)
 
     async function loadSessionAndOnboardingState() {
       try {
-        const session = await getRecoveredSupabaseSession()
+        const session = await getRecoveredSupabaseSession({ timeoutMs: 2500 })
         if (!session) {
           router.replace('/signin')
           return
         }
 
-        const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-        const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
-        const providerSetupStore = getStoredProviderSetup()
-        const selectedSetup = providerId ? providerSetupStore[providerId] ?? null : null
         const derivedTenantId = deriveTenantIdFromUserId(session.user.id)
 
+        const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(derivedTenantId)
+        const subscriptionPromise = fetchSubscriptionSnapshot(derivedTenantId)
         let onboardingComplete = false
         if (forceRestartOnboarding) {
           try {
@@ -265,11 +394,12 @@ function HooksPageClient() {
         } else {
           onboardingComplete = await isOnboardingComplete(session, {
             backfillFromProvisionedTenant: true,
+            daemonSnapshot,
           })
         }
 
-        const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(derivedTenantId)
         const daemonStatus = daemonSnapshot?.kind === 'ok' ? daemonSnapshot.status : null
+        const statusMatchesRuntime = statusMatchesSelectedRuntime(daemonStatus, storedRuntimeKind)
         const daemonState = daemonStatus?.daemon?.status?.trim().toUpperCase() ?? null
         const hasProvisionedInstance = tenantHasProvisionedInstance(daemonStatus)
         let deploymentStillStarting = false
@@ -288,25 +418,38 @@ function HooksPageClient() {
             // Keep routing aligned with runtime truth even if profile cleanup lags.
           }
         }
+        if (!statusMatchesRuntime) {
+          deploymentStillStarting = false
+          onboardingComplete = false
+        }
         if (deploymentStillStarting) {
           onboardingComplete = false
         }
 
-        const subscription = await fetchSubscriptionSnapshot(derivedTenantId)
+        const subscription = await subscriptionPromise
+        const completedPath = '/dashboard'
         if (!hasManagedHostingPlan(subscription)) {
           router.replace(
             buildBillingRequiredPath(
-              deploymentStillStarting ? '/dashboard/deploy' : onboardingComplete ? '/dashboard/chat' : '/dashboard/model',
+              deploymentStillStarting
+                ? getRuntimeAgentPath(storedRuntimeKind)
+                : onboardingComplete
+                  ? completedPath
+                  : '/dashboard/runtime',
             ),
           )
           return
         }
         if (onboardingComplete) {
-          router.replace('/dashboard/chat')
+          router.replace(completedPath)
           return
         }
 
         if (!cancelled) {
+          if (!statusMatchesRuntime) {
+            resetDeployProgress()
+            setError(getRuntimeMismatchMessage())
+          }
           if (deploymentStillStarting && !hasDeployStarted) {
             const startedAt = Date.now()
             writePersistedDeployStartedAt(startedAt)
@@ -319,8 +462,9 @@ function HooksPageClient() {
           setSelectedModelProviderId(providerId)
           setSelectedModelId(isModelSupportedByProvider(providerId, modelId) ? modelId : null)
           setProviderSetup(selectedSetup)
+          setRuntimeKind(storedRuntimeKind)
           setRuntimeSetupState(daemonStatus?.instance ?? null)
-          setStatus(deploymentStillStarting ? resolveDeploymentStatusText(daemonStatus) : '')
+          setStatus(deploymentStillStarting ? resolveDeploymentStatusText(daemonStatus, storedRuntimeKind) : '')
           setCheckingSession(false)
         }
 
@@ -342,11 +486,33 @@ function HooksPageClient() {
 
   const onboardingChecks = useMemo(
     () => [
-      { label: 'Provider', complete: Boolean(selectedModelProviderId) },
-      { label: 'Model', complete: Boolean(selectedModelId) },
-      { label: 'Auth', complete: Boolean(providerSetup) },
+      {
+        label: 'Provider',
+        complete: Boolean(
+          runtimeKind &&
+          selectedModelProviderId &&
+          isProviderAvailableForRuntime(selectedModelProviderId, runtimeKind),
+        ),
+      },
+      {
+        label: 'Model',
+        complete: Boolean(
+          selectedModelProviderId &&
+          selectedModelId &&
+          isModelSupportedByProvider(selectedModelProviderId, selectedModelId),
+        ),
+      },
+      {
+        label: 'Auth',
+        complete: isProviderSetupCompleteForDeploy({
+          runtimeKind,
+          providerId: selectedModelProviderId,
+          modelId: selectedModelId,
+          providerSetup,
+        }),
+      },
     ],
-    [providerSetup, selectedModelId, selectedModelProviderId],
+    [providerSetup, runtimeKind, selectedModelId, selectedModelProviderId],
   )
 
   const allChecksComplete = onboardingChecks.every((check) => check.complete)
@@ -382,16 +548,33 @@ function HooksPageClient() {
   }, [deployStartedAt])
 
   function validateBeforeSubmit() {
-    if (!selectedModelProviderId || !selectedModelId || !providerSetup) {
+    if (!runtimeKind || !selectedModelProviderId || !selectedModelId || !providerSetup) {
       return 'Complete setup.'
+    }
+
+    if (!isProviderAvailableForRuntime(selectedModelProviderId, runtimeKind)) {
+      return `${getRuntimeProduct(runtimeKind).name} does not support this provider yet.`
     }
 
     if (!isModelSupportedByProvider(selectedModelProviderId, selectedModelId)) {
       return 'Unsupported model.'
     }
 
-    if (!tenantId) {
-      return 'Session error.'
+    if (!isModelSupportedByProviderSetupMethod(selectedModelProviderId, selectedModelId, providerSetup.method)) {
+      return 'This model does not support the selected auth method.'
+    }
+
+    const isHermesNousOAuth =
+      runtimeKind === 'hermes'
+      && selectedModelProviderId === 'nous'
+      && providerSetup.method === 'oauth'
+
+    if (runtimeKind === 'hermes' && providerSetup.method !== 'api-key' && !isHermesNousOAuth) {
+      return 'Hermes Agent requires an API key for this deploy.'
+    }
+
+    if (providerSetup.method === 'api-key' && !providerSetup.apiKey?.trim()) {
+      return 'Enter an API key before deploying.'
     }
 
     return null
@@ -418,14 +601,14 @@ function HooksPageClient() {
       }
 
       redirectTimeoutRef.current = setTimeout(() => {
-        router.push('/dashboard/chat')
+        router.push(getRuntimeAgentPath(runtimeKind))
       }, 900)
     },
-    [activeSession, router],
+    [activeSession, router, runtimeKind],
   )
 
   useEffect(() => {
-    if (!hasDeployStarted || !tenantId || !activeSession || checkingSession || showConfetti) {
+    if (!hasDeployStarted || !tenantId || !activeSession || checkingSession || showConfetti || submitting) {
       return
     }
 
@@ -439,7 +622,7 @@ function HooksPageClient() {
     }
 
     const pollDeploymentReadiness = async () => {
-      const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+      const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId, { cache: 'no-store' })
       if (cancelled) {
         return
       }
@@ -458,10 +641,16 @@ function HooksPageClient() {
 
       const daemonStatus = daemonSnapshot.kind === 'ok' ? daemonSnapshot.status : null
       setRuntimeSetupState(daemonStatus?.instance ?? null)
+      if (!statusMatchesSelectedRuntime(daemonStatus, runtimeKind)) {
+        resetDeployProgress()
+        setError(getRuntimeMismatchMessage())
+        setStatus('')
+        return
+      }
 
       if (tenantHasReadyGateway(daemonStatus)) {
         terminatedPollStreakRef.current = 0
-        await finalizeSetupAndRedirect('Deployment complete. Opening chat...')
+        await finalizeSetupAndRedirect(`Deployment complete. Opening ${getRuntimeProduct(runtimeKind).shortName}...`)
         return
       }
 
@@ -470,9 +659,12 @@ function HooksPageClient() {
         terminatedPollStreakRef.current += 1
         const deployAgeMs = deployStartedAt ? Date.now() - deployStartedAt : 0
         const hasReservedWorkspace = tenantHasProvisionedInstance(daemonStatus)
-        if (terminatedPollStreakRef.current < 3 && (!hasReservedWorkspace || deployAgeMs < 15_000)) {
+        if (
+          terminatedPollStreakRef.current < DEPLOY_TERMINATED_CONFIRMATION_POLLS &&
+          (!hasReservedWorkspace || deployAgeMs < DEPLOY_TERMINATED_CONFIRMATION_WINDOW_MS)
+        ) {
           setError('')
-          setStatus('Still getting your workspace ready...')
+          setStatus(`Still getting your ${getRuntimeProduct(runtimeKind).deploymentNoun} ready...`)
           scheduleNextPoll()
           return
         }
@@ -484,7 +676,7 @@ function HooksPageClient() {
 
       terminatedPollStreakRef.current = 0
       setError('')
-      setStatus(resolveDeploymentStatusText(daemonStatus))
+      setStatus(resolveDeploymentStatusText(daemonStatus, runtimeKind))
       scheduleNextPoll()
     }
 
@@ -496,12 +688,17 @@ function HooksPageClient() {
         clearTimeout(timeoutHandle)
       }
     }
-  }, [activeSession, checkingSession, finalizeSetupAndRedirect, hasDeployStarted, showConfetti, tenantId])
+  }, [activeSession, checkingSession, finalizeSetupAndRedirect, hasDeployStarted, runtimeKind, showConfetti, submitting, tenantId])
 
   async function completeSetup() {
     const validationError = validateBeforeSubmit()
     if (validationError) {
       setError(validationError)
+      setStatus('')
+      return
+    }
+    if (!runtimeKind) {
+      setError('Complete setup.')
       setStatus('')
       return
     }
@@ -515,16 +712,49 @@ function HooksPageClient() {
     terminatedPollStreakRef.current = 0
     writePersistedDeployStartedAt(startedAt)
     setError('')
-    setStatus('Getting your workspace ready...')
+    const selectedRuntimeKind = runtimeKind
+    const runtimeProduct = getRuntimeProduct(selectedRuntimeKind)
+    setStatus(`Getting your ${runtimeProduct.deploymentNoun} ready...`)
     setShowConfetti(false)
 
     try {
-      const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
+      const session = activeSession ?? await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
       const accessToken = session?.access_token?.trim() ?? ''
-      if (!accessToken) {
+      if (!session || !accessToken) {
         resetDeployProgress()
         setError('Session expired. Please sign in again.')
         setStatus('')
+        return
+      }
+      const effectiveTenantId = tenantId || deriveTenantIdFromUserId(session.user.id)
+      if (!effectiveTenantId) {
+        resetDeployProgress()
+        setError('Session error.')
+        setStatus('')
+        return
+      }
+      if (!tenantId) {
+        setTenantId(effectiveTenantId)
+      }
+
+      const latestSnapshot = await fetchTenantDaemonStatusSnapshot(effectiveTenantId, { cache: 'no-store' })
+      const latestStatus = latestSnapshot.kind === 'ok' ? latestSnapshot.status : null
+      if (
+        tenantHasProvisionedInstance(latestStatus) &&
+        !statusMatchesSelectedRuntime(latestStatus, selectedRuntimeKind)
+      ) {
+        resetDeployProgress()
+        setError(getRuntimeMismatchMessage())
+        setStatus('')
+        return
+      }
+
+      if (
+        tenantHasProvisionedInstance(latestStatus) &&
+        tenantHasReadyGateway(latestStatus) &&
+        statusMatchesSelectedRuntime(latestStatus, selectedRuntimeKind)
+      ) {
+        await finalizeSetupAndRedirect(`Opening ${getRuntimeProduct(selectedRuntimeKind).shortName}...`)
         return
       }
 
@@ -535,13 +765,14 @@ function HooksPageClient() {
           authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          tenantId,
+          tenantId: effectiveTenantId,
           onboarding: {
+            runtimeKind: selectedRuntimeKind,
             modelProviderId: selectedModelProviderId,
             modelId: selectedModelId,
             modelSetup: {
               ...providerSetup,
-              apiKey: providerSetup?.apiKey,
+              apiKey: providerSetup?.apiKey?.trim(),
             },
           },
         }),
@@ -564,7 +795,7 @@ function HooksPageClient() {
 
         if (isUpgradeRequired) {
           resetDeployProgress()
-          router.replace(buildBillingRequiredPath('/dashboard/model'))
+          router.replace(buildBillingRequiredPath('/dashboard/runtime'))
           return
         }
 
@@ -574,7 +805,8 @@ function HooksPageClient() {
         return
       }
 
-      setStatus('Deploy request accepted. We are preparing your hosted workspace.')
+      setStatus(`Deploy request accepted. We are preparing your hosted ${runtimeProduct.shortName}.`)
+      router.push(getRuntimeAgentPath(selectedRuntimeKind))
     } catch {
       resetDeployProgress()
       setError('Network error.')
@@ -601,22 +833,23 @@ function HooksPageClient() {
     }))
 
     if (hasDeployStarted) {
+      const runtimeProduct = getRuntimeProduct(runtimeKind)
       const hasWorkspace = Boolean(runtimeSetupState?.instanceId?.trim() || runtimeSetupState?.instanceState?.trim())
       const ready = runtimeSetupState?.setupComplete === true || runtimeSetupState?.gatewayProbe?.ready === true
       const hasRecentCheck = Boolean(runtimeSetupState?.gatewayProbe?.checkedAt)
 
       lines.push({
         id: 'deploy-workspace',
-        text: hasWorkspace ? 'Your hosted workspace has been reserved.' : 'Reserving your hosted workspace.',
+        text: hasWorkspace ? 'Your hosted machine has been reserved.' : 'Reserving your hosted machine.',
         tone: hasWorkspace ? 'ok' : 'active',
       })
       lines.push({
-        id: 'deploy-openclaw',
+        id: 'deploy-runtime',
         text: ready
-          ? 'OpenClaw is ready to open.'
+          ? `${runtimeProduct.shortName} is ready.`
           : hasRecentCheck
-            ? 'OpenClaw is starting and we are checking the connection.'
-            : 'Installing and starting OpenClaw.',
+            ? runtimeProduct.startingText
+            : `Installing and starting ${runtimeProduct.name}.`,
         tone: ready ? 'ok' : 'active',
       })
     }
@@ -630,7 +863,7 @@ function HooksPageClient() {
     }
 
     return lines
-  }, [error, hasDeployStarted, onboardingChecks, runtimeSetupState])
+  }, [error, hasDeployStarted, onboardingChecks, runtimeKind, runtimeSetupState])
 
   if (checkingSession) {
     return (
@@ -642,6 +875,9 @@ function HooksPageClient() {
       </div>
     )
   }
+
+  const runtimeProduct = getRuntimeProduct(runtimeKind)
+  const runtimeReady = tenantHasReadyGateway({ instance: runtimeSetupState ?? undefined })
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
@@ -655,7 +891,7 @@ function HooksPageClient() {
       />
       <MagicConfetti show={showConfetti} />
 
-      <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <div className="fixed right-4 top-4 z-20 flex items-center gap-2.5 sm:right-6 sm:top-6">
         <button
           type="button"
           onClick={() => setContactOpen(true)}
@@ -667,18 +903,19 @@ function HooksPageClient() {
           <Mail className="h-4 w-4" />
           <span>Contact us</span>
         </button>
+        <OnboardingAccountMenu />
       </div>
 
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <Button variant="link" className="h-auto w-fit p-0 text-xs text-muted-foreground" asChild>
-            <Link href="/dashboard/openclaw">
+            <Link href="/dashboard/runtime-auth">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" />
               Back
             </Link>
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Installing your OpenClaw</CardDescription>
+          <CardDescription>Installing your {runtimeProduct.name}</CardDescription>
           <SetupStepper currentStep="deployment" className="pt-1" />
         </CardHeader>
 
@@ -699,11 +936,18 @@ function HooksPageClient() {
               ) : null}
 
               {hasDeployStarted ? (
-                <div className={cn('min-h-0 flex-1', deployStartedAt ? 'mt-2' : undefined)}>
-                  <DeployTerminal
-                    lines={terminalLines}
-                    running={submitting || !tenantHasReadyGateway({ instance: runtimeSetupState ?? undefined })}
+                <div className={cn('min-h-0 flex-1 space-y-4', deployStartedAt ? 'mt-2' : undefined)}>
+                  <DeploymentProgressCue
+                    runtimeProduct={runtimeProduct}
+                    elapsedSeconds={deployElapsedSeconds}
+                    running={submitting || !runtimeReady}
                   />
+                  {!runtimeReady ? (
+                    <DeployTerminal
+                      lines={terminalLines}
+                      running={submitting}
+                    />
+                  ) : null}
                 </div>
               ) : null}
 
@@ -734,7 +978,15 @@ function HooksPageClient() {
                   <>
                     <p className="text-sm text-destructive">{error}</p>
                     <p className="text-xs text-muted-foreground">
-                      If you are running into problems, you can contact us.
+                      If you are running into problems, you can{' '}
+                      <button
+                        type="button"
+                        onClick={() => setContactOpen(true)}
+                        className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
+                      >
+                        contact us
+                      </button>
+                      .
                     </p>
                   </>
                 ) : null}

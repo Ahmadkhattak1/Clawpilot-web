@@ -222,7 +222,12 @@ export function OpenClawUiLaunchButton({
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
       const accessToken = session?.access_token?.trim() ?? ''
       if (!accessToken) {
-        if (!openedWindow.closed) openedWindow.close()
+        if (!openedWindow.closed) {
+          updateLaunchPlaceholder(openedWindow, {
+            title: 'OpenClaw launch issue',
+            message: 'Your dashboard session expired. Sign in again, then launch OpenClaw.',
+          })
+        }
         onUnauthorized()
         return
       }
@@ -290,11 +295,16 @@ export function OpenClawUiLaunchButton({
 
       openedWindow.location.replace(launchUrl)
     } catch (error) {
-      if (!openedWindow.closed) openedWindow.close()
       const message =
         error instanceof Error && error.message.trim()
           ? error.message.trim()
           : 'Unable to open OpenClaw right now.'
+      if (!openedWindow.closed) {
+        updateLaunchPlaceholder(openedWindow, {
+          title: 'OpenClaw launch issue',
+          message,
+        })
+      }
       onError?.(message)
     } finally {
       setIsOpening(false)

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
-    images: [siteOgImage.url],
+    images: [siteOgImage],
   },
 }
 

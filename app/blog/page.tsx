@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${siteName} Blog`,
     description: "OpenClaw hosting guides, comparisons, and setup posts.",
-    images: [siteOgImage.url],
+    images: [siteOgImage],
   },
 }
 

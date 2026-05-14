@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SUBSCRIPTION_CONVERSION_SEND_TO } from '@/lib/google-ads'
 
-const CONTINUE_PATH = '/dashboard/model'
+const CONTINUE_PATH = '/dashboard/runtime'
 
 export default function SubscriptionSuccessPage() {
   const router = useRouter()

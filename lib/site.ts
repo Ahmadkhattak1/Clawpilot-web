@@ -20,8 +20,11 @@ function normalizeSiteUrl(value?: string): string {
 export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
 export const siteLastUpdatedAt = "2026-03-29"
+const siteOgImageUrl = `${siteUrl}/og-image-v2.jpg`
 export const siteOgImage = {
-  url: "/og-image.png",
+  url: siteOgImageUrl,
+  secureUrl: siteOgImageUrl,
+  type: "image/jpeg",
   width: 1200,
   height: 630,
   alt: "ClawPilot hosted OpenClaw in the cloud",

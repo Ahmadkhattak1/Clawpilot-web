@@ -4,7 +4,10 @@ import { z } from 'zod'
 
 import {
   getProviderModelOption,
+  isProviderAvailableForRuntime,
   isModelSupportedByProviderSetupMethod,
+  toHermesModelId,
+  toHermesProviderId,
   toOpenClawProviderId,
 } from '@/lib/model-providers'
 import { getBackendUrl } from '@/lib/runtime-controls'
@@ -18,6 +21,7 @@ const RequestBodySchema = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_-]+$/),
   onboarding: z.object({
+    runtimeKind: z.enum(['openclaw', 'hermes']).default('openclaw'),
     modelProviderId: z.string().min(1),
     modelId: z.string().min(1),
     modelSetup: z.object({
@@ -135,6 +139,16 @@ export async function POST(request: Request) {
   }
 
   const selectedModel = getProviderModelOption(body.onboarding.modelProviderId, body.onboarding.modelId)
+  if (!isProviderAvailableForRuntime(body.onboarding.modelProviderId, body.onboarding.runtimeKind)) {
+    return NextResponse.json(
+      {
+        error: 'UNSUPPORTED_RUNTIME_PROVIDER',
+        message: 'Selected provider is not supported for this runtime.',
+      },
+      { status: 400 },
+    )
+  }
+
   if (!selectedModel) {
     return NextResponse.json(
       {
@@ -154,6 +168,32 @@ export async function POST(request: Request) {
       {
         error: 'UNSUPPORTED_MODEL_AUTH_METHOD',
         message: `${selectedModel.label} does not support ${body.onboarding.modelSetup.method}.`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const isHermesNousOAuth =
+    body.onboarding.runtimeKind === 'hermes'
+    && body.onboarding.modelProviderId === 'nous'
+    && body.onboarding.modelSetup.method === 'oauth'
+
+  if (body.onboarding.runtimeKind === 'hermes' && body.onboarding.modelSetup.method !== 'api-key' && !isHermesNousOAuth) {
+    return NextResponse.json(
+      {
+        error: 'UNSUPPORTED_RUNTIME_AUTH_METHOD',
+        message: 'Hermes Agent managed deployment requires an API key unless Nous OAuth is selected.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const apiKey = body.onboarding.modelSetup.apiKey?.trim()
+  if (body.onboarding.modelSetup.method === 'api-key' && !apiKey) {
+    return NextResponse.json(
+      {
+        error: 'MISSING_MODEL_API_KEY',
+        message: 'Enter an API key before deploying.',
       },
       { status: 400 },
     )
@@ -218,18 +258,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const openClawProviderId =
-      toOpenClawProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId
+    const runtimeKind = body.onboarding.runtimeKind
+    const runtimeProviderId =
+      runtimeKind === 'openclaw'
+        ? (toOpenClawProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId)
+        : (toHermesProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId)
+    const runtimeModelId =
+      runtimeKind === 'hermes'
+        ? (toHermesModelId(body.onboarding.modelProviderId, body.onboarding.modelId) ?? body.onboarding.modelId)
+        : body.onboarding.modelId
 
     const tenantConfig = {
-      modelProviderId: openClawProviderId,
-      modelId: body.onboarding.modelId,
+      runtimeKind,
+      modelProviderId: runtimeProviderId,
+      modelId: runtimeModelId,
       modelAuthMethod: body.onboarding.modelSetup.method,
-      modelApiKey: body.onboarding.modelSetup.apiKey,
+      modelApiKey: apiKey,
       modelOauthConnected: Boolean(body.onboarding.modelSetup.oauthConnected),
       channelId: body.onboarding.channelId,
       channelKind: body.onboarding.channelSetup?.kind,
       channelCredentials: body.onboarding.channelSetup?.values ?? {},
+      gatewayPort: runtimeKind === 'hermes' ? 9119 : 18789,
+      gatewayBindAddress: '0.0.0.0',
+      gatewayExposure: 'public',
+      hermesApiServerPort: 8642,
     }
 
     const daemonResponse = await backendRequest<{ daemon?: unknown; error?: string }>({
@@ -247,6 +299,7 @@ export async function POST(request: Request) {
 
     if (daemonResponse.status >= 400) {
       const backendError = readString(readRecord(daemonResponse.data)?.error)
+      const backendMessage = readString(readRecord(daemonResponse.data)?.message)
       if (
         daemonResponse.status === 403 &&
         (backendError === 'TENANT_TERMINATED' || backendError === 'TENANT_SUSPENDED' || backendError === 'UPGRADE_REQUIRED')
@@ -254,16 +307,30 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: 'UPGRADE_REQUIRED',
-            message: 'Active managed-hosting subscription is required to deploy your managed OpenClaw instance.',
+            message: `Active managed-hosting subscription is required to deploy your managed ${
+              runtimeKind === 'hermes' ? 'Hermes Agent' : 'OpenClaw'
+            } instance.`,
             backend: daemonResponse.data,
           },
           { status: 403 },
         )
       }
 
+      if (daemonResponse.status === 409 && backendError === 'TENANT_RUNTIME_KIND_LOCKED') {
+        return NextResponse.json(
+          {
+            error: 'TENANT_RUNTIME_KIND_LOCKED',
+            message: backendMessage ?? 'This account already has a hosted runtime. Additional runtimes are disabled in this build.',
+            backend: daemonResponse.data,
+          },
+          { status: 409 },
+        )
+      }
+
       return NextResponse.json(
         {
           error: 'DAEMON_PROVISION_FAILED',
+          message: backendMessage ?? backendError ?? 'Deploy failed.',
           backend: daemonResponse.data,
         },
         { status: 502 },
@@ -274,8 +341,9 @@ export async function POST(request: Request) {
       status: 'ok',
       tenantId,
       setupCollected: {
-        modelProviderId: openClawProviderId,
-        modelId: body.onboarding.modelId,
+        runtimeKind,
+        modelProviderId: runtimeProviderId,
+        modelId: runtimeModelId,
         channelId: body.onboarding.channelId ?? null,
       },
       daemon: daemonResponse.data,

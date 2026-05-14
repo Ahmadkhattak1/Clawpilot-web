@@ -65,7 +65,7 @@ export function Header() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: buildAuthCallbackUrl("/dashboard/chat"),
+          redirectTo: buildAuthCallbackUrl("/dashboard"),
         },
       })
 
@@ -120,7 +120,7 @@ export function Header() {
 
         {authStatus === "authenticated" ? (
           <Button asChild size="nav" variant="brand">
-            <Link href="/dashboard/chat">Dashboard</Link>
+            <Link href="/dashboard">Dashboard</Link>
           </Button>
         ) : (
           <Button

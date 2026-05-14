@@ -3,9 +3,10 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import Link from 'next/link'
 import { ArrowLeft, Copy, KeyRound, Loader2, Mail, ShieldCheck, X } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 
+import { OnboardingAccountMenu } from '@/components/dashboard/onboarding-account-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,11 +14,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
-  AVAILABLE_MODEL_PROVIDER_OPTIONS,
+  MODEL_PROVIDER_OPTIONS,
+  getRuntimeModelProviderOptions,
   getModelAuthCueMethods,
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
   getProviderModelOption,
+  isProviderAvailableForRuntime,
   isModelSupportedByProvider,
   type ModelProviderId,
 } from '@/lib/model-providers'
@@ -27,15 +30,20 @@ import {
   type ProviderSetupMethod,
   type ProviderSetupStorage,
 } from '@/lib/provider-auth-config'
-import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
+import { isTenantDeploymentStillStartingFromSnapshot } from '@/lib/deploy-progress'
 import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import { getRuntimeAgentPath, getRuntimeProduct, readStoredRuntimeKind, type RuntimeKind } from '@/lib/runtime-products'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
-import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatusSnapshot,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
-  AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
+  MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
 )
 const CONTACT_EMAIL = 'support@clawpilot.app'
 
@@ -61,6 +69,7 @@ function getStoredSetup(): ProviderSetupStorage {
 
 function OpenCloudStepPageClient() {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const forceRestartOnboarding = searchParams.get('restart') === '1'
   const [checkingSession, setCheckingSession] = useState(true)
@@ -73,10 +82,16 @@ function OpenCloudStepPageClient() {
   const [savedSetup, setSavedSetup] = useState<ProviderSetupStorage>({})
   const [contactOpen, setContactOpen] = useState(false)
   const [contactCopied, setContactCopied] = useState(false)
+  const [runtimeKind, setRuntimeKind] = useState<RuntimeKind | null>(null)
+
+  const providerOptions = useMemo(
+    () => getRuntimeModelProviderOptions(runtimeKind),
+    [runtimeKind],
+  )
 
   const selectedProvider = useMemo(
-    () => AVAILABLE_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null,
-    [selectedProviderId],
+    () => providerOptions.find((provider) => provider.id === selectedProviderId) ?? null,
+    [providerOptions, selectedProviderId],
   )
 
   const providerConfig = useMemo(() => {
@@ -94,10 +109,16 @@ function OpenCloudStepPageClient() {
       return []
     }
 
-    return providerConfig.methods.filter((method) => (
+    const modelMethods = providerConfig.methods.filter((method) => (
       selectedModel?.supportedMethods?.includes(method) ?? true
     ))
-  }, [providerConfig, selectedModel])
+
+    if (runtimeKind === 'hermes') {
+      return modelMethods.filter((method) => method === 'api-key' || (selectedProviderId === 'nous' && method === 'oauth'))
+    }
+
+    return modelMethods
+  }, [providerConfig, runtimeKind, selectedModel, selectedProviderId])
   const authCueMethods = useMemo(
     () => getModelAuthCueMethods(selectedProviderId, selectedModelId),
     [selectedModelId, selectedProviderId],
@@ -108,44 +129,48 @@ function OpenCloudStepPageClient() {
 
     async function loadSession() {
       try {
+        if (pathname === '/dashboard/openclaw') {
+          const query = searchParams.toString()
+          router.replace(query ? `/dashboard/runtime-auth?${query}` : '/dashboard/runtime-auth')
+          return
+        }
+
+        const initialRuntimeKind = readStoredRuntimeKind()
+        const initialProviderId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+        const initialModelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
+        if (
+          initialRuntimeKind &&
+          isEnabledModelProviderId(initialProviderId) &&
+          isProviderAvailableForRuntime(initialProviderId, initialRuntimeKind) &&
+          isModelSupportedByProvider(initialProviderId, initialModelId) &&
+          !cancelled
+        ) {
+          setSelectedProviderId(initialProviderId)
+          setSelectedModelId(initialModelId)
+          setSavedSetup(getStoredSetup())
+          setRuntimeKind(initialRuntimeKind)
+          setCheckingSession(false)
+        }
+
         const session = await getRecoveredSupabaseSession()
         if (!session) {
           router.replace('/signin')
           return
         }
 
-        const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const deploymentStillStarting = await isTenantDeploymentStillStarting(tenantId)
-        if (deploymentStillStarting) {
-          router.replace('/dashboard/deploy')
-          return
-        }
-
-        let onboardingComplete = false
-        if (forceRestartOnboarding) {
-          try {
-            await markOnboardingIncomplete(session)
-          } catch (error) {
-            console.warn('Failed to mark onboarding incomplete during restart flow', error)
-          }
-        } else {
-          onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
-        }
-
-        const subscription = await fetchSubscriptionSnapshot(tenantId)
-        if (!hasManagedHostingPlan(subscription)) {
-          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
-          return
-        }
-
-        if (onboardingComplete) {
-          router.replace('/dashboard/chat')
+        const storedRuntimeKind = readStoredRuntimeKind()
+        if (!storedRuntimeKind) {
+          router.replace(forceRestartOnboarding ? '/dashboard/runtime?restart=1' : '/dashboard/runtime')
           return
         }
 
         const providerId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
         const modelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
-        if (!isEnabledModelProviderId(providerId) || !isModelSupportedByProvider(providerId, modelId)) {
+        if (
+          !isEnabledModelProviderId(providerId) ||
+          !isProviderAvailableForRuntime(providerId, storedRuntimeKind) ||
+          !isModelSupportedByProvider(providerId, modelId)
+        ) {
           router.replace('/dashboard/model')
           return
         }
@@ -154,7 +179,55 @@ function OpenCloudStepPageClient() {
           setSelectedProviderId(providerId)
           setSelectedModelId(modelId)
           setSavedSetup(getStoredSetup())
+          setRuntimeKind(storedRuntimeKind)
           setCheckingSession(false)
+        }
+
+        const tenantId = deriveTenantIdFromUserId(session.user.id)
+        const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+        if (cancelled) {
+          return
+        }
+
+        const deploymentStillStarting = isTenantDeploymentStillStartingFromSnapshot(daemonSnapshot)
+        if (deploymentStillStarting) {
+          router.replace(getRuntimeAgentPath(storedRuntimeKind))
+          return
+        }
+        const daemonStatus = daemonSnapshot.kind === 'ok' ? daemonSnapshot.status : null
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard')
+          return
+        }
+
+        const completedPath = '/dashboard'
+        const subscriptionPromise = fetchSubscriptionSnapshot(tenantId)
+        let onboardingComplete = false
+        if (forceRestartOnboarding) {
+          try {
+            await markOnboardingIncomplete(session)
+          } catch (error) {
+            console.warn('Failed to mark onboarding incomplete during restart flow', error)
+          }
+        } else {
+          onboardingComplete = await isOnboardingComplete(session, {
+            backfillFromProvisionedTenant: true,
+            daemonSnapshot,
+          })
+        }
+
+        const subscription = await subscriptionPromise
+        if (cancelled) {
+          return
+        }
+
+        if (!hasManagedHostingPlan(subscription)) {
+          router.replace(buildBillingRequiredPath(onboardingComplete ? completedPath : '/dashboard/runtime'))
+          return
+        }
+
+        if (onboardingComplete) {
+          router.replace(completedPath)
         }
       } catch {
         router.replace('/signin')
@@ -166,7 +239,7 @@ function OpenCloudStepPageClient() {
     return () => {
       cancelled = true
     }
-  }, [forceRestartOnboarding, router])
+  }, [forceRestartOnboarding, pathname, router, searchParams])
 
   useEffect(() => {
     if (!selectedProviderId || availableMethods.length === 0) {
@@ -225,7 +298,7 @@ function OpenCloudStepPageClient() {
     const existingSetup = savedSetup[selectedProviderId]
     const trimmedApiKey = apiKey.trim()
     const hasExistingApiKey =
-      existingSetup?.method === 'api-key' && Boolean(existingSetup.apiKey || existingSetup.hasApiKey)
+      existingSetup?.method === 'api-key' && Boolean(existingSetup.apiKey?.trim())
 
     if (!providerConfig.apiKeyOptional && !trimmedApiKey && !hasExistingApiKey) {
       setError('Required')
@@ -284,7 +357,42 @@ function OpenCloudStepPageClient() {
     )
   }
 
-  if (!selectedProvider || !providerConfig || !selectedMethod || !selectedModel || availableMethods.length === 0) return null
+  if (!selectedProvider || !providerConfig || !selectedModel || availableMethods.length === 0) {
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-background">
+        <div className="space-y-2 text-center">
+          <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading provider setup...
+          </p>
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto p-0 text-xs text-muted-foreground"
+            onClick={() => router.replace('/dashboard/model')}
+          >
+            Back to model selection
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!selectedMethod) {
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-background">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Preparing provider setup...
+        </p>
+      </div>
+    )
+  }
+
+  const runtimeProduct = getRuntimeProduct(runtimeKind)
+  const visibleAuthCueMethods = runtimeKind === 'hermes'
+    ? authCueMethods.filter((method) => method === 'api-key' || selectedProviderId === 'nous')
+    : authCueMethods
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
@@ -297,7 +405,7 @@ function OpenCloudStepPageClient() {
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/90 via-background/70 to-background"
       />
 
-      <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <div className="fixed right-4 top-4 z-20 flex items-center gap-2.5 sm:right-6 sm:top-6">
         <button
           type="button"
           onClick={() => setContactOpen(true)}
@@ -309,6 +417,7 @@ function OpenCloudStepPageClient() {
           <Mail className="h-4 w-4" />
           <span>Contact us</span>
         </button>
+        <OnboardingAccountMenu />
       </div>
 
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
@@ -320,9 +429,9 @@ function OpenCloudStepPageClient() {
             </Link>
           </Button>
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>{selectedProvider.label} · {selectedModel.label}</CardDescription>
+          <CardDescription>{runtimeProduct.name} - {selectedProvider.label} - {selectedModel.label}</CardDescription>
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {authCueMethods.map((method) => (
+            {visibleAuthCueMethods.map((method) => (
               <Badge key={`selected-model-${method}`} variant="secondary" className="text-[10px] capitalize">
                 {method === 'api-key' ? 'API key supported' : 'OAuth supported'}
               </Badge>
@@ -418,6 +527,11 @@ function OpenCloudStepPageClient() {
                     placeholder={providerConfig.apiKeyPlaceholder ?? 'Enter API key'}
                     autoComplete="off"
                   />
+                  {runtimeKind === 'hermes' ? (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Hermes Agent will be installed and configured with this key during deployment.
+                    </p>
+                  ) : null}
                 </div>
               </form>
             )}

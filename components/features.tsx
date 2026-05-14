@@ -297,7 +297,7 @@ export function Features() {
 
           <div className="mt-8 flex justify-center md:mt-16">
             <Button asChild className="group" size="hero" variant="brand">
-              <Link href="/dashboard/chat">
+              <Link href="/dashboard">
                 Go to Dashboard
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>

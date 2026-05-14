@@ -6,7 +6,7 @@ import { BlogBreadcrumbSchema, BlogPostingSchema } from "@/components/blog/blog-
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
 import { getBlogPostBySlug, getBlogPostSlugs, getRelatedBlogPosts } from "@/lib/blog-posts"
-import { siteName, siteUrl } from "@/lib/site"
+import { siteName, siteOgImage, siteUrl } from "@/lib/site"
 
 type BlogPostPageProps = {
   params: Promise<{
@@ -47,20 +47,13 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       publishedTime: post.publishedAt,
       modifiedTime: dateModified,
       authors: [authorName],
-      images: [
-        {
-          url: "/logo.webp",
-          width: 512,
-          height: 512,
-          alt: "ClawPilot mascot logo",
-        },
-      ],
+      images: [siteOgImage],
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description: post.description,
-      images: ["/logo.webp"],
+      images: [siteOgImage],
     },
   }
 }

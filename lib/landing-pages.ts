@@ -527,7 +527,7 @@ export function buildLandingMetadata(page: LandingPageConfig): Metadata {
       card: "summary_large_image",
       title: `${siteName} | ${page.metaTitle}`,
       description: page.metaDescription,
-      images: [siteOgImage.url],
+      images: [siteOgImage],
     },
   }
 }

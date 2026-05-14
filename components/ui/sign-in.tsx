@@ -21,7 +21,7 @@ export function SignInPage() {
   const signInStartedRef = useRef(false)
 
   const nextPath = useMemo(() => {
-    if (typeof window === 'undefined') return '/dashboard/chat'
+    if (typeof window === 'undefined') return '/dashboard'
     const params = new URLSearchParams(window.location.search)
     return getSafeNextPath(params.get('next'))
   }, [])

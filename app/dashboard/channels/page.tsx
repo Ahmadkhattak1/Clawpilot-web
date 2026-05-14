@@ -28,7 +28,7 @@ export default function DashboardChannelsPage() {
               <Link href="/dashboard/chat">Launch OpenClaw</Link>
             </Button>
             <Button asChild variant="outline" className="sm:min-w-44">
-              <Link href="/settings">Back to settings</Link>
+              <Link href="/dashboard/chat">Back to OpenClaw</Link>
             </Button>
           </CardContent>
         </Card>

@@ -73,7 +73,7 @@ function useAuthStatus() {
       const supabase = getSupabaseAuthClient()
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: buildAuthCallbackUrl("/dashboard/chat") },
+        options: { redirectTo: buildAuthCallbackUrl("/dashboard") },
       })
       if (error) throw error
     } catch {
@@ -179,7 +179,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
           <div className="mt-9 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
               <Button asChild className="group" size="hero" variant="brand">
-                <Link href="/dashboard/chat">
+                <Link href="/dashboard">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
@@ -361,7 +361,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
           <div className="mt-8 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
               <Button asChild className="group" size="hero" variant="brand">
-                <Link href="/dashboard/chat">
+                <Link href="/dashboard">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>

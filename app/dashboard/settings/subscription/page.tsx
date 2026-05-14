@@ -606,8 +606,8 @@ function SettingsSubscriptionPageClient() {
     const storedSessionId = window.localStorage.getItem(STRIPE_LAST_CHECKOUT_SESSION_ID_STORAGE_KEY)?.trim() ?? ''
     return storedSessionId
   }, [checkoutSessionId])
-  const billingNextPath = '/dashboard/model'
-  const backHref = onboardingComplete ? '/dashboard/chat' : '/dashboard/model'
+  const billingNextPath = '/dashboard/runtime'
+  const backHref = onboardingComplete ? '/dashboard' : '/dashboard/runtime'
   const statusLabel = toDisplayStatus(snapshot)
   const activePlanLabel = toDisplayPlan(normalizedPlan)
   const periodLabel = snapshot?.cancelAtPeriodEnd ? 'Ends' : isTrialing ? 'Trial ends' : hasPaidPlan ? 'Renews' : 'Trial ends'
@@ -795,7 +795,7 @@ function SettingsSubscriptionPageClient() {
           <Button variant="ghost" size="sm" asChild>
             <Link href={backHref}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              {onboardingComplete ? 'Back to settings' : 'Back to onboarding'}
+              {onboardingComplete ? 'Back to dashboard' : 'Back to onboarding'}
             </Link>
           </Button>
           <Button
@@ -812,7 +812,7 @@ function SettingsSubscriptionPageClient() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Billing & subscription</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            OpenClaw is open source. Your plan covers managed hosting, security, and product UI.
+            Your plan covers managed hosting for your ClawPilot machine, security, and product UI.
           </p>
         </div>
 

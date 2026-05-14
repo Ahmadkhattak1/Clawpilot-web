@@ -6,11 +6,12 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 interface SetupStep {
-  id: 'model' | 'deployment'
+  id: 'runtime' | 'model' | 'deployment'
   label: string
 }
 
 const SETUP_STEPS: readonly SetupStep[] = [
+  { id: 'runtime', label: 'Runtime' },
   { id: 'model', label: 'Model' },
   { id: 'deployment', label: 'Deploy' },
 ] as const

@@ -19,7 +19,7 @@ function normalizeSiteUrl(value?: string): string {
 
 export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
-export const siteLastUpdatedAt = "2026-03-29"
+export const siteLastUpdatedAt = "2026-05-14"
 const siteOgImageUrl = `${siteUrl}/og-image-v2.jpg`
 export const siteOgImage = {
   url: siteOgImageUrl,
@@ -46,9 +46,13 @@ export const seoKeywords = [
   "hosted Hermes Agent",
   "Hermes AI agent hosting",
   "Hermes Agent cloud hosting",
+  "Hermes Agent VPS hosting",
+  "deploy Hermes Agent",
+  "self host Hermes Agent",
   "AI agent hosting",
   "managed AI agent hosting",
   "private AI agent hosting",
+  "cloud agent runtime",
   "Openclaw VPS hosting",
   "Openclaw VPS setup",
   "deploy Openclaw agents",
@@ -70,10 +74,14 @@ export const seoKeywords = [
 export const publicMarketingRoutes = [
   "/",
   "/blog",
+  "/ai-agent-hosting",
   "/openclaw-hosting",
   "/managed-openclaw",
   "/openclaw-vps-hosting",
   "/openclaw-whatsapp-automation",
+  "/hermes-agent-hosting",
+  "/managed-hermes-agent",
+  "/hermes-agent-vps-hosting",
   "/terms",
   "/privacy",
   "/disclaimer",

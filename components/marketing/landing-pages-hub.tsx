@@ -16,6 +16,12 @@ const landingHubCardCopy: Record<
     cta: string
   }
 > = {
+  "ai-agent-hosting": {
+    title: "Host Openclaw or Hermes Agent",
+    description:
+      "Choose a runtime, create multiple agents, and keep them running away from your personal device.",
+    cta: "Compare runtimes",
+  },
   "openclaw-hosting": {
     title: "Launch Openclaw Fast Without Managing Servers",
     description:
@@ -40,6 +46,24 @@ const landingHubCardCopy: Record<
       "Keep customer conversations running with a hosted setup built for consistent multi-channel workflow delivery.",
     cta: "Explore WhatsApp deployment",
   },
+  "hermes-agent-hosting": {
+    title: "Run Hermes Agent Without VPS Work",
+    description:
+      "Use a hosted Hermes Agent runtime for persistent workflows, memory, tools, and always-on execution.",
+    cta: "Explore Hermes hosting",
+  },
+  "managed-hermes-agent": {
+    title: "Use Managed Hermes Agent",
+    description:
+      "Keep the runtime online and isolated while your team focuses on skills, tools, and workflow quality.",
+    cta: "See managed benefits",
+  },
+  "hermes-agent-vps-hosting": {
+    title: "Hermes VPS or Managed Hosting",
+    description:
+      "Compare server ownership with a managed path before turning Hermes Agent into an ops project.",
+    cta: "View the comparison",
+  },
 }
 
 export function LandingPagesHub() {
@@ -47,8 +71,8 @@ export function LandingPagesHub() {
     <ClawSection>
       <ClawContainer size="xl">
         <ClawSectionIntro
-          description="Compare deployment options in minutes and move forward with the model that gives you the best mix of speed, reliability, and control."
-          title="Choose the Right Openclaw Setup for Your Team"
+          description="Compare deployment options in minutes and move forward with the best mix of speed, reliability, and control."
+          title="Choose the Right Agent Runtime Setup"
         />
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">

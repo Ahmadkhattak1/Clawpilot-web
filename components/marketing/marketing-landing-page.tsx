@@ -163,18 +163,6 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
             {page.subheadline}
           </p>
 
-          {/* Keyword tags */}
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            {page.keywords.map((keyword) => (
-              <span
-                key={keyword}
-                className="rounded-full border border-border/60 bg-secondary/60 px-3 py-0.5 text-xs text-foreground/80"
-              >
-                {keyword}
-              </span>
-            ))}
-          </div>
-
           {/* CTA */}
           <div className="mt-9 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
@@ -301,10 +289,10 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
         </ClawContainer>
       </ClawSection>
 
-      {/* ── Channel notes ─────────────────────────────────────── */}
+      {/* ── Runtime notes ─────────────────────────────────────── */}
       <ClawSection id="channels">
         <ClawContainer size="md">
-          <ClawSectionIntro title="Channel notes" />
+          <ClawSectionIntro title="Runtime notes" />
           <div className="mt-10 space-y-3">
             {page.channelNotes.map((note, i) => (
               <ClawSurface key={i} padding="md" radius="lg" tone="muted">

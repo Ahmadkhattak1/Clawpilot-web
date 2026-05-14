@@ -1,5 +1,4 @@
-import { Header } from "@/components/header"
-import { AnnouncementBanner } from "@/components/announcement-banner"
+import { HomeChrome } from "@/components/home-chrome"
 import { Hero } from "@/components/hero"
 import { RuntimeChoice } from "@/components/runtime-choice"
 import { ProductShowcase } from "@/components/product-showcase"
@@ -15,8 +14,7 @@ export default function Home() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-background">
       <SeoSchema />
-      <AnnouncementBanner />
-      <Header />
+      <HomeChrome />
       <Hero />
       <ProductShowcase />
       <RuntimeChoice />

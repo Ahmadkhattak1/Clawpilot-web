@@ -4,7 +4,11 @@ import Link from "next/link"
 import { X } from "lucide-react"
 import { useState } from "react"
 
-export function AnnouncementBanner() {
+type AnnouncementBannerProps = {
+  onDismiss?: () => void
+}
+
+export function AnnouncementBanner({ onDismiss }: AnnouncementBannerProps) {
   const [isVisible, setIsVisible] = useState(true)
 
   if (!isVisible) {
@@ -25,7 +29,10 @@ export function AnnouncementBanner() {
       <button
         type="button"
         aria-label="Dismiss announcement"
-        onClick={() => setIsVisible(false)}
+        onClick={() => {
+          setIsVisible(false)
+          onDismiss?.()
+        }}
         className="absolute right-4 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
       >
         <X className="h-4 w-4" />

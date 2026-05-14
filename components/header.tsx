@@ -12,7 +12,11 @@ import { Button } from "@/components/ui/button"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
 
-export function Header() {
+type HeaderProps = {
+  hasAnnouncementOffset?: boolean
+}
+
+export function Header({ hasAnnouncementOffset = false }: HeaderProps) {
   const [scrolled, setScrolled] = useState(false)
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading")
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
@@ -80,7 +84,7 @@ export function Header() {
 
   return (
     <header
-      className={`fixed top-10 left-0 right-0 z-50 transition-all duration-300 ${scrolled
+      className={`fixed left-0 right-0 z-50 transition-all duration-300 ${hasAnnouncementOffset ? "top-10" : "top-0"} ${scrolled
         ? "bg-background/90 backdrop-blur-xl border-b border-border/40"
         : "bg-transparent"
         }`}

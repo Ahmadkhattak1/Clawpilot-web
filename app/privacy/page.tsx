@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { siteName, siteOgImage, siteUrl } from "@/lib/site"
 
-const pageTitle = "Privacy Policy for Managed OpenClaw Hosting"
+const pageTitle = "Privacy Policy for Managed Openclaw Hosting"
 const pageDescription =
-  "How ClawPilot handles account, usage, and integration data when running managed OpenClaw agents."
+  "How ClawPilot handles account, usage, and integration data when running managed Openclaw agents."
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
-    images: [siteOgImage.url],
+    images: [siteOgImage],
   },
 }
 
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
           <p className="type-nav text-muted-foreground">Legal</p>
           <h1 className="type-h1 mt-3">Privacy Policy</h1>
           <p className="type-body mt-4 max-w-2xl">
-            This policy explains what data we process to operate ClawPilot and managed OpenClaw
+            This policy explains what data we process to operate ClawPilot and managed Openclaw
             agents.
           </p>
           <p className="type-body-sm mt-4 text-muted-foreground">Effective date: {effectiveDate}</p>
@@ -69,7 +69,7 @@ export default function PrivacyPage() {
         <section className="space-y-4 rounded-xl border border-border/45 bg-secondary/35 p-6">
           <h2 className="type-h3">2. How We Use Data</h2>
           <ul className="list-disc space-y-2 pl-5 text-sm text-foreground/85">
-            <li>Provision and operate managed OpenClaw infrastructure.</li>
+            <li>Provision and operate managed Openclaw infrastructure.</li>
             <li>Execute configured workflows and agent actions.</li>
             <li>Monitor reliability, security, and abuse prevention.</li>
             <li>Provide support, troubleshooting, and product improvements.</li>

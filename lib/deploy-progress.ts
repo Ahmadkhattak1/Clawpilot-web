@@ -3,6 +3,7 @@ import {
   tenantHasProvisionedInstance,
   tenantHasReadyGateway,
   tenantNeedsRedeploy,
+  type TenantDaemonStatusSnapshot,
 } from '@/lib/tenant-instance'
 
 export const DEPLOY_STARTED_STORAGE_KEY = 'clawpilot:deploy-started-at'
@@ -35,12 +36,9 @@ export function writePersistedDeployStartedAt(ts: number | null) {
   }
 }
 
-export async function isTenantDeploymentStillStarting(tenantId: string): Promise<boolean> {
-  if (!tenantId.trim()) {
-    return false
-  }
-
-  const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+export function isTenantDeploymentStillStartingFromSnapshot(
+  daemonSnapshot: TenantDaemonStatusSnapshot,
+): boolean {
   if (tenantNeedsRedeploy(daemonSnapshot)) {
     writePersistedDeployStartedAt(null)
     return false
@@ -71,4 +69,13 @@ export async function isTenantDeploymentStillStarting(tenantId: string): Promise
   }
 
   return readPersistedDeployStartedAt() !== null
+}
+
+export async function isTenantDeploymentStillStarting(tenantId: string): Promise<boolean> {
+  if (!tenantId.trim()) {
+    return false
+  }
+
+  const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+  return isTenantDeploymentStillStartingFromSnapshot(daemonSnapshot)
 }

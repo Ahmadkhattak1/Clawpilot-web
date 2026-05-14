@@ -1,28 +1,34 @@
-# ClawPilot - OpenClaw Easy Setup
+# ClawPilot - Openclaw and Hermes Agent Hosting
 
-> ClawPilot is managed OpenClaw hosting for people searching for "OpenClaw easy setup", "easy OpenClaw setup", and "easy open claw setup".
+> ClawPilot is managed AI agent hosting for Openclaw and Hermes Agent runtimes.
 
 ## Summary
 
-ClawPilot lets users run OpenClaw without local hardware, server maintenance, or manual setup. Create an account, connect channels, and start delegating tasks in chat.
+ClawPilot lets users run Openclaw or Hermes Agent without local hardware, server maintenance, or manual setup. Create an account, choose a runtime, and deploy hosted agents.
 
 ## Canonical Pages
 
 - Homepage: https://clawpilot.app
 - Blog: https://clawpilot.app/blog
-- OpenClaw hosting: https://clawpilot.app/openclaw-hosting
-- Managed OpenClaw: https://clawpilot.app/managed-openclaw
-- OpenClaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
-- OpenClaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
+- AI agent hosting: https://clawpilot.app/ai-agent-hosting
+- Openclaw hosting: https://clawpilot.app/openclaw-hosting
+- Managed Openclaw: https://clawpilot.app/managed-openclaw
+- Openclaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
+- Openclaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
+- Hermes Agent hosting: https://clawpilot.app/hermes-agent-hosting
+- Managed Hermes Agent: https://clawpilot.app/managed-hermes-agent
+- Hermes Agent VPS hosting: https://clawpilot.app/hermes-agent-vps-hosting
 
 ## Core Capabilities
 
-- Managed OpenClaw hosting with updates and uptime handled by ClawPilot.
-- Easy setup workflow for non-technical users.
+- Managed Openclaw and Hermes Agent hosting with updates and uptime handled by ClawPilot.
+- Runtime choice for Openclaw or Hermes Agent.
+- Easy setup workflow for users who do not want to manage VPS or Docker.
 - Multi-channel support (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, WebChat).
 - Permission-aware controls and confirmation gates.
 
 ## References
 
-- OpenClaw GitHub: https://github.com/openclaw/openclaw
+- Openclaw GitHub: https://github.com/openclaw/openclaw
+- Hermes Agent GitHub: https://github.com/NousResearch/hermes-agent
 - Clawhub: https://clawhub.ai

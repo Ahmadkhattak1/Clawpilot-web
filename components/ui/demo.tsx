@@ -10,6 +10,7 @@ import {
   getRecoveredSupabaseSession,
   getSupabaseAuthClient,
 } from "@/lib/supabase-auth"
+import { RuntimeName } from "@/components/runtime-name"
 import { Button } from "@/components/ui/button"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
@@ -67,7 +68,7 @@ export function Hero() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: buildAuthCallbackUrl("/dashboard/chat"),
+          redirectTo: buildAuthCallbackUrl("/dashboard"),
         },
       })
 
@@ -110,20 +111,20 @@ export function Hero() {
 
         {/* Headline */}
         <h1 className="max-w-5xl text-[36px] font-semibold leading-[1.04] tracking-tight text-foreground sm:text-[48px] md:text-[58px]">
-          Your own OpenClaw,
+          Hosted <RuntimeName runtime="openclaw" /> and <RuntimeName runtime="hermes" />.
           <br />
-          <span className="text-muted-foreground">without managing the hosting.</span>
+          <span className="text-muted-foreground">No server work.</span>
         </h1>
 
         <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground sm:text-base">
-          Install OpenClaw in one click while ClawPilot handles the setup behind the scenes and keeps it private to you.
+          Private AI agent hosting for Openclaw or Hermes Agent. No VPS, Docker, or terminal setup.
         </p>
 
         {/* CTA */}
         <div className="mt-7 flex flex-col items-center gap-2.5">
           {authStatus === "authenticated" ? (
             <Button asChild className="group" size="hero" variant="brand">
-              <Link href="/dashboard/chat">
+              <Link href="/dashboard">
                 Go to Dashboard
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
@@ -152,7 +153,7 @@ export function Hero() {
             <p className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            Includes a 3-day trial before billing begins 🎉
+            3-day trial.
           </p>
         </div>
       </div>
@@ -171,7 +172,7 @@ export function Hero() {
           ))}
         </div>
         <p className="text-center text-xs text-muted-foreground">
-          Instantly connect WhatsApp, Telegram, Discord, iMessage, and more.
+          Hosted agents for chat channels, models, and tools.
         </p>
       </div>
     </section>

@@ -1,7 +1,8 @@
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, PlugZap, Star, Users } from "lucide-react"
+import { ArrowRight, Cpu, KeyRound, Server } from "lucide-react"
 
+import { RuntimeName } from "@/components/runtime-name"
 import {
   ClawContainer,
   ClawIconFrame,
@@ -9,9 +10,9 @@ import {
 } from "@/components/ui/clawpilot"
 
 const socialProofStats = [
-  { label: "GitHub stars", value: "354K+", icon: Star },
-  { label: "contributors", value: "900+", icon: Users },
-  { label: "integrations", value: "50+", icon: PlugZap },
+  { label: "agent runtimes", value: "2", icon: Cpu },
+  { label: "model control", value: "BYOK", icon: KeyRound },
+  { label: "managed hosting", value: "24/7", icon: Server },
 ]
 
 export function ProductShowcase() {
@@ -19,18 +20,11 @@ export function ProductShowcase() {
     <ClawSection spacing="compact" className="overflow-hidden pt-2 md:pt-6">
       <ClawContainer size="xl" className="flex flex-col items-center">
         <div className="mb-8 flex flex-col items-center gap-5 text-center md:mb-10">
-          <p className="type-eyebrow">Powered by</p>
-          <div className="flex items-center gap-3">
-            <Image
-              src="/pfp.png"
-              alt="OpenClaw"
-              width={36}
-              height={36}
-              className="h-9 w-9 object-contain"
-            />
-            <span className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-              OpenClaw
-            </span>
+          <p className="type-eyebrow">Managed agent hosting</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+            <RuntimeName runtime="openclaw" />
+            <span className="text-muted-foreground/70">and</span>
+            <RuntimeName runtime="hermes" />
           </div>
         </div>
 
@@ -42,8 +36,8 @@ export function ProductShowcase() {
 
                 <div className="relative aspect-[3/2] w-full">
                   <Image
-                    src="/site-images/screenshot_1.png"
-                    alt="ClawPilot launch interface"
+                    src="/site-images/hermes-agent-openclaw.webp"
+                    alt="Hermes Agent and Openclaw runtime options"
                     fill
                     sizes="(min-width: 1280px) 1120px, 92vw"
                     className="object-cover"
@@ -82,15 +76,14 @@ export function ProductShowcase() {
         </div>
 
         <p className="mt-5 max-w-lg text-center text-sm leading-relaxed text-muted-foreground">
-          OpenClaw is one of the fastest-growing open-source AI projects in the world.
-          ClawPilot lets you run it without touching a terminal.
+          Openclaw and Hermes Agent hosting from one ClawPilot dashboard.
         </p>
 
         <Link
           href="#get-started"
           className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-foreground/75"
         >
-          Launch your own
+          Choose your runtime
           <ArrowRight className="h-4 w-4" />
         </Link>
       </ClawContainer>

@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { siteName, siteOgImage, siteUrl } from "@/lib/site"
 
-const pageTitle = "Terms of Service for Managed OpenClaw Hosting"
+const pageTitle = "Terms of Service for Managed Openclaw Hosting"
 const pageDescription =
-  "Terms for using ClawPilot-managed OpenClaw agents, including safety, acceptable use, and risk allocation."
+  "Terms for using ClawPilot-managed Openclaw agents, including safety, acceptable use, and risk allocation."
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${siteName} | ${pageTitle}`,
     description: pageDescription,
-    images: [siteOgImage.url],
+    images: [siteOgImage],
   },
 }
 
@@ -59,7 +59,7 @@ export default function TermsPage() {
         <section className="space-y-4 rounded-xl border border-border/45 bg-secondary/35 p-6">
           <h2 className="type-h3">1. Service Scope</h2>
           <p className="type-body-sm">
-            ClawPilot provides managed hosting and operational tooling for OpenClaw-based agents.
+            ClawPilot provides managed hosting and operational tooling for Openclaw-based agents.
             We offer infrastructure, deployment, monitoring, and workflow support, but the behavior
             and outputs of AI models remain probabilistic and may be incorrect.
           </p>
@@ -76,9 +76,9 @@ export default function TermsPage() {
         </section>
 
         <section className="space-y-4 rounded-xl border border-border/45 bg-secondary/35 p-6">
-          <h2 className="type-h3">3. OpenClaw and Third-Party Services</h2>
+          <h2 className="type-h3">3. Openclaw and Third-Party Services</h2>
           <p className="type-body-sm">
-            OpenClaw is open-source software under its own license and documentation. Third-party
+            Openclaw is open-source software under its own license and documentation. Third-party
             services (including model providers, messaging channels, and external tools) have
             separate terms, uptime characteristics, and security practices. We are not responsible
             for outages, policy changes, or failures in third-party systems.

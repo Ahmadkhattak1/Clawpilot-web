@@ -6,6 +6,7 @@ import {
   fetchTenantDaemonStatusSnapshot,
   tenantNeedsRedeploy,
   tenantHasReadyGateway,
+  type TenantDaemonStatusSnapshot,
 } from '@/lib/tenant-instance'
 
 interface RuntimeOnboardingRow {
@@ -64,7 +65,10 @@ export async function markOnboardingIncomplete(session: Session): Promise<void> 
 
 export async function isOnboardingComplete(
   session: Session,
-  options: { backfillFromProvisionedTenant?: boolean } = {},
+  options: {
+    backfillFromProvisionedTenant?: boolean
+    daemonSnapshot?: TenantDaemonStatusSnapshot | Promise<TenantDaemonStatusSnapshot>
+  } = {},
 ): Promise<boolean> {
   const supabase = getSupabaseAuthClient()
   const tenantId = deriveTenantIdFromUserId(session.user.id)
@@ -88,7 +92,9 @@ export async function isOnboardingComplete(
   )
   const hasExplicitOnboardingFlag = Boolean(data?.onboarding_complete || data?.onboarding_completed_at)
   const complete = Boolean(hasExplicitOnboardingFlag || legacyProfileConfigured)
-  let daemonSnapshotPromise: Promise<Awaited<ReturnType<typeof fetchTenantDaemonStatusSnapshot>>> | null = null
+  let daemonSnapshotPromise: Promise<TenantDaemonStatusSnapshot> | null = options.daemonSnapshot
+    ? Promise.resolve(options.daemonSnapshot)
+    : null
   const getDaemonSnapshot = () => {
     if (!daemonSnapshotPromise) {
       daemonSnapshotPromise = fetchTenantDaemonStatusSnapshot(tenantId)

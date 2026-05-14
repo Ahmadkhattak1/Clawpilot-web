@@ -1,7 +1,7 @@
 {
     "name": "ClawPilot",
     "short_name": "ClawPilot",
-    "description": "Deploy OpenClaw agents for outreach, support, lead generation, and competitor monitoring with managed hosting.",
+    "description": "Deploy Openclaw agents for outreach, support, lead generation, and competitor monitoring with managed hosting.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",

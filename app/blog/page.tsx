@@ -9,13 +9,13 @@ import { siteName, siteOgImage } from "@/lib/site"
 
 export const metadata: Metadata = {
   title: "Blog",
-  description: "OpenClaw hosting guides, comparisons, and setup posts.",
+  description: "Agent hosting guides, comparisons, and setup posts.",
   alternates: {
     canonical: "/blog",
   },
   openGraph: {
     title: `${siteName} Blog`,
-    description: "OpenClaw hosting guides, comparisons, and setup posts.",
+    description: "Agent hosting guides, comparisons, and setup posts.",
     url: "/blog",
     siteName,
     type: "website",
@@ -24,8 +24,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: `${siteName} Blog`,
-    description: "OpenClaw hosting guides, comparisons, and setup posts.",
-    images: [siteOgImage.url],
+    description: "Agent hosting guides, comparisons, and setup posts.",
+    images: [siteOgImage],
   },
 }
 

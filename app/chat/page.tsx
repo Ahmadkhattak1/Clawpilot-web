@@ -29,5 +29,5 @@ export default async function LegacyChatRoute({ searchParams }: LegacyChatRouteP
   }
 
   const query = params.toString()
-  redirect(query ? `/dashboard/chat?${query}` : '/dashboard/chat')
+  redirect(query ? `/dashboard?${query}` : '/dashboard')
 }

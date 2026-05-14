@@ -23,56 +23,56 @@ const comparisonRows = [
     icon: Download,
     label: "Setup",
     local: "Manual install and configuration.",
-    clawpilot: "One-click OpenClaw install.",
+    clawpilot: "Managed Openclaw or Hermes setup.",
   },
   {
     icon: Clock3,
     label: "Accessible anytime",
     local: "Your machine needs to stay online.",
-    clawpilot: "Use it without keeping your machine online.",
+    clawpilot: "Hosted runtime stays online.",
   },
   {
     icon: Wrench,
     label: "Maintenance",
-    local: "You handle setup and hosting.",
-    clawpilot: "ClawPilot handles setup and hosting.",
+    local: "You handle installs, updates, and restarts.",
+    clawpilot: "ClawPilot handles the server work.",
   },
   {
     icon: ShieldCheck,
     label: "Privacy",
     local: "Private to your own machine.",
-    clawpilot: "Private to you.",
+    clawpilot: "Private runtime and your keys.",
   },
   {
     icon: Lock,
     label: "Security",
-    local: "Not secure.",
-    clawpilot: "Secure cloud hosting.",
+    local: "Security is your responsibility.",
+    clawpilot: "Managed hosted access.",
   },
   {
     icon: Sparkles,
     label: "Ease of use",
     local: "Terminal, config, and manual setup.",
-    clawpilot: "Clean interface. No terminal.",
+    clawpilot: "Dashboard launch. No terminal.",
   },
   {
     icon: Wallet,
     label: "Upfront cost",
     local: "High upfront cost.",
-    clawpilot: "Subscription instead of machine purchases. Cancel anytime.",
+    clawpilot: "Subscription. Cancel anytime.",
   },
 ] as const
 
 export function ComparisonSection() {
   return (
-    <ClawSection id="why-clawpilot">
+    <ClawSection id="comparison">
       <ClawContainer size="lg">
         <div className="text-center">
           <h2 className="type-h2">
             <span className="inline-flex flex-wrap items-center justify-center gap-3 text-center">
               <span className="inline-flex items-center gap-2">
                 <Monitor aria-hidden="true" className="h-6 w-6 text-foreground/70" />
-                <span>Local setup</span>
+                <span>Self-hosting</span>
               </span>
               <span className="text-muted-foreground/70">vs</span>
               <span className="inline-flex items-center gap-2">
@@ -97,7 +97,7 @@ export function ComparisonSection() {
               <div className="inline-flex items-center gap-2 text-foreground/70">
                 <Monitor aria-hidden="true" className="h-4 w-4" />
                 <span className="text-[11px] font-medium uppercase tracking-[0.24em]">
-                  Local setup
+                  Self-hosting
                 </span>
               </div>
             </div>
@@ -143,7 +143,7 @@ export function ComparisonSection() {
                 >
                   <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-[11px] font-medium tracking-tight text-muted-foreground md:hidden">
                     <Monitor aria-hidden="true" className="h-3.5 w-3.5" />
-                    Local setup
+                    Self-hosting
                   </span>
                   <p className="text-sm font-medium leading-snug text-foreground/78 sm:text-[15px]">
                     {row.local}

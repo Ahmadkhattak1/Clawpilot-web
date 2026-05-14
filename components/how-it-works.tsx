@@ -11,19 +11,19 @@ import {
 const steps = [
   {
     number: "1",
-    title: "Sign up",
-    description: "Create your account with Google. Takes 10 seconds.",
+    title: "Choose a runtime",
+    description: "Openclaw or Hermes Agent.",
   },
   {
     number: "2",
-    title: "We deploy your OpenClaw",
-    description: "A private instance is provisioned on dedicated cloud infrastructure.",
+    title: "Connect your model",
+    description: "Bring your supported API key or OAuth connection.",
   },
   {
     number: "3",
-    title: "Start using it",
+    title: "Launch",
     description:
-      "Connect your chat apps, bring your API keys, and let your AI assistant get to work.",
+      "ClawPilot handles the hosted machine and runtime setup.",
   },
 ]
 
@@ -53,7 +53,7 @@ export function HowItWorks() {
         </div>
 
         <p className="mt-8 text-center text-sm text-muted-foreground">
-          No Docker. No terminal. No DevOps experience needed.
+          No VPS. No Docker. No terminal setup.
         </p>
 
         <div className="mt-4 flex justify-center">

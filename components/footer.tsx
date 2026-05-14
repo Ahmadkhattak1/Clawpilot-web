@@ -38,7 +38,7 @@ export function Footer() {
         </div>
 
         <p className="type-nav text-muted-foreground/60">
-          Built on OpenClaw
+          Openclaw + Hermes Agent
         </p>
       </div>
     </footer>

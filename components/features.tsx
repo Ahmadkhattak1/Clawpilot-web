@@ -11,6 +11,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel"
 import { Button } from "@/components/ui/button"
+import { renderRuntimeText } from "@/components/runtime-name"
 import { cn } from "@/lib/utils"
 import {
   ClawContainer,
@@ -23,60 +24,54 @@ import {
 const features = [
   {
     icon: Cloud,
-    title: "Your own private instance",
+    title: "Private runtime",
     description:
-      "A dedicated OpenClaw server, fully isolated. Your data, your keys, your rules. Nothing shared.",
+      "Hosted Openclaw or Hermes Agent, isolated for your account.",
   },
   {
     icon: Clock,
     title: "Always on",
     description:
-      "Runs 24/7 in the cloud. No laptop to keep open, no Raspberry Pi to babysit. It just works.",
+      "Your agent stays online without your own machine running.",
   },
   {
     icon: Zap,
-    title: "Minutes, not days",
+    title: "No server setup",
     description:
-      "Skip the VPS, Docker, Node.js, and config files. Sign up, and your OpenClaw is live.",
+      "Skip the VPS, Docker, Node.js, and config files.",
   },
 ]
 
-type OpenClawResourceArticle = {
+type AgentResourceArticle = {
   title: string
   description: string
   url: string
 }
 
-const openClawResourceArticles: OpenClawResourceArticle[] = [
+const agentResourceArticles: AgentResourceArticle[] = [
   {
-    title: "Full Tutorial: Use OpenClaw to Build a Business That Runs Itself | Nat Eliason",
+    title: "Full Tutorial: Use Openclaw to Build a Business That Runs Itself | Nat Eliason",
     description:
-      "How Nat set up his OpenClaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.",
+      "How Nat set up his Openclaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.",
     url: "https://creatoreconomy.so/p/use-openclaw-to-build-a-business-that-runs-itself-nat-eliason",
   },
   {
-    title: "OpenClaw use cases: 25 ways to automate work and life",
+    title: "Openclaw use cases: 25 ways to automate work and life",
     description:
-      "A practical list covering everyday admin, developer workflows, and long-running jobs that OpenClaw can handle for you.",
+      "A practical list covering everyday admin, developer workflows, and long-running jobs that Openclaw can handle for you.",
     url: "https://www.hostinger.com/tutorials/openclaw-use-cases",
   },
   {
-    title: "OpenClaw Use Cases: 35+ Real Ways People Are Running Their Lives (and Businesses) With It",
+    title: "Hermes Agent Documentation | Nous Research",
     description:
-      "A verified playbook covering everything from morning briefings to multi-agent business councils.",
-    url: "https://sidsaladi.substack.com/p/openclaw-use-cases-35-real-ways-people",
+      "Official docs for the self-improving agent runtime, including memory, skills, models, and setup.",
+    url: "https://hermes-agent.nousresearch.com/docs/",
   },
   {
-    title: "How OpenClaw Changed My Workflow",
+    title: "NousResearch/hermes-agent on GitHub",
     description:
-      "A firsthand account of using OpenClaw in Telegram with real tools to help ship work end-to-end.",
-    url: "https://safeti.medium.com/how-openclaw-changed-my-workflow-e27b4a03e432",
-  },
-  {
-    title: "11 Insane Use Cases of OpenClaw AI",
-    description:
-      "What happens when you give an AI agent access to your entire digital life.",
-    url: "https://medium.com/the-ai-studio/11-insane-use-cases-of-openclaw-ai-a341e997a57f",
+      "Source, releases, and project details for Hermes Agent from Nous Research.",
+    url: "https://github.com/NousResearch/hermes-agent",
   },
 ]
 
@@ -125,12 +120,12 @@ export function Features() {
         <div className="mx-auto max-w-[1180px]">
           <div className="mx-auto max-w-[22rem] text-center md:max-w-4xl">
             <h2 className="text-balance font-sans text-[1.62rem] font-medium leading-[1.04] tracking-tight text-[#141414] md:text-[3.45rem]">
-              Not sure if you need OpenClaw?
+              Not sure what to run?
             </h2>
             <p className="mt-3 text-balance text-[1.15rem] font-medium leading-[1.08] tracking-tight text-[#737373] md:mt-2 md:text-[3.45rem]">
-              Heres what people are{" "}
+              Here's what people are{" "}
               <span className="inline-block whitespace-nowrap underline decoration-current decoration-[1.5px] underline-offset-[0.18em]">
-                doing with it
+                doing with agents
               </span>
             </p>
           </div>
@@ -163,7 +158,7 @@ export function Features() {
               >
                 <div className="flex h-full flex-col">
                   <CarouselContent className="items-stretch">
-                    {openClawResourceArticles.map((article) => {
+                    {agentResourceArticles.map((article) => {
                     const domain = getArticleDomain(article.url)
                     const isPressed = pressedCardUrl === article.url
                     const cardInteractionHandlers = {
@@ -235,7 +230,7 @@ export function Features() {
                                       className="outline-none transition-colors duration-200 hover:text-white/92 focus-visible:text-white/92"
                                       {...cardInteractionHandlers}
                                     >
-                                      {article.title}
+                                      {renderRuntimeText(article.title)}
                                     </Link>
                                   </span>
                                 </h3>
@@ -297,7 +292,7 @@ export function Features() {
 
           <div className="mt-8 flex justify-center md:mt-16">
             <Button asChild className="group" size="hero" variant="brand">
-              <Link href="/dashboard/chat">
+              <Link href="/dashboard">
                 Go to Dashboard
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
@@ -309,8 +304,8 @@ export function Features() {
       <ClawSection id="why-clawpilot">
         <ClawContainer size="lg">
           <ClawSectionIntro
-            description="All the power of OpenClaw. None of the server work."
-            title="Why ClawPilot"
+            description="Managed Openclaw and Hermes Agent hosting for always-on workflows."
+            title="Agent hosting without the server work."
           />
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">

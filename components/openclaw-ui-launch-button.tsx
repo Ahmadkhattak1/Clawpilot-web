@@ -6,7 +6,7 @@ import { useCallback, useState } from 'react'
 import { Button, type ButtonProps } from '@/components/ui/button'
 import { getRecoveredSupabaseSession } from '@/lib/supabase-auth'
 
-interface OpenClawUiLaunchButtonProps {
+interface OpenclawUiLaunchButtonProps {
   tenantId: string
   onUnauthorized: () => void
   onError?: (message: string) => void
@@ -27,7 +27,7 @@ function buildLaunchPlaceholderHtml(): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Opening OpenClaw...</title>
+    <title>Opening Openclaw...</title>
     <style>
       :root {
         color-scheme: light;
@@ -125,7 +125,7 @@ function buildLaunchPlaceholderHtml(): string {
       <div class="icon" aria-hidden="true">
         <div class="spinner"></div>
       </div>
-      <h1 id="cp-launch-title">Opening OpenClaw</h1>
+      <h1 id="cp-launch-title">Opening Openclaw</h1>
       <p id="cp-launch-message">Please wait while your secure session is prepared.</p>
     </main>
   </body>
@@ -181,26 +181,26 @@ function readTrimmedString(value: unknown): string | null {
   return normalized || null
 }
 
-export function OpenClawUiLaunchButton({
+export function OpenclawUiLaunchButton({
   tenantId,
   onUnauthorized,
   onError,
   onLaunchStart,
-  label = 'Open OpenClaw UI',
+  label = 'Open Openclaw UI',
   variant = 'outline',
   size = 'sm',
   className,
   disabled = false,
-}: OpenClawUiLaunchButtonProps) {
+}: OpenclawUiLaunchButtonProps) {
   const [isOpening, setIsOpening] = useState(false)
 
-  const handleOpenOpenClawUi = useCallback(async () => {
+  const handleOpenOpenclawUi = useCallback(async () => {
     if (!tenantId.trim() || isOpening || disabled) return
     onLaunchStart?.()
 
     const openedWindow = window.open('about:blank', '_blank')
     if (!openedWindow) {
-      onError?.('Popup blocked. Allow popups to open OpenClaw in a new tab.')
+      onError?.('Popup blocked. Allow popups to open Openclaw in a new tab.')
       return
     }
 
@@ -210,7 +210,7 @@ export function OpenClawUiLaunchButton({
       openedWindow.document.write(buildLaunchPlaceholderHtml())
       openedWindow.document.close()
       updateLaunchPlaceholder(openedWindow, {
-        title: 'Opening OpenClaw',
+        title: 'Opening Openclaw',
         message: 'Please wait while your secure session is prepared.',
       })
     } catch {
@@ -222,7 +222,12 @@ export function OpenClawUiLaunchButton({
       const session = await getRecoveredSupabaseSession({ timeoutMs: 2_500 })
       const accessToken = session?.access_token?.trim() ?? ''
       if (!accessToken) {
-        if (!openedWindow.closed) openedWindow.close()
+        if (!openedWindow.closed) {
+          updateLaunchPlaceholder(openedWindow, {
+            title: 'Openclaw launch issue',
+            message: 'Your dashboard session expired. Sign in again, then launch Openclaw.',
+          })
+        }
         onUnauthorized()
         return
       }
@@ -264,37 +269,42 @@ export function OpenClawUiLaunchButton({
           break
         }
 
-        lastLaunchErrorMessage = message ?? 'Unable to open OpenClaw right now.'
+        lastLaunchErrorMessage = message ?? 'Unable to open Openclaw right now.'
 
         if (isRetryableLaunchError(response.status, errorCode)) {
           updateLaunchPlaceholder(openedWindow, {
-            title: 'Opening OpenClaw',
+            title: 'Opening Openclaw',
             message: 'Preparing secure access. This can take a few more seconds.',
           })
           await delay(OPENCLAW_LAUNCH_RETRY_DELAY_MS)
           continue
         }
 
-        throw new Error(message ?? 'Unable to open OpenClaw right now.')
+        throw new Error(message ?? 'Unable to open Openclaw right now.')
       }
 
       if (!launchSucceeded) {
-        throw new Error(lastLaunchErrorMessage ?? 'OpenClaw secure launch is still preparing. Please try again.')
+        throw new Error(lastLaunchErrorMessage ?? 'Openclaw secure launch is still preparing. Please try again.')
       }
       if (!launchUrl) {
         throw new Error('Launch URL is missing. Please try again.')
       }
       if (openedWindow.closed) {
-        throw new Error('Launch tab was closed before OpenClaw could load.')
+        throw new Error('Launch tab was closed before Openclaw could load.')
       }
 
       openedWindow.location.replace(launchUrl)
     } catch (error) {
-      if (!openedWindow.closed) openedWindow.close()
       const message =
         error instanceof Error && error.message.trim()
           ? error.message.trim()
-          : 'Unable to open OpenClaw right now.'
+          : 'Unable to open Openclaw right now.'
+      if (!openedWindow.closed) {
+        updateLaunchPlaceholder(openedWindow, {
+          title: 'Openclaw launch issue',
+          message,
+        })
+      }
       onError?.(message)
     } finally {
       setIsOpening(false)
@@ -307,7 +317,7 @@ export function OpenClawUiLaunchButton({
       variant={variant}
       size={size}
       className={className}
-      onClick={() => void handleOpenOpenClawUi()}
+      onClick={() => void handleOpenOpenclawUi()}
       disabled={disabled || isOpening || !tenantId.trim()}
     >
       {isOpening ? (

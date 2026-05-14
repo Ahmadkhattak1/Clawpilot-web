@@ -6,20 +6,13 @@ import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { OnboardingAccountMenu } from '@/components/dashboard/onboarding-account-menu'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { SetupStepper } from '@/components/ui/setup-stepper'
 import {
-  AVAILABLE_MODEL_PROVIDER_OPTIONS,
+  MODEL_PROVIDER_OPTIONS,
+  getRuntimeModelProviderOptions,
   getModelAuthCueMethods,
   MODEL_PROVIDER_MODEL_STORAGE_KEY,
   MODEL_PROVIDER_STORAGE_KEY,
@@ -28,15 +21,20 @@ import {
   type ModelProviderId,
   type ModelProviderOption,
 } from '@/lib/model-providers'
-import { isTenantDeploymentStillStarting } from '@/lib/deploy-progress'
+import { isTenantDeploymentStillStartingFromSnapshot } from '@/lib/deploy-progress'
 import { isOnboardingComplete, markOnboardingIncomplete } from '@/lib/onboarding-state'
+import { getRuntimeAgentPath, getRuntimeProduct, readStoredRuntimeKind, type RuntimeKind } from '@/lib/runtime-products'
 import { buildBillingRequiredPath, fetchSubscriptionSnapshot, hasManagedHostingPlan } from '@/lib/subscription-gating'
-import { buildSignInPath, getRecoveredSupabaseSession, getSupabaseAuthClient } from '@/lib/supabase-auth'
-import { deriveTenantIdFromUserId } from '@/lib/tenant-instance'
+import { buildSignInPath, getRecoveredSupabaseSession } from '@/lib/supabase-auth'
+import {
+  deriveTenantIdFromUserId,
+  fetchTenantDaemonStatusSnapshot,
+  tenantHasProvisionedInstance,
+} from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
-  AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
+  MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
 )
 const CONTACT_EMAIL = 'support@clawpilot.app'
 
@@ -54,27 +52,16 @@ function getProviderInitials(label: string) {
     .join('')
 }
 
-function buildProfileInitial(value: string): string {
-  const normalized = value.trim()
-  if (!normalized) return 'A'
-
-  const parts = normalized.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) {
-    const initials = `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase()
-    if (initials.trim()) {
-      return initials
-    }
+function getSelectableModelOptions(runtimeKind: RuntimeKind | null, providerId: ModelProviderId | null) {
+  const models = getProviderModelOptions(providerId)
+  if (runtimeKind !== 'hermes') {
+    return models
   }
 
-  return normalized[0]?.toUpperCase() ?? 'A'
-}
-
-function buildPfpWebUrl(email: string): string | null {
-  const normalized = email.trim().toLowerCase()
-  if (!normalized) {
-    return null
-  }
-  return `https://pfp.web/${encodeURIComponent(normalized)}`
+  return models.filter((model) => {
+    const methods = getModelAuthCueMethods(providerId, model.id)
+    return methods.includes('api-key') || (providerId === 'nous' && methods.includes('oauth'))
+  })
 }
 
 function ProviderLogo({
@@ -118,22 +105,23 @@ function ModelStepPageClient() {
   const [selectedProviderId, setSelectedProviderId] = useState<ModelProviderId | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const [profileName, setProfileName] = useState('Account')
-  const [profileEmail, setProfileEmail] = useState('')
-  const [profileInitial, setProfileInitial] = useState('A')
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
-  const [isSigningOut, setIsSigningOut] = useState(false)
   const [contactOpen, setContactOpen] = useState(false)
   const [contactCopied, setContactCopied] = useState(false)
+  const [runtimeKind, setRuntimeKind] = useState<RuntimeKind | null>(null)
+
+  const providerOptions = useMemo(
+    () => getRuntimeModelProviderOptions(runtimeKind),
+    [runtimeKind],
+  )
 
   const selectedProvider = useMemo(
-    () => AVAILABLE_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? null,
-    [selectedProviderId],
+    () => providerOptions.find((provider) => provider.id === selectedProviderId) ?? null,
+    [providerOptions, selectedProviderId],
   )
 
   const selectedProviderModels = useMemo(
-    () => getProviderModelOptions(selectedProviderId),
-    [selectedProviderId],
+    () => getSelectableModelOptions(runtimeKind, selectedProviderId),
+    [runtimeKind, selectedProviderId],
   )
 
   function redirectToSignIn() {
@@ -143,22 +131,31 @@ function ModelStepPageClient() {
     router.replace(buildSignInPath(currentPath))
   }
 
-  async function handleSignOut() {
-    if (isSigningOut) {
+  function hydrateStoredModelSelection(storedRuntimeKind: RuntimeKind) {
+    setRuntimeKind(storedRuntimeKind)
+
+    const storedProviderId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
+    const storedModelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
+    const runtimeProviderOptions = getRuntimeModelProviderOptions(storedRuntimeKind)
+    const providerIsAvailableForRuntime = runtimeProviderOptions.some(
+      (provider) => provider.id === storedProviderId,
+    )
+
+    if (!isEnabledModelProviderId(storedProviderId) || !providerIsAvailableForRuntime) {
+      setSelectedProviderId(null)
+      setSelectedModelId(null)
       return
     }
 
-    try {
-      setIsSigningOut(true)
-      const supabase = getSupabaseAuthClient()
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('Failed to sign out', error)
-      }
-    } catch (error) {
-      console.error('Failed to sign out', error)
-    } finally {
-      router.replace('/')
+    const selectableModels = getSelectableModelOptions(storedRuntimeKind, storedProviderId)
+    setSelectedProviderId(storedProviderId)
+    if (
+      isModelSupportedByProvider(storedProviderId, storedModelId) &&
+      selectableModels.some((model) => model.id === storedModelId)
+    ) {
+      setSelectedModelId(storedModelId)
+    } else {
+      setSelectedModelId(selectableModels[0]?.id ?? null)
     }
   }
 
@@ -173,22 +170,41 @@ function ModelStepPageClient() {
 
   useEffect(() => {
     let cancelled = false
+    const storedRuntimeKind = readStoredRuntimeKind()
+
+    if (!storedRuntimeKind) {
+      router.replace(forceRestartOnboarding ? '/dashboard/runtime?restart=1' : '/dashboard/runtime')
+      return () => {
+        cancelled = true
+      }
+    }
+
+    hydrateStoredModelSelection(storedRuntimeKind)
+    setCheckingSession(false)
 
     async function loadSession() {
       try {
-        const session = await getRecoveredSupabaseSession()
+        const session = await getRecoveredSupabaseSession({ timeoutMs: 2500 })
         if (!session) {
           redirectToSignIn()
           return
         }
 
         const tenantId = deriveTenantIdFromUserId(session.user.id)
-        const deploymentStillStarting = await isTenantDeploymentStillStarting(tenantId)
+        const daemonSnapshot = await fetchTenantDaemonStatusSnapshot(tenantId)
+        const deploymentStillStarting = isTenantDeploymentStillStartingFromSnapshot(daemonSnapshot)
         if (deploymentStillStarting) {
-          router.replace('/dashboard/deploy')
+          router.replace(getRuntimeAgentPath(storedRuntimeKind))
+          return
+        }
+        const daemonStatus = daemonSnapshot.kind === 'ok' ? daemonSnapshot.status : null
+        if (tenantHasProvisionedInstance(daemonStatus)) {
+          router.replace('/dashboard')
           return
         }
 
+        const completedPath = '/dashboard'
+        const subscriptionPromise = fetchSubscriptionSnapshot(tenantId)
         let onboardingComplete = false
         if (forceRestartOnboarding) {
           try {
@@ -197,52 +213,23 @@ function ModelStepPageClient() {
             console.warn('Failed to mark onboarding incomplete during restart flow', error)
           }
         } else {
-          onboardingComplete = await isOnboardingComplete(session, { backfillFromProvisionedTenant: true })
+          onboardingComplete = await isOnboardingComplete(session, {
+            backfillFromProvisionedTenant: true,
+            daemonSnapshot,
+          })
         }
 
-        const subscription = await fetchSubscriptionSnapshot(tenantId)
+        const subscription = await subscriptionPromise
         if (!hasManagedHostingPlan(subscription)) {
-          router.replace(buildBillingRequiredPath(onboardingComplete ? '/dashboard/chat' : '/dashboard/model'))
+          router.replace(buildBillingRequiredPath(onboardingComplete ? completedPath : '/dashboard/runtime'))
           return
         }
 
         if (onboardingComplete) {
-          router.replace('/dashboard/chat')
+          router.replace(completedPath)
           return
         }
 
-        const userMetadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
-        const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : ''
-        const fallbackName = typeof userMetadata.name === 'string' ? userMetadata.name.trim() : ''
-        const email = session.user.email?.trim() ?? ''
-        const displayName = fullName || fallbackName || email || 'Account'
-        const pfpWebAvatar = buildPfpWebUrl(email)
-        const metadataAvatar =
-          typeof userMetadata.avatar_url === 'string' && userMetadata.avatar_url.trim()
-            ? userMetadata.avatar_url.trim()
-            : typeof userMetadata.picture === 'string' && userMetadata.picture.trim()
-              ? userMetadata.picture.trim()
-              : null
-
-        const storedProviderId = window.localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY)
-        const storedModelId = window.localStorage.getItem(MODEL_PROVIDER_MODEL_STORAGE_KEY)
-
-        if (!cancelled) {
-          setProfileName(displayName)
-          setProfileEmail(email)
-          setProfileInitial(buildProfileInitial(displayName || email))
-          setProfileImageUrl(pfpWebAvatar ?? metadataAvatar)
-
-          if (isEnabledModelProviderId(storedProviderId)) {
-            setSelectedProviderId(storedProviderId)
-            if (isModelSupportedByProvider(storedProviderId, storedModelId)) {
-              setSelectedModelId(storedModelId)
-            } else {
-              setSelectedModelId(getProviderModelOptions(storedProviderId)[0]?.id ?? null)
-            }
-          }
-          setCheckingSession(false)
-        }
       } catch {
         redirectToSignIn()
       }
@@ -272,12 +259,13 @@ function ModelStepPageClient() {
   }
 
   function onProviderSelect(providerId: ModelProviderId) {
+    const selectableModels = getSelectableModelOptions(runtimeKind, providerId)
     setSelectedProviderId(providerId)
     setSelectedModelId((previous) => {
-      if (isModelSupportedByProvider(providerId, previous)) {
+      if (isModelSupportedByProvider(providerId, previous) && selectableModels.some((model) => model.id === previous)) {
         return previous
       }
-      return getProviderModelOptions(providerId)[0]?.id ?? null
+      return selectableModels[0]?.id ?? null
     })
   }
 
@@ -285,7 +273,7 @@ function ModelStepPageClient() {
     if (!selectedProviderId || !selectedModelId) return
     window.localStorage.setItem(MODEL_PROVIDER_STORAGE_KEY, selectedProviderId)
     window.localStorage.setItem(MODEL_PROVIDER_MODEL_STORAGE_KEY, selectedModelId)
-    router.push(forceRestartOnboarding ? '/dashboard/openclaw?restart=1' : '/dashboard/openclaw')
+    router.push(forceRestartOnboarding ? '/dashboard/runtime-auth?restart=1' : '/dashboard/runtime-auth')
   }
 
   if (checkingSession) {
@@ -298,6 +286,8 @@ function ModelStepPageClient() {
       </div>
     )
   }
+
+  const runtimeProduct = getRuntimeProduct(runtimeKind)
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background px-4 py-10 sm:px-6 md:px-10 md:py-14">
@@ -323,45 +313,13 @@ function ModelStepPageClient() {
           <span>Contact us</span>
         </button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-card transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Open account menu"
-            >
-              <Avatar className="h-9 w-9">
-                {profileImageUrl ? <AvatarImage src={profileImageUrl} alt={profileName} /> : null}
-                <AvatarFallback className="bg-foreground text-xs font-semibold text-background">
-                  {profileInitial}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="py-2">
-              <p className="truncate text-xs font-medium text-foreground">{profileName}</p>
-              {profileEmail ? <p className="truncate text-[11px] text-muted-foreground">{profileEmail}</p> : null}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault()
-                void handleSignOut()
-              }}
-              disabled={isSigningOut}
-              className="text-destructive focus:text-destructive"
-            >
-              {isSigningOut ? 'Signing out...' : 'Sign out'}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <OnboardingAccountMenu />
       </div>
 
       <Card className="relative z-10 mx-auto flex min-h-[620px] w-full max-w-5xl flex-col border-border/70 shadow-sm shadow-primary/10">
         <CardHeader className="space-y-3 px-6 pt-7 md:px-10 md:pt-9">
           <CardTitle className="type-h4">ClawPilot Setup</CardTitle>
-          <CardDescription>Model</CardDescription>
+          <CardDescription>{runtimeProduct.name} model</CardDescription>
           <SetupStepper currentStep="model" className="pt-1" />
         </CardHeader>
 
@@ -371,18 +329,22 @@ function ModelStepPageClient() {
             <section className="space-y-4">
               <p className="text-sm font-semibold text-foreground">Choose provider</p>
               <div className="grid gap-4 sm:grid-cols-3">
-                {AVAILABLE_MODEL_PROVIDER_OPTIONS.map((provider) => {
+                {providerOptions.map((provider) => {
                   const isSelected = selectedProviderId === provider.id
+                  const selectableModels = getSelectableModelOptions(runtimeKind, provider.id as ModelProviderId)
+                  const isDisabled = runtimeKind === 'hermes' && selectableModels.length === 0
                   return (
                     <button
                       key={provider.id}
                       type="button"
+                      disabled={isDisabled}
                       onClick={() => onProviderSelect(provider.id as ModelProviderId)}
                       className={cn(
                         'rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/40',
                         isSelected
                           ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
                           : 'border-border/70',
+                        isDisabled ? 'cursor-not-allowed opacity-45 hover:border-border/70' : undefined,
                       )}
                     >
                       <div className="flex h-14 items-center justify-center rounded-md bg-muted/40 p-2">
@@ -396,6 +358,11 @@ function ModelStepPageClient() {
                         <p className="text-xs font-medium text-foreground/95">{provider.label}</p>
                         {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
                       </div>
+                      {isDisabled ? (
+                        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                          Managed OAuth soon
+                        </p>
+                      ) : null}
                     </button>
                   )
                 })}
@@ -427,7 +394,10 @@ function ModelStepPageClient() {
                           {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {authCueMethods.map((method) => (
+                          {(runtimeKind === 'hermes'
+                            ? authCueMethods.filter((method) => method === 'api-key' || selectedProviderId === 'nous')
+                            : authCueMethods
+                          ).map((method) => (
                             <span
                               key={`${model.id}-${method}`}
                               className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground"
@@ -450,7 +420,13 @@ function ModelStepPageClient() {
           </div>
 
           <div className="mt-auto border-t border-border/70 pt-4">
-            <div className="flex justify-end">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                variant="outline"
+                onClick={() => router.push(forceRestartOnboarding ? '/dashboard/runtime?restart=1' : '/dashboard/runtime')}
+              >
+                Back
+              </Button>
               <Button onClick={onNext} disabled={!selectedProviderId || !selectedModelId} className="sm:min-w-32">
                 Next
               </Button>

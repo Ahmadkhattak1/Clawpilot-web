@@ -22,7 +22,7 @@ function getDefaultNextPathForOtpType(type: string | null) {
   if (type === 'signup' || type === 'email' || type === 'magiclink' || type === 'recovery') {
     return '/set-password'
   }
-  return '/dashboard/chat'
+  return '/dashboard'
 }
 
 function getErrorMessage(error: unknown) {

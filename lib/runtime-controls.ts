@@ -140,6 +140,34 @@ export interface RuntimeOpenAICodexOAuthCompleteData {
   raw: unknown
 }
 
+export interface RuntimeNousOAuthStartPayload {
+  modelId?: string
+}
+
+export interface RuntimeNousOAuthStartData {
+  providerId: string | null
+  sessionId: string
+  authUrl: string
+  userCode: string | null
+  expiresAt: string | null
+  status: 'awaiting-user' | 'connected' | string | null
+  raw: unknown
+}
+
+export interface RuntimeNousOAuthCompletePayload {
+  sessionId?: string
+  modelId?: string
+  persist?: boolean
+}
+
+export interface RuntimeNousOAuthCompleteData {
+  providerId: string | null
+  profileId: string | null
+  modelId: string | null
+  oauthConnected: boolean
+  raw: unknown
+}
+
 export interface RuntimeModelUpdateData {
   modelProviderId: string | null
   modelId: string | null
@@ -234,7 +262,7 @@ export interface RuntimeWorkspaceTrashRestorePayload {
   overwrite?: boolean
 }
 
-export interface RuntimeOpenClawResetPayload {
+export interface RuntimeOpenclawResetPayload {
   scope: 'config' | 'config+creds+sessions' | 'full'
   dryRun?: boolean
 }
@@ -1694,6 +1722,54 @@ export async function completeRuntimeOpenAICodexOAuth(
   payload: RuntimeOpenAICodexOAuthCompletePayload,
 ): Promise<RuntimeOpenAICodexOAuthCompleteData> {
   const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models/openai-codex/oauth/complete', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  const record = toObject(response.result)
+
+  return {
+    providerId: readString(record ?? {}, ['providerId']),
+    profileId: readString(record ?? {}, ['profileId']),
+    modelId: readString(record ?? {}, ['modelId']),
+    oauthConnected: readBoolean(record ?? {}, ['oauthConnected']) ?? false,
+    raw: response.result,
+  }
+}
+
+export async function startRuntimeNousOAuth(
+  tenantId: string,
+  payload: RuntimeNousOAuthStartPayload = {},
+): Promise<RuntimeNousOAuthStartData> {
+  const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models/nous/oauth/start', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  const record = toObject(response.result)
+  const sessionId = readString(record ?? {}, ['sessionId']) ?? ''
+  const authUrl = readString(record ?? {}, ['authUrl']) ?? ''
+
+  if (!sessionId || !authUrl) {
+    throw new Error('Nous OAuth start response did not include sessionId/authUrl.')
+  }
+
+  return {
+    providerId: readString(record ?? {}, ['providerId']),
+    sessionId,
+    authUrl,
+    userCode: readString(record ?? {}, ['userCode']),
+    expiresAt: readString(record ?? {}, ['expiresAt']),
+    status: readString(record ?? {}, ['status']),
+    raw: response.result,
+  }
+}
+
+export async function completeRuntimeNousOAuth(
+  tenantId: string,
+  payload: RuntimeNousOAuthCompletePayload,
+): Promise<RuntimeNousOAuthCompleteData> {
+  const response = await runtimeRequest<RuntimeEnvelope>(tenantId, '/runtime/models/nous/oauth/complete', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

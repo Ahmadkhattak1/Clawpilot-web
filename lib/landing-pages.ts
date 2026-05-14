@@ -46,7 +46,7 @@ export type LandingPageConfig = {
 const sharedRelatedLinks: LandingPageLink[] = [
   {
     href: "/blog/what-is-openclaw-hosting-2026",
-    label: "OpenClaw Hosting Guide",
+    label: "Openclaw Hosting Guide",
     description: "Understand deployment models, hidden costs, and team-fit signals.",
   },
   {
@@ -61,15 +61,135 @@ const sharedRelatedLinks: LandingPageLink[] = [
   },
 ]
 
+const sharedHermesRelatedLinks: LandingPageLink[] = [
+  {
+    href: "/hermes-agent-hosting",
+    label: "Hermes Agent Hosting",
+    description: "Run Hermes Agent in the cloud without server setup.",
+  },
+  {
+    href: "/managed-hermes-agent",
+    label: "Managed Hermes Agent",
+    description: "Compare managed Hermes operations against DIY ownership.",
+  },
+  {
+    href: "/hermes-agent-vps-hosting",
+    label: "Hermes Agent VPS Hosting",
+    description: "Decide whether VPS control is worth the maintenance load.",
+  },
+]
+
+export const aiAgentHostingLandingPage: LandingPageConfig = {
+  slug: "ai-agent-hosting",
+  path: "/ai-agent-hosting",
+  metaTitle: "AI Agent Hosting | Openclaw and Hermes Agent Cloud Hosting",
+  metaDescription:
+    "Host Openclaw or Hermes Agent in isolated ClawPilot cloud runtimes. Deploy agents 24/7 without managing VPS, Docker, or updates.",
+  headline: "AI agent hosting for Openclaw and Hermes Agent",
+  subheadline:
+    "Choose your runtime, bring your model keys, and run agents in isolated cloud environments instead of your personal device.",
+  searchIntentLabel: "Runtime Intent: AI agent hosting",
+  primaryKeyword: "AI agent hosting",
+  keywords: [
+    "AI agent hosting",
+    "managed AI agent hosting",
+    "Openclaw hosting",
+    "Hermes Agent hosting",
+    "cloud agent runtime",
+  ],
+  heroPoints: [
+    "Host Openclaw or Hermes Agent from the same ClawPilot account.",
+    "Create multiple agents and workflows inside either runtime.",
+    "Keep always-on agents away from your laptop and personal files.",
+  ],
+  valueProps: [
+    {
+      title: "Runtime choice",
+      description: "Use Openclaw for channel-driven automation or Hermes Agent for memory-rich autonomous workflows.",
+    },
+    {
+      title: "Cloud isolation",
+      description: "Run agent files, tools, and sessions in a separate managed environment.",
+    },
+    {
+      title: "Less server work",
+      description: "Skip VPS setup, Docker upkeep, SSL, restarts, and routine update handling.",
+    },
+  ],
+  fitChecklist: [
+    "You want Openclaw or Hermes Agent online 24/7.",
+    "You need more than one hosted agent or workflow.",
+    "You care about isolation from personal devices.",
+    "You want runtime control without infrastructure chores.",
+  ],
+  channelNotes: [
+    "Openclaw is a strong fit for messaging-first workflows across WhatsApp, Telegram, Slack, Discord, and email.",
+    "Hermes Agent is a strong fit for persistent memory, tool use, skills, and longer-running autonomous work.",
+    "ClawPilot keeps the runtime decision flexible so you do not have to choose a single agent framework forever.",
+  ],
+  comparisonRows: [
+    {
+      category: "Runtime support",
+      managed: "Openclaw and Hermes Agent from one hosting layer.",
+      selfHosted: "Separate install, maintenance, and recovery paths per runtime.",
+    },
+    {
+      category: "Agent scale",
+      managed: "Create multiple agents and workflows without repeating server setup.",
+      selfHosted: "Each new runtime can add setup, secrets, monitoring, and update work.",
+    },
+    {
+      category: "Device exposure",
+      managed: "Agents run away from your personal laptop and local files.",
+      selfHosted: "Local installs can share a boundary with personal apps and credentials.",
+    },
+    {
+      category: "Best fit",
+      managed: "Teams and builders who want fast, reliable hosted agents.",
+      selfHosted: "Infrastructure-heavy teams that need full host ownership.",
+    },
+  ],
+  faq: [
+    {
+      question: "Can ClawPilot host both Openclaw and Hermes Agent?",
+      answer:
+        "Yes. ClawPilot supports hosted Openclaw and Hermes Agent runtimes, so you can choose the agent framework that fits the job.",
+    },
+    {
+      question: "Can I deploy more than one agent?",
+      answer:
+        "Yes. You can create multiple agents and workflows inside supported runtimes instead of rebuilding hosting for every experiment.",
+    },
+    {
+      question: "Why not run agents on my main laptop?",
+      answer:
+        "Always-on agents can touch files, tools, browser sessions, and credentials. A separate cloud runtime gives them a cleaner boundary.",
+    },
+    {
+      question: "Is this still useful if I already know Docker?",
+      answer:
+        "Yes. Managed hosting is about reducing ongoing maintenance, not only avoiding the first install.",
+    },
+  ],
+  relatedLinks: [
+    {
+      href: "/openclaw-hosting",
+      label: "Openclaw Hosting",
+      description: "Explore hosted Openclaw for always-on channel workflows.",
+    },
+    ...sharedHermesRelatedLinks,
+  ],
+}
+
 export const openclawHostingLandingPage: LandingPageConfig = {
   slug: "openclaw-hosting",
   path: "/openclaw-hosting",
-  metaTitle: "OpenClaw Hosting | Private Managed OpenClaw in the Cloud",
+  metaTitle: "Openclaw Hosting | Private Managed Openclaw in the Cloud",
   metaDescription:
-    "Run OpenClaw in the cloud with a private, always-on managed environment. Skip server setup and focus on outcomes.",
-  headline: "OpenClaw hosting built for reliable day-to-day operations",
+    "Run Openclaw in the cloud with a private, always-on managed environment. Skip server setup and focus on outcomes.",
+  headline: "Openclaw hosting built for reliable day-to-day operations",
   subheadline:
-    "ClawPilot gives your team a private OpenClaw environment that stays online, gets updated safely, and removes infrastructure maintenance from your weekly workload.",
+    "ClawPilot gives your team a private Openclaw environment that stays online, gets updated safely, and removes infrastructure maintenance from your weekly workload.",
   searchIntentLabel: "Deployment Intent: openclaw hosting",
   primaryKeyword: "openclaw hosting",
   keywords: [
@@ -80,7 +200,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     "openclaw managed hosting",
   ],
   heroPoints: [
-    "Private OpenClaw instance with isolated runtime ownership.",
+    "Private Openclaw instance with isolated runtime ownership.",
     "Managed uptime, patching, and deployment maintenance.",
     "Launch in minutes without Docker, VPS, or terminal setup.",
   ],
@@ -88,7 +208,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     {
       title: "Operational consistency",
       description:
-        "Avoid local machine interruptions and ad-hoc restarts by running OpenClaw in a stable cloud environment.",
+        "Avoid local machine interruptions and ad-hoc restarts by running Openclaw in a stable cloud environment.",
     },
     {
       title: "Faster team adoption",
@@ -102,13 +222,13 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     },
   ],
   fitChecklist: [
-    "You need OpenClaw available beyond one developer laptop.",
+    "You need Openclaw available beyond one developer laptop.",
     "You want to avoid owning server patching and runtime updates.",
     "You need faster rollout across non-infrastructure teams.",
     "You prefer a workflow-first setup over full-stack DevOps ownership.",
   ],
   channelNotes: [
-    "OpenClaw workflows can be configured for business channels including WhatsApp, Telegram, Discord, Slack, and email flows.",
+    "Openclaw workflows can be configured for business channels including WhatsApp, Telegram, Discord, Slack, and email flows.",
     "Use the same hosted runtime to support multiple workflows instead of maintaining channel-specific scripts.",
     "Keep operational ownership clear while your team focuses on prompt, policy, and workflow quality.",
   ],
@@ -136,7 +256,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is OpenClaw hosting different from installing OpenClaw once?",
+      question: "Is Openclaw hosting different from installing Openclaw once?",
       answer:
         "Yes. Hosting includes uptime, updates, monitoring, and ongoing runtime ownership. Installation alone does not solve long-term reliability.",
     },
@@ -159,12 +279,12 @@ export const openclawHostingLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "Compare managed vs self-hosted tradeoffs in detail.",
     },
     {
       href: "/openclaw-vps-hosting",
-      label: "OpenClaw VPS Hosting",
+      label: "Openclaw VPS Hosting",
       description: "See when VPS setup helps and when it becomes overhead.",
     },
     ...sharedRelatedLinks,
@@ -174,12 +294,12 @@ export const openclawHostingLandingPage: LandingPageConfig = {
 export const managedOpenclawLandingPage: LandingPageConfig = {
   slug: "managed-openclaw",
   path: "/managed-openclaw",
-  metaTitle: "Managed OpenClaw | Faster Launch With Lower Ops Burden",
+  metaTitle: "Managed Openclaw | Faster Launch With Lower Ops Burden",
   metaDescription:
-    "Managed OpenClaw for teams that want predictable runtime operations without owning infrastructure maintenance and incident loops.",
-  headline: "Managed OpenClaw for teams that want workflow velocity",
+    "Managed Openclaw for teams that want predictable runtime operations without owning infrastructure maintenance and incident loops.",
+  headline: "Managed Openclaw for teams that want workflow velocity",
   subheadline:
-    "Move from setup experiments to production usage with a managed OpenClaw deployment model that reduces operational drag and keeps your team focused on outcomes.",
+    "Move from setup experiments to production usage with a managed Openclaw deployment model that reduces operational drag and keeps your team focused on outcomes.",
   searchIntentLabel: "Commercial Intent: managed openclaw",
   primaryKeyword: "managed openclaw",
   keywords: [
@@ -213,12 +333,12 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   ],
   fitChecklist: [
     "Your team is product, growth, support, or operations led.",
-    "You need reliable OpenClaw usage without building an on-call rotation.",
+    "You need reliable Openclaw usage without building an on-call rotation.",
     "You want deployment speed without long setup projects.",
     "You need channel continuity but not deep infrastructure customization.",
   ],
   channelNotes: [
-    "Managed OpenClaw is usually strongest when your value depends on channel response quality, not infrastructure craftsmanship.",
+    "Managed Openclaw is usually strongest when your value depends on channel response quality, not infrastructure craftsmanship.",
     "Teams can focus on message quality, routing logic, and approval policies rather than host reliability tasks.",
     "A managed baseline makes it easier to standardize operations across customer support and lead-gen workflows.",
   ],
@@ -246,7 +366,7 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is managed OpenClaw only for non-technical teams?",
+      question: "Is managed Openclaw only for non-technical teams?",
       answer:
         "No. Technical teams also choose managed deployment when they want to avoid routine infrastructure overhead and stay focused on business workflows.",
     },
@@ -269,12 +389,12 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "See core hosting requirements and evaluation criteria.",
     },
     {
       href: "/openclaw-vps-hosting",
-      label: "OpenClaw VPS Hosting",
+      label: "Openclaw VPS Hosting",
       description: "Compare managed deployment against VPS ownership.",
     },
     ...sharedRelatedLinks,
@@ -284,10 +404,10 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
 export const openclawVpsHostingLandingPage: LandingPageConfig = {
   slug: "openclaw-vps-hosting",
   path: "/openclaw-vps-hosting",
-  metaTitle: "OpenClaw VPS Hosting vs Managed Hosting | Decision Framework",
+  metaTitle: "Openclaw VPS Hosting vs Managed Hosting | Decision Framework",
   metaDescription:
-    "Compare OpenClaw VPS hosting with managed hosting across setup effort, maintenance burden, and incident recovery risk.",
-  headline: "OpenClaw VPS hosting vs managed hosting: choose with clear tradeoffs",
+    "Compare Openclaw VPS hosting with managed hosting across setup effort, maintenance burden, and incident recovery risk.",
+  headline: "Openclaw VPS hosting vs managed hosting: choose with clear tradeoffs",
   subheadline:
     "VPS can work for teams with strong operations maturity. For most teams, managed hosting reduces maintenance loops and speeds up business execution.",
   searchIntentLabel: "Comparison Intent: openclaw vps hosting",
@@ -313,7 +433,7 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
     {
       title: "Risk-aware planning",
       description:
-        "Map who owns outages, patch failures, and channel disconnects before your team depends on OpenClaw daily.",
+        "Map who owns outages, patch failures, and channel disconnects before your team depends on Openclaw daily.",
     },
     {
       title: "Faster decision quality",
@@ -356,7 +476,7 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is OpenClaw VPS hosting always cheaper?",
+      question: "Is Openclaw VPS hosting always cheaper?",
       answer:
         "Direct server spend may look lower, but total ownership often rises once you include setup, maintenance, and incident response labor.",
     },
@@ -379,12 +499,12 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "Learn the baseline requirements for production hosting.",
     },
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "See why managed deployment often wins for speed-focused teams.",
     },
     ...sharedRelatedLinks,
@@ -394,12 +514,12 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
 export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
   slug: "openclaw-whatsapp-automation",
   path: "/openclaw-whatsapp-automation",
-  metaTitle: "OpenClaw WhatsApp Automation | Hosted Multi-Channel Operations",
+  metaTitle: "Openclaw WhatsApp Automation | Hosted Multi-Channel Operations",
   metaDescription:
-    "Run OpenClaw WhatsApp automation in a managed cloud environment and keep channel workflows reliable without self-hosting overhead.",
-  headline: "OpenClaw WhatsApp automation without self-hosting complexity",
+    "Run Openclaw WhatsApp automation in a managed cloud environment and keep channel workflows reliable without self-hosting overhead.",
+  headline: "Openclaw WhatsApp automation without self-hosting complexity",
   subheadline:
-    "Use ClawPilot to run OpenClaw workflows for WhatsApp and related channels with a managed runtime that prioritizes uptime, stability, and faster execution cycles.",
+    "Use ClawPilot to run Openclaw workflows for WhatsApp and related channels with a managed runtime that prioritizes uptime, stability, and faster execution cycles.",
   searchIntentLabel: "Use-Case Intent: openclaw whatsapp automation",
   primaryKeyword: "openclaw whatsapp automation",
   keywords: [
@@ -438,7 +558,7 @@ export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
     "You prefer managed infrastructure with workflow-level control.",
   ],
   channelNotes: [
-    "OpenClaw documentation highlights support for channels such as WhatsApp, Telegram, Discord, and Slack.",
+    "Openclaw documentation highlights support for channels such as WhatsApp, Telegram, Discord, and Slack.",
     "A shared managed runtime makes it easier to standardize policy and operations across channels.",
     "Use approval rules and guardrails to keep outbound and support workflows aligned with team standards.",
   ],
@@ -489,23 +609,351 @@ export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "Review base hosting requirements for production workflows.",
     },
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "Explore operations-focused tradeoffs for managed deployment.",
     },
     ...sharedRelatedLinks,
   ],
 }
 
+export const hermesAgentHostingLandingPage: LandingPageConfig = {
+  slug: "hermes-agent-hosting",
+  path: "/hermes-agent-hosting",
+  metaTitle: "Hermes Agent Hosting | Managed Cloud Runtime for Hermes Agent",
+  metaDescription:
+    "Run Hermes Agent in a managed cloud runtime with isolation, uptime, and no VPS maintenance. Deploy faster with ClawPilot.",
+  headline: "Hermes Agent hosting without VPS maintenance",
+  subheadline:
+    "Run Hermes Agent in an isolated ClawPilot cloud runtime, keep it online, and focus on the workflows instead of the server.",
+  searchIntentLabel: "Deployment Intent: Hermes Agent hosting",
+  primaryKeyword: "Hermes Agent hosting",
+  keywords: [
+    "Hermes Agent hosting",
+    "hosted Hermes Agent",
+    "Hermes Agent cloud hosting",
+    "deploy Hermes Agent",
+    "managed Hermes Agent",
+  ],
+  heroPoints: [
+    "Hosted Hermes Agent runtime for always-on work.",
+    "No Docker, VPS hardening, SSL, or manual restart loops.",
+    "Create multiple Hermes agents and workflows as your use cases grow.",
+  ],
+  valueProps: [
+    {
+      title: "Always-on runtime",
+      description: "Keep Hermes Agent available for recurring work without depending on a personal device.",
+    },
+    {
+      title: "Isolated workspace",
+      description: "Separate agent files, tools, and sessions from your laptop and daily browser context.",
+    },
+    {
+      title: "Lower setup drag",
+      description: "Move past install work and spend more time on memory, skills, tools, and workflow quality.",
+    },
+  ],
+  fitChecklist: [
+    "You want Hermes Agent online beyond a local terminal session.",
+    "You are evaluating memory, skills, and tool workflows.",
+    "You want hosted deployment without owning a VPS.",
+    "You need room to create more than one agent or workflow.",
+  ],
+  channelNotes: [
+    "Hermes Agent is commonly searched with setup, VPS, memory, skills, tools, and cloud hosting intent.",
+    "A hosted runtime is strongest when the agent needs persistence, scheduled work, and cleaner operational boundaries.",
+    "Use ClawPilot when you want Hermes Agent running in the cloud without turning deployment into a server project.",
+  ],
+  comparisonRows: [
+    {
+      category: "First deploy",
+      managed: "Hosted runtime path with less manual server setup.",
+      selfHosted: "Provision VPS, install dependencies, configure access, and monitor health.",
+    },
+    {
+      category: "Persistence",
+      managed: "Designed for always-on Hermes workflows.",
+      selfHosted: "Depends on your process manager, host health, and recovery setup.",
+    },
+    {
+      category: "Security boundary",
+      managed: "Runs away from your personal device and local credential surface.",
+      selfHosted: "Local installs can share risk with daily apps and files.",
+    },
+    {
+      category: "Best fit",
+      managed: "Builders who want Hermes Agent running quickly and reliably.",
+      selfHosted: "Operators who want direct host control and accept maintenance.",
+    },
+  ],
+  faq: [
+    {
+      question: "What is Hermes Agent hosting?",
+      answer:
+        "Hermes Agent hosting means running the Hermes Agent runtime in the cloud so it can stay online without your laptop or a self-managed VPS.",
+    },
+    {
+      question: "Can I run multiple Hermes agents?",
+      answer:
+        "Yes. ClawPilot is built for creating multiple hosted agents and workflows as your use cases grow.",
+    },
+    {
+      question: "Does managed hosting replace Hermes Agent?",
+      answer:
+        "No. ClawPilot hosts the runtime so you can use Hermes Agent without managing the underlying server work.",
+    },
+    {
+      question: "Who should self-host instead?",
+      answer:
+        "Self-hosting fits teams that already manage production servers and want direct infrastructure ownership.",
+    },
+  ],
+  relatedLinks: [
+    {
+      href: "/ai-agent-hosting",
+      label: "AI Agent Hosting",
+      description: "Compare Openclaw and Hermes Agent hosting from one place.",
+    },
+    ...sharedHermesRelatedLinks.filter((link) => link.href !== "/hermes-agent-hosting"),
+  ],
+}
+
+export const managedHermesAgentLandingPage: LandingPageConfig = {
+  slug: "managed-hermes-agent",
+  path: "/managed-hermes-agent",
+  metaTitle: "Managed Hermes Agent | Run Hermes Agent Without Server Ops",
+  metaDescription:
+    "Managed Hermes Agent hosting for builders who want persistence, isolation, and uptime without managing VPS infrastructure.",
+  headline: "Managed Hermes Agent for persistent autonomous work",
+  subheadline:
+    "Use Hermes Agent with a managed runtime so your team can focus on tools, memory, and outcomes instead of operations.",
+  searchIntentLabel: "Commercial Intent: managed Hermes Agent",
+  primaryKeyword: "managed Hermes Agent",
+  keywords: [
+    "managed Hermes Agent",
+    "Hermes Agent managed hosting",
+    "Hermes Agent cloud runtime",
+    "host Hermes Agent",
+    "Hermes Agent deployment",
+  ],
+  heroPoints: [
+    "Managed runtime operations for Hermes Agent.",
+    "Persistent cloud environment for longer-running work.",
+    "Multiple agents and workflows without repeated server projects.",
+  ],
+  valueProps: [
+    {
+      title: "Operational focus",
+      description: "Spend less time on host upkeep and more time improving agent behavior.",
+    },
+    {
+      title: "Cleaner rollout",
+      description: "Give non-infrastructure teams a simpler way to evaluate Hermes Agent in real work.",
+    },
+    {
+      title: "Practical isolation",
+      description: "Keep autonomous work in a managed environment separate from personal machines.",
+    },
+  ],
+  fitChecklist: [
+    "You want Hermes Agent for recurring or long-running work.",
+    "You prefer dashboard-driven runtime control over SSH.",
+    "You need reliability before deep infrastructure customization.",
+    "You want to expand from one agent to several workflows.",
+  ],
+  channelNotes: [
+    "Managed Hermes Agent is useful when persistent memory and tool access need uptime, not just a successful install.",
+    "The main tradeoff is simple: managed hosting reduces operations work while self-hosting maximizes host control.",
+    "ClawPilot keeps Hermes Agent beside Openclaw so teams can pick the right runtime by workflow.",
+  ],
+  comparisonRows: [
+    {
+      category: "Setup model",
+      managed: "Runtime provisioned and maintained through ClawPilot.",
+      selfHosted: "Manual server, Docker, process, and update ownership.",
+    },
+    {
+      category: "Team adoption",
+      managed: "Easier for builders and operators who do not want server work.",
+      selfHosted: "Best when infrastructure ownership is already a team strength.",
+    },
+    {
+      category: "Ongoing work",
+      managed: "Lower maintenance and recovery burden.",
+      selfHosted: "You own patching, monitoring, backups, and incidents.",
+    },
+    {
+      category: "Runtime choice",
+      managed: "Hermes Agent and Openclaw are both available.",
+      selfHosted: "Each runtime needs its own setup and maintenance plan.",
+    },
+  ],
+  faq: [
+    {
+      question: "Why choose managed Hermes Agent hosting?",
+      answer:
+        "Choose managed hosting when uptime and speed matter more than owning every server detail.",
+    },
+    {
+      question: "Is managed Hermes Agent only for beginners?",
+      answer:
+        "No. Technical users also choose it when server maintenance is not the highest-value work.",
+    },
+    {
+      question: "Can I also use Openclaw on ClawPilot?",
+      answer:
+        "Yes. ClawPilot supports both Openclaw and Hermes Agent hosting.",
+    },
+    {
+      question: "What should I compare before self-hosting?",
+      answer:
+        "Compare setup time, update work, monitoring, backups, recovery, and the security boundary around agent tools.",
+    },
+  ],
+  relatedLinks: [
+    {
+      href: "/hermes-agent-hosting",
+      label: "Hermes Agent Hosting",
+      description: "Start with the core hosting overview.",
+    },
+    {
+      href: "/ai-agent-hosting",
+      label: "AI Agent Hosting",
+      description: "See how Hermes Agent fits beside Openclaw.",
+    },
+    {
+      href: "/hermes-agent-vps-hosting",
+      label: "Hermes Agent VPS Hosting",
+      description: "Compare managed deployment with VPS ownership.",
+    },
+  ],
+}
+
+export const hermesAgentVpsHostingLandingPage: LandingPageConfig = {
+  slug: "hermes-agent-vps-hosting",
+  path: "/hermes-agent-vps-hosting",
+  metaTitle: "Hermes Agent VPS Hosting vs Managed Hosting",
+  metaDescription:
+    "Compare Hermes Agent VPS hosting with managed cloud hosting across setup time, uptime, isolation, and maintenance.",
+  headline: "Hermes Agent VPS hosting vs managed hosting",
+  subheadline:
+    "A VPS gives control. Managed hosting gives speed, uptime support, and less maintenance while Hermes Agent gets proven in real workflows.",
+  searchIntentLabel: "Comparison Intent: Hermes Agent VPS hosting",
+  primaryKeyword: "Hermes Agent VPS hosting",
+  keywords: [
+    "Hermes Agent VPS hosting",
+    "Hermes Agent VPS",
+    "self host Hermes Agent",
+    "Hermes Agent server setup",
+    "Hermes Agent managed hosting",
+  ],
+  heroPoints: [
+    "Compare direct VPS control against operational ownership.",
+    "Account for restarts, updates, monitoring, backups, and SSL.",
+    "Start managed if workflow validation matters more than server tuning.",
+  ],
+  valueProps: [
+    {
+      title: "Clear tradeoffs",
+      description: "See what you gain in control and what you inherit in maintenance.",
+    },
+    {
+      title: "Faster validation",
+      description: "Use managed hosting to prove the Hermes workflow before investing in platform work.",
+    },
+    {
+      title: "Lower interruption risk",
+      description: "Reduce the chance that server chores interrupt agent iteration.",
+    },
+  ],
+  fitChecklist: [
+    "Choose VPS if you already manage production Linux servers.",
+    "Choose managed if you want Hermes Agent online quickly.",
+    "Avoid DIY if no one owns monitoring and recovery.",
+    "Revisit self-hosting after your workflow value is proven.",
+  ],
+  channelNotes: [
+    "VPS searches often come from users who already understand Hermes Agent and are blocked by deployment details.",
+    "The hidden work is not only install time; it is ongoing recovery, updates, secrets, and observability.",
+    "Managed hosting is the lower-friction path when the business goal is agent output, not server administration.",
+  ],
+  comparisonRows: [
+    {
+      category: "Initial setup",
+      managed: "Hosted runtime path with fewer moving parts.",
+      selfHosted: "VPS provisioning, dependencies, process manager, SSL, and access control.",
+    },
+    {
+      category: "Maintenance",
+      managed: "Lower ongoing operations burden.",
+      selfHosted: "You own upgrades, restarts, backups, and host security.",
+    },
+    {
+      category: "Control",
+      managed: "High workflow control with less host-level access.",
+      selfHosted: "Full host control with full responsibility.",
+    },
+    {
+      category: "Best first step",
+      managed: "Validate Hermes Agent workflows quickly.",
+      selfHosted: "Optimize after requirements are known.",
+    },
+  ],
+  faq: [
+    {
+      question: "Is Hermes Agent VPS hosting cheaper?",
+      answer:
+        "The server bill may be lower, but total cost includes setup time, updates, monitoring, and incident recovery.",
+    },
+    {
+      question: "When is VPS the right choice?",
+      answer:
+        "VPS is right when you need host-level control and already have the skills and time to maintain it.",
+    },
+    {
+      question: "Can I start managed and move later?",
+      answer:
+        "Yes. Starting managed is a practical way to validate Hermes workflows before deciding how much infrastructure to own.",
+    },
+    {
+      question: "Does ClawPilot only host Hermes Agent?",
+      answer:
+        "No. ClawPilot supports both Hermes Agent and Openclaw runtimes.",
+    },
+  ],
+  relatedLinks: [
+    {
+      href: "/hermes-agent-hosting",
+      label: "Hermes Agent Hosting",
+      description: "Review the managed hosting path.",
+    },
+    {
+      href: "/managed-hermes-agent",
+      label: "Managed Hermes Agent",
+      description: "See when managed operations make sense.",
+    },
+    {
+      href: "/ai-agent-hosting",
+      label: "AI Agent Hosting",
+      description: "Compare runtime options across ClawPilot.",
+    },
+  ],
+}
+
 export const marketingLandingPages: LandingPageConfig[] = [
+  aiAgentHostingLandingPage,
   openclawHostingLandingPage,
   managedOpenclawLandingPage,
   openclawVpsHostingLandingPage,
   openclawWhatsappAutomationLandingPage,
+  hermesAgentHostingLandingPage,
+  managedHermesAgentLandingPage,
+  hermesAgentVpsHostingLandingPage,
 ]
 
 export function buildLandingMetadata(page: LandingPageConfig): Metadata {
@@ -527,7 +975,7 @@ export function buildLandingMetadata(page: LandingPageConfig): Metadata {
       card: "summary_large_image",
       title: `${siteName} | ${page.metaTitle}`,
       description: page.metaDescription,
-      images: [siteOgImage.url],
+      images: [siteOgImage],
     },
   }
 }

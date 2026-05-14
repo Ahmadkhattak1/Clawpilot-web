@@ -163,7 +163,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: readString(backendPayload?.error) ?? 'OPENCLAW_LAUNCH_UNAVAILABLE',
-        message: readString(backendPayload?.message) ?? 'Unable to launch OpenClaw right now.',
+        message: readString(backendPayload?.message) ?? 'Unable to launch Openclaw right now.',
       },
       { status: backendResponse.status },
     )

@@ -3,6 +3,7 @@ export interface ModelProviderOption {
   label: string
   isAvailable?: boolean
   isHostedRuntimeAvailable?: boolean
+  isHermesRuntimeAvailable?: boolean
   logoSrc?: string
   logoEmoji?: string
 }
@@ -25,6 +26,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     label: 'Anthropic',
     isAvailable: true,
     isHostedRuntimeAvailable: true,
+    isHermesRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/Anthropic_Symbol_0.svg',
   },
   {
@@ -32,6 +34,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     label: 'OpenAI',
     isAvailable: true,
     isHostedRuntimeAvailable: true,
+    isHermesRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/openai-svgrepo-com.svg',
   },
   {
@@ -39,6 +42,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     label: 'Gemini',
     isAvailable: true,
     isHostedRuntimeAvailable: true,
+    isHermesRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/google.svg',
   },
   {
@@ -46,6 +50,12 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     label: 'OpenRouter',
     isHostedRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/openrouter.png',
+  },
+  {
+    id: 'nous',
+    label: 'Nous Portal',
+    isHermesRuntimeAvailable: true,
+    logoSrc: '/ai-models-logos/nous-research.webp',
   },
   {
     id: 'qwen',
@@ -99,6 +109,7 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'kimi',
     label: 'Kimi Coding',
     isHostedRuntimeAvailable: true,
+    isHermesRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/kimi-logo.png',
   },
   {
@@ -183,7 +194,13 @@ export const MODEL_PROVIDER_OPTIONS: readonly ModelProviderOption[] = [
     id: 'minimax',
     label: 'MiniMax',
     isHostedRuntimeAvailable: true,
+    isHermesRuntimeAvailable: true,
     logoSrc: '/ai-models-logos/minimax-color.svg',
+  },
+  {
+    id: 'huggingface',
+    label: 'Hugging Face',
+    logoEmoji: 'HF',
   },
   {
     id: 'copilot',
@@ -211,7 +228,33 @@ export const HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS = MODEL_PROVIDER_OPTIONS.filt
   (provider) => provider.isHostedRuntimeAvailable === true,
 )
 
+export const HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS = MODEL_PROVIDER_OPTIONS.filter(
+  (provider) => provider.isHermesRuntimeAvailable === true,
+)
+
+const HERMES_RUNTIME_PROVIDER_ORDER: readonly ModelProviderId[] = [
+  'kimi',
+  'minimax',
+  'openai',
+  'anthropic',
+  'google',
+  'nous',
+]
+
+export const PRIMARY_HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS = HERMES_RUNTIME_PROVIDER_ORDER.map(
+  (providerId) => MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === providerId),
+).filter((provider): provider is ModelProviderOption => Boolean(provider))
+
 const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderModelOption[]>> = {
+  nous: [
+    {
+      id: 'nous/auto',
+      label: 'Nous Portal Auto',
+      summary: 'Nous Research subscription route managed by Hermes Agent OAuth.',
+      isRecommended: true,
+      supportedMethods: ['oauth'],
+    },
+  ],
   anthropic: [
     {
       id: 'anthropic/claude-opus-4-6',
@@ -289,6 +332,18 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       isRecommended: true,
       supportedMethods: ['api-key'],
     },
+    {
+      id: 'openrouter/anthropic/claude-sonnet-4.5',
+      label: 'Claude Sonnet 4.5',
+      summary: 'Reliable agentic model through OpenRouter for Hermes workflows.',
+      supportedMethods: ['api-key'],
+    },
+    {
+      id: 'openrouter/google/gemini-2.5-pro',
+      label: 'Gemini 2.5 Pro',
+      summary: 'Large-context Gemini route through OpenRouter.',
+      supportedMethods: ['api-key'],
+    },
   ],
   qwen: [
     {
@@ -353,6 +408,21 @@ const PROVIDER_MODEL_OPTIONS: Partial<Record<ModelProviderId, readonly ProviderM
       id: 'deepseek/deepseek-reasoner',
       label: 'DeepSeek Reasoner',
       summary: 'Reasoning-enabled DeepSeek model for harder tasks.',
+      supportedMethods: ['api-key'],
+    },
+  ],
+  huggingface: [
+    {
+      id: 'huggingface/deepseek-ai/DeepSeek-V3.2',
+      label: 'DeepSeek V3.2',
+      summary: 'Hugging Face Inference Providers route with automatic provider failover.',
+      isRecommended: true,
+      supportedMethods: ['api-key'],
+    },
+    {
+      id: 'huggingface/Qwen/Qwen3-235B-A22B-Thinking-2507',
+      label: 'Qwen3 235B Thinking',
+      summary: 'Large open model route through Hugging Face Inference Providers.',
       supportedMethods: ['api-key'],
     },
   ],
@@ -635,6 +705,50 @@ const OPENCLAW_PROVIDER_IDS: Partial<Record<ModelProviderId, string>> = {
   zai: 'zai',
 }
 
+const HERMES_PROVIDER_IDS: Partial<Record<ModelProviderId, string>> = {
+  anthropic: 'anthropic',
+  deepseek: 'deepseek',
+  google: 'gemini',
+  huggingface: 'huggingface',
+  kimi: 'kimi-coding',
+  minimax: 'minimax',
+  moonshot: 'kimi-coding',
+  nous: 'nous',
+  openai: 'openai',
+  openrouter: 'openrouter',
+  qwen: 'alibaba',
+  zai: 'zai',
+}
+
+const HERMES_MODEL_PREFIXES: Partial<Record<ModelProviderId, string[]>> = {
+  anthropic: ['anthropic/'],
+  deepseek: ['deepseek/'],
+  google: ['google/'],
+  huggingface: ['huggingface/'],
+  kimi: ['kimi/'],
+  minimax: ['minimax/'],
+  moonshot: ['moonshot/'],
+  nous: ['nous/'],
+  openai: ['openai/'],
+  openrouter: ['openrouter/'],
+  qwen: ['qwen/'],
+  zai: ['zai/'],
+}
+
+export function getRuntimeModelProviderOptions(runtimeKind: 'openclaw' | 'hermes' | null | undefined) {
+  return runtimeKind === 'hermes'
+    ? PRIMARY_HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS
+    : AVAILABLE_MODEL_PROVIDER_OPTIONS
+}
+
+export function isProviderAvailableForRuntime(
+  providerId: string | null | undefined,
+  runtimeKind: 'openclaw' | 'hermes' | null | undefined,
+): boolean {
+  if (!providerId) return false
+  return getRuntimeModelProviderOptions(runtimeKind).some((provider) => provider.id === providerId)
+}
+
 export function getProviderModelOptions(providerId: string | null | undefined): readonly ProviderModelOption[] {
   if (!providerId) return []
   return PROVIDER_MODEL_OPTIONS[providerId as ModelProviderId] ?? []
@@ -675,8 +789,8 @@ export function getModelAuthCueMethods(
   providerId: string | null | undefined,
   modelId: string | null | undefined,
 ): readonly ('oauth' | 'api-key')[] {
-  const normalizedProviderId = fromOpenClawProviderId(providerId) ?? providerId ?? null
-  const normalizedModelId = fromOpenClawModelId(modelId) ?? modelId ?? null
+  const normalizedProviderId = fromOpenclawProviderId(providerId) ?? providerId ?? null
+  const normalizedModelId = fromOpenclawModelId(modelId) ?? modelId ?? null
   const model = getProviderModelOption(normalizedProviderId, normalizedModelId)
   if (model?.authCueMethods?.length) {
     return model.authCueMethods
@@ -702,12 +816,32 @@ export function getModelAuthCueMethods(
   return ['api-key']
 }
 
-export function toOpenClawProviderId(providerId: string | null | undefined): string | null {
+export function toOpenclawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   return OPENCLAW_PROVIDER_IDS[providerId as ModelProviderId] ?? providerId
 }
 
-export function fromOpenClawProviderId(providerId: string | null | undefined): string | null {
+export function toHermesProviderId(providerId: string | null | undefined): string | null {
+  if (!providerId) return null
+  return HERMES_PROVIDER_IDS[providerId as ModelProviderId] ?? providerId
+}
+
+export function toHermesModelId(
+  providerId: string | null | undefined,
+  modelId: string | null | undefined,
+): string | null {
+  if (!modelId) return null
+  const normalizedModelId = modelId.trim()
+  const prefixes = HERMES_MODEL_PREFIXES[providerId as ModelProviderId] ?? []
+  for (const prefix of prefixes) {
+    if (normalizedModelId.toLowerCase().startsWith(prefix.toLowerCase())) {
+      return normalizedModelId.slice(prefix.length)
+    }
+  }
+  return normalizedModelId
+}
+
+export function fromOpenclawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   const normalized = providerId.trim().toLowerCase()
   if (normalized === 'openai-codex') return 'openai'
@@ -720,7 +854,7 @@ export function fromOpenClawProviderId(providerId: string | null | undefined): s
   return normalized
 }
 
-export function fromOpenClawModelId(modelId: string | null | undefined): string | null {
+export function fromOpenclawModelId(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   const normalized = modelId.trim().toLowerCase()
   if (normalized.startsWith('openai-codex/')) {

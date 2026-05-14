@@ -44,6 +44,10 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
     apiKeyLabel: 'OpenRouter API key',
     apiKeyPlaceholder: 'sk-or-...',
   },
+  nous: {
+    methods: ['oauth'],
+    oauthHint: 'Nous Portal connects from the Hermes Agent page after deployment. ClawPilot starts the official Hermes device-code OAuth flow and saves the provider on the hosted runtime.',
+  },
   qwen: {
     methods: ['api-key'],
     apiKeyLabel: 'Qwen API key',
@@ -138,6 +142,11 @@ export const MODEL_PROVIDER_AUTH_CONFIG: Record<ModelProviderId, ProviderSetupCo
   minimax: {
     methods: ['api-key'],
     apiKeyLabel: 'MiniMax API key',
+  },
+  huggingface: {
+    methods: ['api-key'],
+    apiKeyLabel: 'Hugging Face token',
+    apiKeyPlaceholder: 'hf_...',
   },
   copilot: {
     methods: ['oauth', 'api-key'],

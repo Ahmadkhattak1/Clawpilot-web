@@ -73,7 +73,7 @@ function useAuthStatus() {
       const supabase = getSupabaseAuthClient()
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: buildAuthCallbackUrl("/dashboard/chat") },
+        options: { redirectTo: buildAuthCallbackUrl("/dashboard") },
       })
       if (error) throw error
     } catch {
@@ -163,23 +163,11 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
             {page.subheadline}
           </p>
 
-          {/* Keyword tags */}
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            {page.keywords.map((keyword) => (
-              <span
-                key={keyword}
-                className="rounded-full border border-border/60 bg-secondary/60 px-3 py-0.5 text-xs text-foreground/80"
-              >
-                {keyword}
-              </span>
-            ))}
-          </div>
-
           {/* CTA */}
           <div className="mt-9 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
               <Button asChild className="group" size="hero" variant="brand">
-                <Link href="/dashboard/chat">
+                <Link href="/dashboard">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
@@ -301,10 +289,10 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
         </ClawContainer>
       </ClawSection>
 
-      {/* ── Channel notes ─────────────────────────────────────── */}
+      {/* ── Runtime notes ─────────────────────────────────────── */}
       <ClawSection id="channels">
         <ClawContainer size="md">
-          <ClawSectionIntro title="Channel notes" />
+          <ClawSectionIntro title="Runtime notes" />
           <div className="mt-10 space-y-3">
             {page.channelNotes.map((note, i) => (
               <ClawSurface key={i} padding="md" radius="lg" tone="muted">
@@ -361,7 +349,7 @@ export function MarketingLandingPage({ page }: MarketingLandingPageProps) {
           <div className="mt-8 flex flex-col items-center gap-3">
             {authStatus === "authenticated" ? (
               <Button asChild className="group" size="hero" variant="brand">
-                <Link href="/dashboard/chat">
+                <Link href="/dashboard">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>

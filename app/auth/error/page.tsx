@@ -7,7 +7,7 @@ type ErrorPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-function getSafeNextPath(value: string | null | undefined, fallback = '/dashboard/chat') {
+function getSafeNextPath(value: string | null | undefined, fallback = '/dashboard') {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback
   return value
 }

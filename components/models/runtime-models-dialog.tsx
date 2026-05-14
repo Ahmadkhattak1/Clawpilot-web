@@ -20,12 +20,15 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS,
-  fromOpenClawModelId,
-  fromOpenClawProviderId,
+  HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS,
+  fromOpenclawModelId,
+  fromOpenclawProviderId,
   getModelAuthCueMethods,
+  getProviderModelOption,
   getProviderModelOptions,
   isModelSupportedByProviderSetupMethod,
-  toOpenClawProviderId,
+  toHermesModelId,
+  toOpenclawProviderId,
   type ModelProviderId,
   type ModelProviderOption,
   type ProviderModelOption,
@@ -35,8 +38,10 @@ import {
   type ProviderSetupMethod,
 } from '@/lib/provider-auth-config'
 import {
+  completeRuntimeNousOAuth,
   completeRuntimeOpenAICodexOAuth,
   listRuntimeModels,
+  startRuntimeNousOAuth,
   startRuntimeOpenAICodexOAuth,
   updateRuntimeModelConfig,
   type RuntimeModelSummary,
@@ -50,6 +55,7 @@ interface RuntimeModelsDialogProps {
   onOpenChange: (open: boolean) => void
   onUnauthorized: () => void
   onConfigured?: (config: RuntimeModelsData['storedModelConfig']) => void
+  runtimeKind?: RuntimeModelsDialogRuntimeKind
 }
 
 interface DialogModelConfig {
@@ -60,6 +66,7 @@ interface DialogModelConfig {
 }
 
 type DialogStep = 'provider' | 'model' | 'auth'
+type RuntimeModelsDialogRuntimeKind = 'openclaw' | 'hermes'
 
 const DIALOG_STEPS: { id: DialogStep; label: string }[] = [
   { id: 'provider', label: 'Provider' },
@@ -72,7 +79,14 @@ function getDialogStepIndex(step: DialogStep): number {
 }
 
 const ENABLED_MODEL_PROVIDER_IDS = new Set(
-  HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.map((provider) => provider.id),
+  [
+    ...HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS,
+    ...HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS,
+  ].map((provider) => provider.id),
+)
+
+const HERMES_OAUTH_MODEL_PROVIDER_OPTIONS = HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS.filter(
+  (provider) => provider.id === 'nous',
 )
 
 function isEnabledModelProviderId(value: string | null): value is ModelProviderId {
@@ -141,16 +155,23 @@ function getSupportedMethods(
 function getRuntimeProviderModelOptions(
   providerId: ModelProviderId | null,
   runtimeModels: RuntimeModelSummary[],
+  runtimeKind: RuntimeModelsDialogRuntimeKind = 'openclaw',
 ): ProviderModelOption[] {
   if (!providerId) return []
+
+  if (runtimeKind === 'hermes') {
+    return getProviderModelOptions(providerId).filter((model) => (
+      getModelAuthCueMethods(providerId, model.id).includes('oauth')
+    ))
+  }
 
   const toCanonicalModelId = (model: RuntimeModelSummary): string => {
     const rawModelId = model.id.trim().toLowerCase()
     if (!rawModelId) return rawModelId
 
     const normalizedProviderId = (
-      fromOpenClawProviderId(model.providerId)
-      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      fromOpenclawProviderId(model.providerId)
+      ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
       ?? providerId
     )
 
@@ -165,20 +186,20 @@ function getRuntimeProviderModelOptions(
     const slashIndex = rawModelId.indexOf('/')
     const rawProviderId = rawModelId.slice(0, slashIndex)
     const modelName = rawModelId.slice(slashIndex + 1)
-    const canonicalProviderId = fromOpenClawProviderId(rawProviderId) ?? rawProviderId
+    const canonicalProviderId = fromOpenclawProviderId(rawProviderId) ?? rawProviderId
     return `${canonicalProviderId}/${modelName}`
   }
 
   const discoveredModels = runtimeModels
     .filter((model) => {
-      const normalizedProviderId = fromOpenClawProviderId(model.providerId)
-        ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      const normalizedProviderId = fromOpenclawProviderId(model.providerId)
+        ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
       return normalizedProviderId === providerId
     })
     .map((model) => ({
       id: toCanonicalModelId(model),
       label: model.label?.trim() || toCanonicalModelId(model),
-      summary: 'Available in the hosted OpenClaw runtime catalog.',
+      summary: 'Available in the hosted Openclaw runtime catalog.',
       supportedMethods: undefined,
     }))
 
@@ -212,9 +233,13 @@ function buildProviderLabel(providerId: string): string {
 function getRuntimeProviderOptions(
   runtimeModels: RuntimeModelSummary[],
   selectedProviderId: ModelProviderId | null,
+  runtimeKind: RuntimeModelsDialogRuntimeKind = 'openclaw',
 ): ModelProviderOption[] {
   const seen = new Set<string>()
   const merged: ModelProviderOption[] = []
+  const baseProviderOptions = runtimeKind === 'hermes'
+    ? HERMES_OAUTH_MODEL_PROVIDER_OPTIONS
+    : HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS
 
   const appendProvider = (provider: ModelProviderOption | null) => {
     if (!provider || seen.has(provider.id)) return
@@ -222,28 +247,32 @@ function getRuntimeProviderOptions(
     merged.push(provider)
   }
 
-  for (const provider of HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS) {
+  for (const provider of baseProviderOptions) {
     appendProvider(provider)
   }
 
   if (selectedProviderId) {
     appendProvider(
-      HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ?? {
+      baseProviderOptions.find((provider) => provider.id === selectedProviderId) ?? {
         id: selectedProviderId,
         label: buildProviderLabel(selectedProviderId),
       },
     )
   }
 
+  if (runtimeKind === 'hermes') {
+    return merged
+  }
+
   for (const model of runtimeModels) {
-    const normalizedProviderId = fromOpenClawProviderId(model.providerId)
-      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+    const normalizedProviderId = fromOpenclawProviderId(model.providerId)
+      ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
     if (!isEnabledModelProviderId(normalizedProviderId)) {
       continue
     }
 
     appendProvider(
-      HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS.find((provider) => provider.id === normalizedProviderId) ?? {
+      baseProviderOptions.find((provider) => provider.id === normalizedProviderId) ?? {
         id: normalizedProviderId,
         label: buildProviderLabel(normalizedProviderId),
       },
@@ -261,14 +290,30 @@ function inferProviderIdFromModelId(modelId: string | null | undefined): string 
   return normalized.slice(0, slashIndex)
 }
 
+function canonicalizeDialogModelId(providerId: ModelProviderId | null, modelId: string | null): string | null {
+  if (!providerId || !modelId) return modelId
+  if (getProviderModelOption(providerId, modelId)) return modelId
+
+  const prefixedModelId = `${providerId}/${modelId}`
+  if (getProviderModelOption(providerId, prefixedModelId)) {
+    return prefixedModelId
+  }
+
+  if (providerId === 'nous' && modelId === 'auto') {
+    return 'nous/auto'
+  }
+
+  return modelId
+}
+
 function toDialogModelConfig(
   config: RuntimeModelsData['storedModelConfig'],
 ): DialogModelConfig {
   const providerId = (
-    fromOpenClawProviderId(config?.modelProviderId)
-    ?? fromOpenClawProviderId(inferProviderIdFromModelId(config?.modelId))
+    fromOpenclawProviderId(config?.modelProviderId)
+    ?? fromOpenclawProviderId(inferProviderIdFromModelId(config?.modelId))
   )
-  const modelId = fromOpenClawModelId(config?.modelId)
+  const modelId = canonicalizeDialogModelId(providerId as ModelProviderId | null, fromOpenclawModelId(config?.modelId))
   const authMethod = config?.modelAuthMethod ?? null
 
   if (!isEnabledModelProviderId(providerId)) {
@@ -327,6 +372,7 @@ export function RuntimeModelsDialog({
   onOpenChange,
   onUnauthorized,
   onConfigured,
+  runtimeKind = 'openclaw',
 }: RuntimeModelsDialogProps) {
   const reduceMotion = useReducedMotion()
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -356,13 +402,14 @@ export function RuntimeModelsDialog({
   const [oauthStatus, setOauthStatus] = useState('')
   const [oauthSessionId, setOauthSessionId] = useState('')
   const [oauthAuthUrl, setOauthAuthUrl] = useState('')
+  const [oauthUserCode, setOauthUserCode] = useState('')
   const [oauthExpiresAt, setOauthExpiresAt] = useState<string | null>(null)
   const [oauthCallback, setOauthCallback] = useState('')
   const [oauthNowMs, setOauthNowMs] = useState(() => Date.now())
 
   const runtimeProviderOptions = useMemo(
-    () => getRuntimeProviderOptions(runtimeModels, selectedProviderId),
-    [runtimeModels, selectedProviderId],
+    () => getRuntimeProviderOptions(runtimeModels, selectedProviderId, runtimeKind),
+    [runtimeKind, runtimeModels, selectedProviderId],
   )
   const filteredProviderOptions = useMemo(() => {
     const query = providerSearchQuery.trim().toLowerCase()
@@ -374,8 +421,8 @@ export function RuntimeModelsDialog({
     ))
   }, [providerSearchQuery, runtimeProviderOptions])
   const selectedProviderModels = useMemo(
-    () => getRuntimeProviderModelOptions(selectedProviderId, runtimeModels),
-    [runtimeModels, selectedProviderId],
+    () => getRuntimeProviderModelOptions(selectedProviderId, runtimeModels, runtimeKind),
+    [runtimeKind, runtimeModels, selectedProviderId],
   )
   const supportedMethods = useMemo(
     () => getSupportedMethods(selectedProviderId, selectedModelId),
@@ -386,6 +433,7 @@ export function RuntimeModelsDialog({
     () => (oauthExpiresAt ? formatOAuthExpiryCountdown(oauthExpiresAt, oauthNowMs) : null),
     [oauthExpiresAt, oauthNowMs],
   )
+  const isNousOAuthSelection = runtimeKind === 'hermes' && selectedProviderId === 'nous' && selectedAuthMethod === 'oauth'
 
   const loadRuntimeConfig = useCallback(async () => {
     if (!tenantId.trim()) return
@@ -397,6 +445,7 @@ export function RuntimeModelsDialog({
     setOauthStatus('')
     setOauthSessionId('')
     setOauthAuthUrl('')
+    setOauthUserCode('')
     setOauthExpiresAt(null)
     setOauthCallback('')
     setApiKeyValue('')
@@ -406,13 +455,17 @@ export function RuntimeModelsDialog({
 
     try {
       const runtimeModels = await listRuntimeModels(tenantId, {
-        syncRuntime: true,
+        syncRuntime: runtimeKind !== 'hermes',
+        includeModels: runtimeKind !== 'hermes',
       })
       setRuntimeModels(runtimeModels.models)
       const nextConfig = toDialogModelConfig(runtimeModels.storedModelConfig)
-      const fallbackProviderId = nextConfig.providerId
-      const fallbackModelId = nextConfig.modelId
-        ?? getRuntimeProviderModelOptions(fallbackProviderId, runtimeModels.models)[0]?.id
+      const fallbackProviderId = runtimeKind === 'hermes'
+        ? 'nous'
+        : nextConfig.providerId
+      const fallbackStoredModelId = nextConfig.providerId === fallbackProviderId ? nextConfig.modelId : null
+      const fallbackModelId = fallbackStoredModelId
+        ?? getRuntimeProviderModelOptions(fallbackProviderId, runtimeModels.models, runtimeKind)[0]?.id
         ?? null
       const fallbackAuthMethod = (
         nextConfig.authMethod
@@ -436,7 +489,7 @@ export function RuntimeModelsDialog({
     } finally {
       setLoading(false)
     }
-  }, [onOpenChange, onUnauthorized, tenantId])
+  }, [onOpenChange, onUnauthorized, runtimeKind, tenantId])
 
   useEffect(() => {
     if (!open || !tenantId.trim()) return
@@ -497,7 +550,7 @@ export function RuntimeModelsDialog({
   const handleProviderSelect = useCallback((providerId: ModelProviderId) => {
     setSelectedProviderId(providerId)
     setSelectedModelId((previous) => {
-      const providerModels = getRuntimeProviderModelOptions(providerId, runtimeModels)
+      const providerModels = getRuntimeProviderModelOptions(providerId, runtimeModels, runtimeKind)
       if (providerModels.some((model) => model.id === previous)) {
         return previous
       }
@@ -507,7 +560,8 @@ export function RuntimeModelsDialog({
     setReplaceApiKey(false)
     setOauthError('')
     setOauthStatus('')
-  }, [runtimeModels])
+    setOauthUserCode('')
+  }, [runtimeKind, runtimeModels])
 
   const handleModelSelect = useCallback((modelId: string) => {
     setSelectedModelId(modelId)
@@ -515,6 +569,7 @@ export function RuntimeModelsDialog({
     setReplaceApiKey(false)
     setOauthError('')
     setOauthStatus('')
+    setOauthUserCode('')
   }, [])
 
   const handleImageError = useCallback((providerId: string) => {
@@ -589,6 +644,58 @@ export function RuntimeModelsDialog({
     }
   }, [selectedModelId, tenantId])
 
+  const handleStartNousOAuth = useCallback(async (
+    options: {
+      openWindow?: boolean
+      preopenedWindow?: Window | null
+    } = {},
+  ) => {
+    if (!tenantId.trim() || !selectedModelId || selectedProviderId !== 'nous') return
+
+    const { openWindow = false, preopenedWindow = null } = options
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('')
+
+    try {
+      const oauthStart = await startRuntimeNousOAuth(tenantId, {
+        modelId: toHermesModelId(selectedProviderId, selectedModelId) ?? selectedModelId,
+      })
+
+      setOauthSessionId(oauthStart.sessionId)
+      setOauthAuthUrl(oauthStart.authUrl)
+      setOauthUserCode(oauthStart.userCode ?? '')
+      setOauthExpiresAt(oauthStart.expiresAt)
+      setOauthNowMs(Date.now())
+
+      if (oauthStart.status === 'connected') {
+        setOauthStatus('Nous Portal is already connected on this Hermes runtime.')
+      } else {
+        setOauthStatus('Nous Portal is waiting for approval. Approve the device-code request, then complete OAuth here.')
+      }
+
+      if (openWindow) {
+        let openedWindow = preopenedWindow
+        if (openedWindow && !openedWindow.closed) {
+          openedWindow.location.href = oauthStart.authUrl
+          openedWindow.focus()
+        } else {
+          openedWindow = window.open(oauthStart.authUrl, '_blank', 'noopener,noreferrer')
+        }
+        if (!openedWindow) {
+          setOauthError('Popup blocked. Allow popups, then try again.')
+        }
+      }
+    } catch (startError) {
+      if (preopenedWindow && !preopenedWindow.closed) {
+        preopenedWindow.close()
+      }
+      setOauthError(extractErrorMessage(startError, 'Failed to start Nous OAuth.'))
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [selectedModelId, selectedProviderId, tenantId])
+
   const handleOpenOauthWindow = useCallback(() => {
     setOauthError('')
     if (oauthAuthUrl && !oauthUrlExpired) {
@@ -605,9 +712,63 @@ export function RuntimeModelsDialog({
       return
     }
 
+    if (isNousOAuthSelection) {
+      preopenedWindow.document.write('<title>Nous OAuth</title><p style="font-family: sans-serif; padding: 24px;">Preparing Nous Portal sign-in...</p>')
+      void handleStartNousOAuth({ openWindow: true, preopenedWindow })
+      return
+    }
+
     preopenedWindow.document.write('<title>OpenAI OAuth</title><p style="font-family: sans-serif; padding: 24px;">Preparing OpenAI sign-in...</p>')
     void handleStartOpenAIOAuth({ openWindow: true, preopenedWindow })
-  }, [handleStartOpenAIOAuth, oauthAuthUrl, oauthUrlExpired])
+  }, [handleStartNousOAuth, handleStartOpenAIOAuth, isNousOAuthSelection, oauthAuthUrl, oauthUrlExpired])
+
+  const handleCompleteNousOAuth = useCallback(async () => {
+    if (!tenantId.trim() || !selectedModelId || selectedProviderId !== 'nous') return
+    if (!oauthSessionId) {
+      setOauthError('Open the Nous Portal OAuth flow first.')
+      return
+    }
+
+    setOauthBusy(true)
+    setOauthError('')
+    setOauthStatus('Checking Nous Portal OAuth...')
+
+    try {
+      const result = await completeRuntimeNousOAuth(tenantId, {
+        sessionId: oauthSessionId,
+        modelId: toHermesModelId(selectedProviderId, selectedModelId) ?? selectedModelId,
+        persist: true,
+      })
+      if (!result.oauthConnected) {
+        throw new Error('Nous OAuth did not complete.')
+      }
+
+      const nextStoredConfig: RuntimeModelsData['storedModelConfig'] = {
+        modelProviderId: result.providerId,
+        modelId: result.modelId,
+        modelAuthMethod: 'oauth',
+        modelOauthConnected: true,
+      }
+
+      setStoredConfig(toDialogModelConfig(nextStoredConfig))
+      setStatus('Nous Portal OAuth connected and saved to your Hermes runtime.')
+      setOauthStatus('Nous Portal OAuth is connected.')
+      setOauthSessionId('')
+      setOauthAuthUrl('')
+      setOauthUserCode('')
+      setOauthExpiresAt(null)
+      toast.success('Model updated', {
+        description: 'Nous Portal OAuth is connected and saved to your Hermes runtime.',
+      })
+      onOpenChange(false)
+      onConfigured?.(nextStoredConfig)
+    } catch (completeError) {
+      setOauthError(extractErrorMessage(completeError, 'Failed to complete Nous OAuth.'))
+      setOauthStatus('')
+    } finally {
+      setOauthBusy(false)
+    }
+  }, [oauthSessionId, onConfigured, onOpenChange, selectedModelId, selectedProviderId, tenantId])
 
   const handleCompleteOpenAIOAuth = useCallback(async () => {
     if (!tenantId.trim() || !selectedModelId) return
@@ -686,7 +847,7 @@ export function RuntimeModelsDialog({
     try {
       const result = await updateRuntimeModelConfig(tenantId, {
         modelId: selectedModelId,
-        modelProviderId: toOpenClawProviderId(selectedProviderId) ?? selectedProviderId,
+        modelProviderId: toOpenclawProviderId(selectedProviderId) ?? selectedProviderId,
         modelAuthMethod: 'api-key',
         modelApiKey: keyToPersist,
         persist: true,
@@ -704,7 +865,7 @@ export function RuntimeModelsDialog({
       setReplaceApiKey(false)
       setStatus('Hosted model settings saved.')
       toast.success('Model updated', {
-        description: 'Your hosted OpenClaw runtime is now using the new model settings.',
+        description: 'Your hosted Openclaw runtime is now using the new model settings.',
       })
       onOpenChange(false)
       onConfigured?.(nextStoredConfig)
@@ -737,6 +898,7 @@ export function RuntimeModelsDialog({
   const selectedProvider = selectedProviderId
     ? runtimeProviderOptions.find((provider) => provider.id === selectedProviderId) ?? null
     : null
+  const selectedProviderLabel = selectedProvider?.label ?? 'OAuth provider'
   const apiKeyLabel = selectedProviderId
     ? MODEL_PROVIDER_AUTH_CONFIG[selectedProviderId]?.apiKeyLabel ?? 'API key'
     : 'API key'
@@ -1012,7 +1174,7 @@ export function RuntimeModelsDialog({
 
             {docsOnlyAuthCueMethods.length > 0 ? (
               <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
-                OpenClaw docs also mention {docsOnlyAuthCueMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} for this route, but this ClawPilot flow currently configures {supportedMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} directly.
+                {runtimeKind === 'hermes' ? 'Hermes docs' : 'Openclaw docs'} also mention {docsOnlyAuthCueMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} for this route, but this ClawPilot flow currently configures {supportedMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} directly.
               </div>
             ) : null}
 
@@ -1041,6 +1203,7 @@ export function RuntimeModelsDialog({
                         setReplaceApiKey(false)
                         setOauthError('')
                         setOauthStatus('')
+                        setOauthUserCode('')
                       }}
                     >
                       {method === 'api-key' ? 'API key' : 'OAuth'}
@@ -1085,8 +1248,55 @@ export function RuntimeModelsDialog({
               <div className="space-y-4 rounded-xl border border-border/70 bg-background/60 p-4">
                 {isStoredOauthSelection ? (
                   <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
-                    OpenAI OAuth is already connected on the hosted runtime.
+                    {selectedProviderLabel} OAuth is already connected on this hosted runtime.
                   </div>
+                ) : isNousOAuthSelection ? (
+                  <>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p>1. Open Nous Portal.</p>
+                      <p>2. Approve the Hermes Agent device-code request.</p>
+                      <p>3. Return here and complete OAuth.</p>
+                    </div>
+
+                    {oauthUserCode ? (
+                      <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Device code</p>
+                        <p className="mt-1 font-mono text-lg font-semibold tracking-wide text-foreground">{oauthUserCode}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" onClick={handleOpenOauthWindow} disabled={oauthBusy}>
+                        {oauthBusy ? 'Preparing OAuth...' : oauthUrlExpired ? 'Refresh Nous Portal' : 'Open Nous Portal'}
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleStartNousOAuth()}
+                        disabled={oauthBusy}
+                      >
+                        Regenerate URL
+                      </Button>
+                    </div>
+
+                    {oauthCountdownLabel ? (
+                      <p className="text-xs text-muted-foreground">
+                        OAuth URL expires in {oauthCountdownLabel}.
+                      </p>
+                    ) : null}
+
+                    {oauthStatus ? <p className="text-xs text-muted-foreground">{oauthStatus}</p> : null}
+                    {oauthError ? <p className="text-xs text-destructive">{oauthError}</p> : null}
+
+                    <Button
+                      type="button"
+                      onClick={() => void handleCompleteNousOAuth()}
+                      disabled={oauthBusy || !oauthSessionId}
+                    >
+                      {oauthBusy ? 'Checking...' : 'Complete OAuth'}
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <div className="space-y-2 text-sm text-muted-foreground">

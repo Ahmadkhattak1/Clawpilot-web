@@ -19,6 +19,16 @@ ClawPilot lets users run Openclaw or Hermes Agent without local hardware, server
 - Managed Hermes Agent: https://clawpilot.app/managed-hermes-agent
 - Hermes Agent VPS hosting: https://clawpilot.app/hermes-agent-vps-hosting
 
+## Key Blog Guides
+
+- Hermes Agent hosting guide: https://clawpilot.app/blog/hermes-agent-hosting-guide
+- Managed Hermes Agent vs self-hosted: https://clawpilot.app/blog/managed-hermes-agent-vs-self-hosted
+- Hermes Agent VPS hosting checklist: https://clawpilot.app/blog/hermes-agent-vps-hosting-checklist
+- Openclaw vs Hermes Agent hosting: https://clawpilot.app/blog/openclaw-vs-hermes-agent-hosting
+- AI agent hosting runtime checklist: https://clawpilot.app/blog/ai-agent-hosting-runtime-checklist
+- Host Openclaw and Hermes Agent together: https://clawpilot.app/blog/host-openclaw-and-hermes-agent-together
+- Agentic runtime hosting security: https://clawpilot.app/blog/agentic-runtime-hosting-security
+
 ## Core Capabilities
 
 - Managed Openclaw and Hermes Agent hosting with updates and uptime handled by ClawPilot.

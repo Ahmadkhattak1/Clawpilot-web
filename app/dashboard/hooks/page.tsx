@@ -218,7 +218,7 @@ function DeploymentProgressCue({
               Preparing your hosted {runtimeProduct.shortName}
             </p>
             <p className="text-xs leading-5 text-muted-foreground">
-              This usually takes about 10 minutes. You can come back later.
+              This usually takes about 10 minutes. You can come back later; we will email you when it is ready to use.
             </p>
           </div>
         </div>

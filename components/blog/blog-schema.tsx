@@ -108,7 +108,7 @@ export function BlogCollectionSchema({ posts }: { posts: BlogPost[] }) {
     "@id": `${siteUrl}/blog#collection`,
     url: `${siteUrl}/blog`,
     name: `${siteName} Blog`,
-    description: "OpenClaw hosting guides, comparisons, and setup posts.",
+    description: "Agent hosting guides, comparisons, and setup posts.",
     inLanguage: "en-US",
     dateModified: latestDate || undefined,
     mainEntity: {

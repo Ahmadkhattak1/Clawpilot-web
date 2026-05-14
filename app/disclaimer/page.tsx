@@ -4,7 +4,7 @@ import { siteName, siteOgImage, siteUrl } from "@/lib/site"
 
 const pageTitle = "Agent Risk Disclaimer"
 const pageDescription =
-  "Important risk disclosures for using ClawPilot and OpenClaw-powered agents in production workflows."
+  "Important risk disclosures for using ClawPilot and Openclaw-powered agents in production workflows."
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -48,7 +48,7 @@ export default function DisclaimerPage() {
           <p className="type-nav text-muted-foreground">Legal</p>
           <h1 className="type-h1 mt-3">Agent Risk Disclaimer</h1>
           <p className="type-body mt-4 max-w-2xl">
-            ClawPilot helps deploy OpenClaw-based agents. Agent systems can be powerful and risky.
+            ClawPilot helps deploy Openclaw-based agents. Agent systems can be powerful and risky.
             Read this before enabling production automations.
           </p>
         </header>
@@ -95,9 +95,9 @@ export default function DisclaimerPage() {
         </section>
 
         <section className="space-y-4 rounded-xl border border-border/45 bg-secondary/35 p-6">
-          <h2 className="type-h3">6. OpenClaw Is Separate Software</h2>
+          <h2 className="type-h3">6. Openclaw Is Separate Software</h2>
           <p className="type-body-sm">
-            OpenClaw documentation and license terms apply to the underlying software. You are
+            Openclaw documentation and license terms apply to the underlying software. You are
             responsible for complying with all relevant licenses, laws, and third-party terms.
           </p>
         </section>

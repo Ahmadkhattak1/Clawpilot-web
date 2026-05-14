@@ -311,7 +311,7 @@ export function WorkspaceMarkdownManagerDialog({
     }
     if (isCriticalWorkspaceFile(normalizedPath)) {
       const confirmed = window.confirm(
-        `Save changes to critical file "${normalizedPath}"? This may affect OpenClaw startup and behavior.`,
+        `Save changes to critical file "${normalizedPath}"? This may affect Openclaw startup and behavior.`,
       )
       if (!confirmed) return
     }
@@ -348,7 +348,7 @@ export function WorkspaceMarkdownManagerDialog({
     const risk = workspaceFileRisk(relativePath)
     if (risk.level === 'critical') {
       const confirmation = window.prompt(
-        `Delete critical file "${relativePath}"? This can break OpenClaw behavior.\n\nType the exact path to confirm.`,
+        `Delete critical file "${relativePath}"? This can break Openclaw behavior.\n\nType the exact path to confirm.`,
       )
       if (confirmation?.trim() !== relativePath) return
     } else {

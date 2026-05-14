@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it responsibly by emailing stumbnail@gmail.com
+If you discover a security vulnerability, please report it responsibly by emailing support@clawpilot.app
 
 Please do not report security vulnerabilities through public GitHub issues.
 
@@ -16,9 +16,9 @@ We release patches for security vulnerabilities in the following versions:
 
 ## Security Best Practices
 
-When using ClawPilot and OpenClaw:
+When using ClawPilot and Openclaw:
 
-1. **Self-Hosting**: For maximum privacy, run OpenClaw locally on your own machine
+1. **Self-Hosting**: For maximum privacy, run Openclaw locally on your own machine
 2. **Allowlists**: Configure allowlists to control who can interact with your AI assistant
 3. **Pairing**: Use DM pairing to authenticate users
 4. **Updates**: Keep your installation updated to receive security patches

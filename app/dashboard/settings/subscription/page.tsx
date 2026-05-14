@@ -535,7 +535,7 @@ function SettingsSubscriptionPageClient() {
     }
 
     const confirmed = window.confirm(
-      'Re-deploy from scratch? This immediately deletes your current OpenClaw instance and provisions a fresh one.',
+      'Re-deploy from scratch? This immediately deletes your current Openclaw instance and provisions a fresh one.',
     )
     if (!confirmed) {
       return
@@ -978,7 +978,7 @@ function SettingsSubscriptionPageClient() {
                   Before you cancel
                 </DialogTitle>
                 <DialogDescription>
-                  Managed hosting keeps your OpenClaw instance online, secured, and maintained for you.
+                  Managed hosting keeps your Openclaw instance online, secured, and maintained for you.
                 </DialogDescription>
               </DialogHeader>
 

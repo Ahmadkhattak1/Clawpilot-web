@@ -262,7 +262,7 @@ export interface RuntimeWorkspaceTrashRestorePayload {
   overwrite?: boolean
 }
 
-export interface RuntimeOpenClawResetPayload {
+export interface RuntimeOpenclawResetPayload {
   scope: 'config' | 'config+creds+sessions' | 'full'
   dryRun?: boolean
 }

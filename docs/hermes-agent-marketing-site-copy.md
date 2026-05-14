@@ -1,25 +1,25 @@
-# ClawPilot Marketing Update: OpenClaw + Hermes Agent
+# ClawPilot Marketing Update: Openclaw + Hermes Agent
 
 ## Status
 
 - Date: 2026-05-14
 - Scope: Homepage copy, section layout, conversion structure, supporting landing pages, and asset ideas
-- Product change: ClawPilot now hosts both OpenClaw and Hermes Agent
-- Recommended positioning: Hosted open-source agent runtimes, with OpenClaw and Hermes Agent available from one managed ClawPilot dashboard
+- Product change: ClawPilot now hosts both Openclaw and Hermes Agent
+- Recommended positioning: Hosted open-source agent runtimes, with Openclaw and Hermes Agent available from one managed ClawPilot dashboard
 
 ## Executive Summary
 
-The current site sells one thing clearly: "your own OpenClaw without hosting work." That message should evolve, not be replaced. The stronger version is:
+The current site sells one thing clearly: "your own Openclaw without hosting work." That message should evolve, not be replaced. The stronger version is:
 
-> Run OpenClaw or Hermes Agent without managing a server.
+> Run Openclaw or Hermes Agent without managing a server.
 
 The buyer should understand three things above the fold:
 
 1. ClawPilot hosts open-source AI agents for them.
-2. They can choose OpenClaw or Hermes Agent.
+2. They can choose Openclaw or Hermes Agent.
 3. They get a private, always-on agent machine without VPS, Docker, terminal setup, updates, or uptime work.
 
-The conversion opportunity is to move from commodity "hosting" to "managed agent workspace." Competitors that only say "one-click hosting" are easy to copy. ClawPilot should lead with a practical choice: OpenClaw for channel-connected automation, Hermes Agent for memory and self-improving workflows, both managed from the same account.
+The conversion opportunity is to move from commodity "hosting" to "managed agent workspace." Competitors that only say "one-click hosting" are easy to copy. ClawPilot should lead with a practical choice: Openclaw for channel-connected automation, Hermes Agent for memory and self-improving workflows, both managed from the same account.
 
 ## Research Notes
 
@@ -29,19 +29,19 @@ Exact conversion rates for competitor homepages are proprietary and were not pub
 
 | Site | What they sell | Strong conversion pattern | Gap ClawPilot can exploit |
 | --- | --- | --- | --- |
-| CTRL BIN | Hosted OpenClaw or Hermes in the cloud | Very clear "pick agent, configure brain, tell it to do things" sequence; BYOK and Telegram above the fold | Narrow channel story; less polished trust/security detail |
-| ClawSimple | Managed OpenClaw + Hermes Agent with services connected | Positions around "ready first" and first real workflow, not just installation | Telegram-first; ClawPilot can feel broader and more productized |
-| AgentNest | OpenClaw + Hermes managed hosting | Strong quantified proof row: uptime, users, instances, backups | Generic claims need verification; ClawPilot can use restrained, credible proof |
-| OpenClaw Launch | Adds Hermes to an existing OpenClaw hosting dashboard | Good "why both, not either" framing | Blog-led announcement; ClawPilot can make this core homepage positioning |
-| Hostinger / managed OpenClaw coverage | One-click OpenClaw for beginners | Focuses on removing setup, API keys, security, updates, and hosting | Large host, but less specialized around agent workflows |
+| CTRL BIN | Hosted Openclaw or Hermes in the cloud | Very clear "pick agent, configure brain, tell it to do things" sequence; BYOK and Telegram above the fold | Narrow channel story; less polished trust/security detail |
+| ClawSimple | Managed Openclaw + Hermes Agent with services connected | Positions around "ready first" and first real workflow, not just installation | Telegram-first; ClawPilot can feel broader and more productized |
+| AgentNest | Openclaw + Hermes managed hosting | Strong quantified proof row: uptime, users, instances, backups | Generic claims need verification; ClawPilot can use restrained, credible proof |
+| Openclaw Launch | Adds Hermes to an existing Openclaw hosting dashboard | Good "why both, not either" framing | Blog-led announcement; ClawPilot can make this core homepage positioning |
+| Hostinger / managed Openclaw coverage | One-click Openclaw for beginners | Focuses on removing setup, API keys, security, updates, and hosting | Large host, but less specialized around agent workflows |
 
 Sources:
 
 - CTRL BIN: https://www.ctrlbin.com/
 - ClawSimple: https://clawsimple.com/en
 - AgentNest: https://www.20sww.com/
-- OpenClaw Launch Hermes announcement: https://openclawlaunch.com/blog/hermes-agent-now-on-openclaw-launch
-- TechRadar / Hostinger OpenClaw coverage: https://www.techradar.com/pro/website-hosting/the-biggest-ai-opportunity-is-not-replacing-people-how-openclaw-is-empowering-the-next-wave-of-successful-smbs
+- Openclaw Launch Hermes announcement: https://openclawlaunch.com/blog/hermes-agent-now-on-openclaw-launch
+- TechRadar / Hostinger Openclaw coverage: https://www.techradar.com/pro/website-hosting/the-biggest-ai-opportunity-is-not-replacing-people-how-openclaw-is-empowering-the-next-wave-of-successful-smbs
 
 ### High-Performing Page Patterns to Borrow
 
@@ -68,23 +68,23 @@ Sources:
 
 Current flow:
 
-1. Hero: "Your own OpenClaw, without managing the hosting."
-2. Product showcase: powered by OpenClaw.
-3. Use-case carousel: what people are doing with OpenClaw.
+1. Hero: "Your own Openclaw, without managing the hosting."
+2. Product showcase: powered by Openclaw.
+3. Use-case carousel: what people are doing with Openclaw.
 4. Why ClawPilot: private instance, always on, minutes not days.
-5. How it works: sign up, deploy OpenClaw, start using it.
+5. How it works: sign up, deploy Openclaw, start using it.
 6. Local setup vs ClawPilot.
 7. FAQ and CTA.
 
 Main issues after Hermes support:
 
-- The homepage reads as OpenClaw-only.
+- The homepage reads as Openclaw-only.
 - Hermes Agent is not introduced as a first-class runtime.
 - "Hosting" is still the dominant value prop, which competitors can copy.
-- The current page does not help visitors choose between OpenClaw and Hermes.
+- The current page does not help visitors choose between Openclaw and Hermes.
 - The comparison table only compares local setup vs ClawPilot, not "generic hosting vs managed agent runtime."
 - FAQ does not handle the new question: "Which agent should I choose?"
-- The proof section uses OpenClaw ecosystem stats but does not show ClawPilot-specific product proof.
+- The proof section uses Openclaw ecosystem stats but does not show ClawPilot-specific product proof.
 
 ## Recommended Homepage Flow
 
@@ -97,25 +97,25 @@ Goal: Say the new category in one scan.
 Layout:
 
 - Centered hero, existing mascot/logo treatment.
-- Add a compact eyebrow: "Managed OpenClaw + Hermes Agent hosting"
+- Add a compact eyebrow: "Managed Openclaw + Hermes Agent hosting"
 - H1 with two-line structure.
 - One primary CTA and one secondary anchor.
-- Below CTA, show runtime chips: OpenClaw, Hermes Agent, private machine, BYOK, always-on.
+- Below CTA, show runtime chips: Openclaw, Hermes Agent, private machine, BYOK, always-on.
 - Replace decorative bottom channel row with "works through browser and supported chat channels" icons.
 
 Copy:
 
 **Eyebrow**
 
-Managed OpenClaw + Hermes Agent hosting
+Managed Openclaw + Hermes Agent hosting
 
 **H1**
 
-Run OpenClaw or Hermes Agent without managing a server.
+Run Openclaw or Hermes Agent without managing a server.
 
 **Subhead**
 
-ClawPilot gives you a private, always-on agent machine in the cloud. Choose OpenClaw for channel-connected automation, Hermes Agent for memory and self-improving workflows, then bring your model key and launch without VPS, Docker, or terminal setup.
+ClawPilot gives you a private, always-on agent machine in the cloud. Choose Openclaw for channel-connected automation, Hermes Agent for memory and self-improving workflows, then bring your model key and launch without VPS, Docker, or terminal setup.
 
 **Primary CTA**
 
@@ -136,7 +136,7 @@ Goal: Help the visitor self-select instead of forcing them to understand both pr
 Layout:
 
 - Two side-by-side cards on desktop, stacked on mobile.
-- No heavy illustration. Use existing OpenClaw logo and `public/hermesagentlogo.webp`.
+- No heavy illustration. Use existing Openclaw logo and `public/hermesagentlogo.webp`.
 - Each card has "Best for" bullets and a CTA.
 
 Copy:
@@ -147,11 +147,11 @@ Choose the agent that fits the job.
 
 **Description**
 
-OpenClaw and Hermes Agent are both powerful open-source runtimes. ClawPilot handles the machine, setup, updates, and launch flow so you can focus on what the agent should do.
+Openclaw and Hermes Agent are both powerful open-source runtimes. ClawPilot handles the machine, setup, updates, and launch flow so you can focus on what the agent should do.
 
-**OpenClaw card**
+**Openclaw card**
 
-Title: OpenClaw
+Title: Openclaw
 
 Best for: chat-channel automation, personal assistant workflows, integrations, and skill-based routines.
 
@@ -159,9 +159,9 @@ Bullets:
 
 - Connect messaging channels and web tools.
 - Run an always-on assistant from a browser or chat app.
-- Use the OpenClaw ecosystem without maintaining the server.
+- Use the Openclaw ecosystem without maintaining the server.
 
-CTA: Host OpenClaw
+CTA: Host Openclaw
 
 **Hermes Agent card**
 
@@ -187,7 +187,7 @@ Goal: Show that ClawPilot is a real product, not a thin hosting shell.
 
 Layout:
 
-- Replace the single OpenClaw screenshot frame with a dashboard screenshot showing two runtime cards.
+- Replace the single Openclaw screenshot frame with a dashboard screenshot showing two runtime cards.
 - A subtle segmented control above the image: Dashboard, Model setup, Channels, Launch.
 - Keep one screenshot large. Do not create a busy grid.
 
@@ -203,7 +203,7 @@ Deploy, launch, configure models, and check runtime readiness from ClawPilot. Yo
 
 Screenshot callouts:
 
-- Runtime choice: OpenClaw or Hermes Agent.
+- Runtime choice: Openclaw or Hermes Agent.
 - Model setup: API key or supported OAuth route.
 - Launch: secure hosted dashboard.
 - Status: machine readiness and restart controls.
@@ -222,7 +222,7 @@ Copy:
 1. **Private agent machine**
    Your runtime is provisioned for your account, with isolated storage and configuration.
 
-2. **OpenClaw and Hermes ready**
+2. **Openclaw and Hermes ready**
    Pick the runtime that fits your workflow. We handle install, baseline configuration, and launch access.
 
 3. **Always-on hosting**
@@ -256,13 +256,13 @@ Start with a workflow, not a blank server.
 Cards:
 
 1. **Personal operations assistant**
-   Use OpenClaw to handle recurring chat-based tasks, reminders, lookups, and lightweight workflows from the channels you already use.
+   Use Openclaw to handle recurring chat-based tasks, reminders, lookups, and lightweight workflows from the channels you already use.
 
 2. **Research and reading agent**
    Use Hermes Agent to remember context, collect findings, summarize pages, and build reusable skills as your research repeats.
 
 3. **Business inbox helper**
-   Use OpenClaw or Hermes to triage incoming messages, draft replies, and route follow-ups with your approval rules.
+   Use Openclaw or Hermes to triage incoming messages, draft replies, and route follow-ups with your approval rules.
 
 4. **Scheduled automations**
    Use Hermes Agent for cron-style jobs, recurring reports, daily briefings, and terminal-backed routines.
@@ -278,7 +278,7 @@ Copy:
 From signup to hosted agent in minutes.
 
 1. **Choose a runtime**
-   Pick OpenClaw or Hermes Agent during setup.
+   Pick Openclaw or Hermes Agent during setup.
 
 2. **Connect the brain**
    Add a supported model provider, API key, or OAuth connection.
@@ -307,7 +307,7 @@ Rows:
 | Category | Self-hosted | Generic VPS | ClawPilot |
 | --- | --- | --- | --- |
 | Setup | You install and configure everything | You still configure the server | Runtime setup is handled for you |
-| Agent choice | Depends on your install | Depends on your install | OpenClaw or Hermes from onboarding |
+| Agent choice | Depends on your install | Depends on your install | Openclaw or Hermes from onboarding |
 | Uptime | Your hardware must stay online | You monitor and restart it | Managed machine and launch flow |
 | Security | Your responsibility | Your responsibility | Managed baseline and isolated runtime |
 | Updates | Manual | Manual | Maintenance handled by ClawPilot |
@@ -332,11 +332,11 @@ Recommended proof blocks:
    - Runtime deployed from dashboard.
    - Model settings managed from ClawPilot.
    - Secure launch route.
-   - OpenClaw and Hermes Agent support.
+   - Openclaw and Hermes Agent support.
 
 2. **Ecosystem proof**
    - Hermes official site claims GitHub stars, messaging platforms, tools, and terminal backends. Verify exact numbers before shipping.
-   - Current site already references OpenClaw ecosystem size. Verify exact numbers before shipping.
+   - Current site already references Openclaw ecosystem size. Verify exact numbers before shipping.
 
 3. **Credibility proof**
    - Link to docs or release note explaining Hermes hosting.
@@ -351,7 +351,7 @@ Open-source agents are powerful. ClawPilot makes them easier to keep running.
 
 **Description**
 
-OpenClaw and Hermes Agent move quickly. ClawPilot gives you a managed place to try them, compare them, and keep the one that fits your workflow online.
+Openclaw and Hermes Agent move quickly. ClawPilot gives you a managed place to try them, compare them, and keep the one that fits your workflow online.
 
 ### 9. FAQ
 
@@ -361,15 +361,15 @@ Questions and answers:
 
 **What is ClawPilot?**
 
-ClawPilot is managed hosting for open-source AI agent runtimes. We provision a private cloud machine for your account, install OpenClaw or Hermes Agent, and give you a dashboard for launch, model setup, and runtime management.
+ClawPilot is managed hosting for open-source AI agent runtimes. We provision a private cloud machine for your account, install Openclaw or Hermes Agent, and give you a dashboard for launch, model setup, and runtime management.
 
-**What is the difference between OpenClaw and Hermes Agent?**
+**What is the difference between Openclaw and Hermes Agent?**
 
-OpenClaw is a strong default for chat-channel automation, personal assistant workflows, and integration-heavy use cases. Hermes Agent is a strong default for memory-heavy workflows, scheduled jobs, terminal tasks, and agents that should improve from repeated use.
+Openclaw is a strong default for chat-channel automation, personal assistant workflows, and integration-heavy use cases. Hermes Agent is a strong default for memory-heavy workflows, scheduled jobs, terminal tasks, and agents that should improve from repeated use.
 
 **Can I host both agents?**
 
-The marketing site should say this only if the product supports it today. If one machine currently runs one runtime, use: "Each managed machine currently runs one runtime. You can choose OpenClaw or Hermes Agent during deployment."
+The marketing site should say this only if the product supports it today. If one machine currently runs one runtime, use: "Each managed machine currently runs one runtime. You can choose Openclaw or Hermes Agent during deployment."
 
 **Do I need to install anything?**
 
@@ -385,7 +385,7 @@ No. You still get a private runtime, but ClawPilot manages the server work: prov
 
 **Can I self-host later?**
 
-OpenClaw and Hermes Agent are open-source projects. ClawPilot is the managed path for people who want the agent running without maintaining infrastructure.
+Openclaw and Hermes Agent are open-source projects. ClawPilot is the managed path for people who want the agent running without maintaining infrastructure.
 
 ## Updated Page Copy by Current Component
 
@@ -393,11 +393,11 @@ OpenClaw and Hermes Agent are open-source projects. ClawPilot is the managed pat
 
 Replace:
 
-> Your own OpenClaw, without managing the hosting.
+> Your own Openclaw, without managing the hosting.
 
 With:
 
-> Run OpenClaw or Hermes Agent, without managing the server.
+> Run Openclaw or Hermes Agent, without managing the server.
 
 Replace subhead with:
 
@@ -411,22 +411,22 @@ Remove the party emoji to keep the tone consistent and avoid encoding issues.
 
 ### `components/product-showcase.tsx`
 
-Replace "Powered by OpenClaw" with:
+Replace "Powered by Openclaw" with:
 
 > Hosted runtimes
 
 Below it, show two labels:
 
-- OpenClaw
+- Openclaw
 - Hermes Agent
 
 Replace paragraph:
 
-> OpenClaw is one of the fastest-growing open-source AI projects in the world. ClawPilot lets you run it without touching a terminal.
+> Openclaw is one of the fastest-growing open-source AI projects in the world. ClawPilot lets you run it without touching a terminal.
 
 With:
 
-> OpenClaw and Hermes Agent give you powerful open-source agent runtimes. ClawPilot gives them a private cloud machine, model setup, and a managed launch path.
+> Openclaw and Hermes Agent give you powerful open-source agent runtimes. ClawPilot gives them a private cloud machine, model setup, and a managed launch path.
 
 Replace CTA:
 
@@ -448,16 +448,16 @@ With:
 
 Replace description:
 
-> All the power of OpenClaw. None of the server work.
+> All the power of Openclaw. None of the server work.
 
 With:
 
-> Run OpenClaw or Hermes Agent on managed infrastructure built for always-on agent workflows.
+> Run Openclaw or Hermes Agent on managed infrastructure built for always-on agent workflows.
 
 Replace the three features with six if layout allows:
 
 - Private agent machine
-- OpenClaw or Hermes Agent
+- Openclaw or Hermes Agent
 - Always on
 - Bring your model keys
 - Managed maintenance
@@ -468,7 +468,7 @@ Replace the three features with six if layout allows:
 Replace steps:
 
 1. **Choose your agent**
-   Pick OpenClaw or Hermes Agent during setup.
+   Pick Openclaw or Hermes Agent during setup.
 
 2. **Connect your model**
    Add your supported provider, API key, or OAuth connection.
@@ -503,22 +503,22 @@ Add or replace FAQ items with the FAQ section above.
 
 Current:
 
-> ClawPilot | Your Own OpenClaw in the Cloud
+> ClawPilot | Your Own Openclaw in the Cloud
 
 Recommended:
 
-> ClawPilot | Managed OpenClaw and Hermes Agent Hosting
+> ClawPilot | Managed Openclaw and Hermes Agent Hosting
 
 Description:
 
-> Run OpenClaw or Hermes Agent on a private managed cloud machine. ClawPilot handles setup, hosting, updates, and uptime so your agent can stay online without VPS, Docker, or terminal work.
+> Run Openclaw or Hermes Agent on a private managed cloud machine. ClawPilot handles setup, hosting, updates, and uptime so your agent can stay online without VPS, Docker, or terminal work.
 
 Keywords to include where relevant:
 
-- managed OpenClaw hosting
+- managed Openclaw hosting
 - Hermes Agent hosting
 - hosted AI agent
-- OpenClaw cloud
+- Openclaw cloud
 - managed AI agent runtime
 - private AI agent hosting
 
@@ -556,47 +556,47 @@ CTA:
 
 Title:
 
-> Managed OpenClaw hosting for always-on agent workflows.
+> Managed Openclaw hosting for always-on agent workflows.
 
 Hero:
 
-> Your own OpenClaw, ready from the cloud.
+> Your own Openclaw, ready from the cloud.
 
 Subhead:
 
-> ClawPilot runs a private OpenClaw instance for you so you can connect channels, bring your model key, and start using an always-on assistant without maintaining a server.
+> ClawPilot runs a private Openclaw instance for you so you can connect channels, bring your model key, and start using an always-on assistant without maintaining a server.
 
 Sections:
 
-1. Why host OpenClaw.
+1. Why host Openclaw.
 2. Setup removed.
 3. Channels and workflows.
-4. OpenClaw vs local setup.
+4. Openclaw vs local setup.
 5. FAQ.
 
 CTA:
 
-> Host OpenClaw
+> Host Openclaw
 
 ### `/openclaw-vs-hermes-agent`
 
 Title:
 
-> OpenClaw vs Hermes Agent: which should you host?
+> Openclaw vs Hermes Agent: which should you host?
 
 Hero:
 
-> OpenClaw and Hermes Agent solve different agent workflows.
+> Openclaw and Hermes Agent solve different agent workflows.
 
 Table:
 
 | Need | Better starting point |
 | --- | --- |
-| Chat-channel assistant | OpenClaw |
+| Chat-channel assistant | Openclaw |
 | Repeated workflows with memory | Hermes Agent |
-| Broad integrations and skills | OpenClaw |
+| Broad integrations and skills | Openclaw |
 | Scheduled terminal-backed jobs | Hermes Agent |
-| First personal assistant | OpenClaw |
+| First personal assistant | Openclaw |
 | Self-improving task routines | Hermes Agent |
 
 CTA:
@@ -615,9 +615,9 @@ Hero:
 
 Subhead:
 
-> ClawPilot hosts OpenClaw and Hermes Agent so your agent can stay online, keep its context, connect to tools, and run without you maintaining infrastructure.
+> ClawPilot hosts Openclaw and Hermes Agent so your agent can stay online, keep its context, connect to tools, and run without you maintaining infrastructure.
 
-Use this page for broader paid search or SEO outside branded OpenClaw/Hermes queries.
+Use this page for broader paid search or SEO outside branded Openclaw/Hermes queries.
 
 ## Screenshot and Asset Ideas
 
@@ -626,7 +626,7 @@ Use real product screenshots before illustrations. The buyer wants to see the th
 ### Must-have screenshots
 
 1. **Runtime selection**
-   Show OpenClaw and Hermes Agent as two clean cards inside onboarding.
+   Show Openclaw and Hermes Agent as two clean cards inside onboarding.
 
 2. **Dashboard with both runtime options**
    If only one runtime can be active per machine, show a selector plus current active runtime. Do not imply multiple live instances if not supported.
@@ -635,7 +635,7 @@ Use real product screenshots before illustrations. The buyer wants to see the th
    Show provider picker, API key/OAuth state, and save confirmation. This addresses a major setup fear.
 
 4. **Launch screen**
-   Show the secure launch button for OpenClaw or Hermes Agent.
+   Show the secure launch button for Openclaw or Hermes Agent.
 
 5. **Readiness/status panel**
    Show machine status, runtime status, model connected, and launch readiness.
@@ -646,10 +646,10 @@ Use real product screenshots before illustrations. The buyer wants to see the th
 ### Optional assets
 
 - Small Hermes Agent logo treatment using `public/hermesagentlogo.webp`.
-- Runtime comparison icon pair: OpenClaw logo and Hermes logo.
+- Runtime comparison icon pair: Openclaw logo and Hermes logo.
 - One restrained diagram: "You -> ClawPilot -> private agent machine -> channels/tools/models."
 - Short product GIF: choose runtime, connect model, launch dashboard.
-- Open Graph image: "Managed OpenClaw + Hermes Agent hosting" with dashboard screenshot.
+- Open Graph image: "Managed Openclaw + Hermes Agent hosting" with dashboard screenshot.
 
 ### Avoid
 
@@ -665,7 +665,7 @@ Use real product screenshots before illustrations. The buyer wants to see the th
    Use "Start 3-day trial" consistently. Secondary CTAs should scroll to comparison, not compete.
 
 2. **Choice architecture**
-   Give visitors a simple OpenClaw vs Hermes choice. This reduces confusion and makes the new Hermes feature feel intentional.
+   Give visitors a simple Openclaw vs Hermes choice. This reduces confusion and makes the new Hermes feature feel intentional.
 
 3. **Objection removal**
    Repeat concrete removed work: no VPS, no Docker, no terminal, no reverse proxy, no update work.
@@ -686,7 +686,7 @@ Use real product screenshots before illustrations. The buyer wants to see the th
 
 Keep nav short:
 
-- OpenClaw
+- Openclaw
 - Hermes Agent
 - Compare
 - Pricing
@@ -700,7 +700,7 @@ If nav space is tight, use:
 - Blog
 - Dashboard
 
-Where "Agents" opens a small menu with OpenClaw, Hermes Agent, and Compare.
+Where "Agents" opens a small menu with Openclaw, Hermes Agent, and Compare.
 
 ## Pricing Copy
 
@@ -715,7 +715,7 @@ Description:
 Pricing card bullets:
 
 - Private hosted runtime
-- OpenClaw or Hermes Agent
+- Openclaw or Hermes Agent
 - Managed setup and updates
 - Secure dashboard launch
 - Bring your model keys
@@ -730,7 +730,7 @@ CTA:
 1. **Hermes Agent hosting is now available on ClawPilot**
    Announcement post. Explain what changed, who should use it, and how to deploy.
 
-2. **OpenClaw vs Hermes Agent: practical differences**
+2. **Openclaw vs Hermes Agent: practical differences**
    SEO comparison post. Keep it balanced and decision-oriented.
 
 3. **How to host Hermes Agent without a VPS**
@@ -749,7 +749,7 @@ CTA:
 
 Use these in screenshots, demos, or use-case cards.
 
-**OpenClaw prompt**
+**Openclaw prompt**
 
 > Watch my Telegram messages for customer questions, draft replies in my tone, and ask before sending anything.
 
@@ -773,7 +773,7 @@ Use these in screenshots, demos, or use-case cards.
 4. Replace feature cards and how-it-works copy.
 5. Update FAQ.
 6. Add Hermes Agent hosting landing page.
-7. Add OpenClaw vs Hermes comparison page.
+7. Add Openclaw vs Hermes comparison page.
 8. Add announcement blog post.
 
 ## Success Metrics
@@ -782,16 +782,16 @@ Track these before and after the copy update:
 
 - Homepage CTA click-through rate.
 - Signup start rate.
-- Runtime selection split: OpenClaw vs Hermes.
+- Runtime selection split: Openclaw vs Hermes.
 - Trial activation rate.
 - Time from signup to first launch.
-- FAQ expansion rate for "OpenClaw vs Hermes."
-- Search impressions for "Hermes Agent hosting" and "OpenClaw Hermes hosting."
+- FAQ expansion rate for "Openclaw vs Hermes."
+- Search impressions for "Hermes Agent hosting" and "Openclaw Hermes hosting."
 
 ## Notes Before Shipping
 
 - Verify exact Hermes Agent stats on the official Hermes site before using star/tool/platform numbers.
-- Verify OpenClaw stats currently displayed on the site before continuing to use them.
+- Verify Openclaw stats currently displayed on the site before continuing to use them.
 - Do not claim both runtimes can run simultaneously unless the product supports that today.
 - If each managed machine supports one runtime, say that clearly.
 - If Hermes support has limitations around providers, channels, OAuth, or tool gateway, list those limitations in FAQ instead of hiding them.

@@ -12,11 +12,11 @@ import './globals.css'
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "ClawPilot | Your Own OpenClaw in the Cloud",
+    default: "ClawPilot | Managed Openclaw and Hermes Agent Hosting",
     template: "%s | ClawPilot",
   },
   description:
-    "Get a private OpenClaw instance running in minutes. ClawPilot handles hosting, updates, and uptime. No servers, no Docker, no terminal.",
+    "Managed AI agent hosting for Openclaw and Hermes Agent. Private cloud runtimes with no VPS, Docker, or terminal setup.",
   applicationName: siteName,
   referrer: "origin-when-cross-origin",
   authors: [{ name: siteName }],
@@ -28,9 +28,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "ClawPilot | Your Own OpenClaw in the Cloud",
+    title: "ClawPilot | Managed Openclaw and Hermes Agent Hosting",
     description:
-      "Get a private OpenClaw instance running in minutes. No servers, no Docker, no terminal. Just sign up and go.",
+      "Managed AI agent hosting for Openclaw and Hermes Agent. No VPS, Docker, or terminal setup.",
     url: "/",
     siteName,
     locale: "en_US",
@@ -39,9 +39,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClawPilot | Your Own OpenClaw in the Cloud",
+    title: "ClawPilot | Managed Openclaw and Hermes Agent Hosting",
     description:
-      "A private OpenClaw instance running in minutes. No servers, no Docker, no terminal.",
+      "Private Openclaw and Hermes Agent hosting. No VPS, Docker, or terminal setup.",
     images: [siteOgImage],
   },
   robots: {

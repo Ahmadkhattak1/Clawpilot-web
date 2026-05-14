@@ -789,8 +789,8 @@ export function getModelAuthCueMethods(
   providerId: string | null | undefined,
   modelId: string | null | undefined,
 ): readonly ('oauth' | 'api-key')[] {
-  const normalizedProviderId = fromOpenClawProviderId(providerId) ?? providerId ?? null
-  const normalizedModelId = fromOpenClawModelId(modelId) ?? modelId ?? null
+  const normalizedProviderId = fromOpenclawProviderId(providerId) ?? providerId ?? null
+  const normalizedModelId = fromOpenclawModelId(modelId) ?? modelId ?? null
   const model = getProviderModelOption(normalizedProviderId, normalizedModelId)
   if (model?.authCueMethods?.length) {
     return model.authCueMethods
@@ -816,7 +816,7 @@ export function getModelAuthCueMethods(
   return ['api-key']
 }
 
-export function toOpenClawProviderId(providerId: string | null | undefined): string | null {
+export function toOpenclawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   return OPENCLAW_PROVIDER_IDS[providerId as ModelProviderId] ?? providerId
 }
@@ -841,7 +841,7 @@ export function toHermesModelId(
   return normalizedModelId
 }
 
-export function fromOpenClawProviderId(providerId: string | null | undefined): string | null {
+export function fromOpenclawProviderId(providerId: string | null | undefined): string | null {
   if (!providerId) return null
   const normalized = providerId.trim().toLowerCase()
   if (normalized === 'openai-codex') return 'openai'
@@ -854,7 +854,7 @@ export function fromOpenClawProviderId(providerId: string | null | undefined): s
   return normalized
 }
 
-export function fromOpenClawModelId(modelId: string | null | undefined): string | null {
+export function fromOpenclawModelId(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   const normalized = modelId.trim().toLowerCase()
   if (normalized.startsWith('openai-codex/')) {

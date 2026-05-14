@@ -8,7 +8,7 @@ import {
   isModelSupportedByProviderSetupMethod,
   toHermesModelId,
   toHermesProviderId,
-  toOpenClawProviderId,
+  toOpenclawProviderId,
 } from '@/lib/model-providers'
 import { getBackendUrl } from '@/lib/runtime-controls'
 import { getSupabaseAuthConfig } from '@/lib/supabase-auth-config'
@@ -261,7 +261,7 @@ export async function POST(request: Request) {
     const runtimeKind = body.onboarding.runtimeKind
     const runtimeProviderId =
       runtimeKind === 'openclaw'
-        ? (toOpenClawProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId)
+        ? (toOpenclawProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId)
         : (toHermesProviderId(body.onboarding.modelProviderId) ?? body.onboarding.modelProviderId)
     const runtimeModelId =
       runtimeKind === 'hermes'
@@ -308,7 +308,7 @@ export async function POST(request: Request) {
           {
             error: 'UPGRADE_REQUIRED',
             message: `Active managed-hosting subscription is required to deploy your managed ${
-              runtimeKind === 'hermes' ? 'Hermes Agent' : 'OpenClaw'
+              runtimeKind === 'hermes' ? 'Hermes Agent' : 'Openclaw'
             } instance.`,
             backend: daemonResponse.data,
           },

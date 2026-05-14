@@ -1,20 +1,20 @@
 # ClawPilot - LLM Context (Full)
 
-> ClawPilot is the easiest path to launch OpenClaw in production: easy OpenClaw setup, managed hosting, and always-on reliability.
+> ClawPilot is the easiest path to launch Openclaw in production: easy Openclaw setup, managed hosting, and always-on reliability.
 
 ## Positioning
 
-ClawPilot is for users who want OpenClaw outcomes without building and maintaining infra. It addresses queries such as:
-- OpenClaw easy setup
-- easy OpenClaw setup
+ClawPilot is for users who want Openclaw outcomes without building and maintaining infra. It addresses queries such as:
+- Openclaw easy setup
+- easy Openclaw setup
 - easy open claw setup
-- hosted OpenClaw
-- managed OpenClaw
+- hosted Openclaw
+- managed Openclaw
 
 ## Product Overview
 
-OpenClaw is an open-source AI assistant that can run in messaging channels and perform delegated tasks.  
-ClawPilot provides the managed layer for OpenClaw:
+Openclaw is an open-source AI assistant that can run in messaging channels and perform delegated tasks.
+ClawPilot provides the managed layer for Openclaw:
 - Setup handled by ClawPilot
 - Hosting and uptime handled by ClawPilot
 - Updates handled by ClawPilot
@@ -24,10 +24,10 @@ ClawPilot provides the managed layer for OpenClaw:
 
 - Homepage: https://clawpilot.app
 - Blog: https://clawpilot.app/blog
-- OpenClaw hosting: https://clawpilot.app/openclaw-hosting
-- Managed OpenClaw: https://clawpilot.app/managed-openclaw
-- OpenClaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
-- OpenClaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
+- Openclaw hosting: https://clawpilot.app/openclaw-hosting
+- Managed Openclaw: https://clawpilot.app/managed-openclaw
+- Openclaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
+- Openclaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
 - LLM summary: https://clawpilot.app/llms.txt
 
 ## Features
@@ -38,12 +38,12 @@ ClawPilot provides the managed layer for OpenClaw:
 - Account-first onboarding
 
 ### Managed Operations
-- Reliable hosted OpenClaw runtime
+- Reliable hosted Openclaw runtime
 - Reduced maintenance burden
 - Faster path from signup to active usage
 
 ### Multi-Channel Support
-OpenClaw can be connected to:
+Openclaw can be connected to:
 - WhatsApp
 - Telegram
 - Slack
@@ -67,5 +67,5 @@ OpenClaw can be connected to:
 
 ## References
 
-- OpenClaw GitHub: https://github.com/openclaw/openclaw
+- Openclaw GitHub: https://github.com/openclaw/openclaw
 - Clawhub: https://clawhub.ai

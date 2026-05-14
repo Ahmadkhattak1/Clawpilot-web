@@ -30,7 +30,7 @@ import {
   type DashboardProfile,
 } from '@/components/dashboard/dashboard-header'
 import { AgentReadinessPanel } from '@/components/dashboard/agent-readiness-panel'
-import { OpenClawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
+import { OpenclawUiLaunchButton } from '@/components/openclaw-ui-launch-button'
 import { WorkspaceMarkdownManagerDialog } from '@/components/workspace/workspace-markdown-manager-dialog'
 import { Button } from '@/components/ui/button'
 import { isTenantDeploymentStillStartingFromSnapshot } from '@/lib/deploy-progress'
@@ -53,38 +53,38 @@ import {
 } from '@/lib/tenant-instance'
 import { cn } from '@/lib/utils'
 
-type OpenClawResourceArticle = {
+type OpenclawResourceArticle = {
   title: string
   description: string
   url: string
 }
 
-const OPENCLAW_RESOURCE_ARTICLES: OpenClawResourceArticle[] = [
+const OPENCLAW_RESOURCE_ARTICLES: OpenclawResourceArticle[] = [
   {
-    title: 'Full Tutorial: Use OpenClaw to Build a Business That Runs Itself | Nat Eliason',
+    title: 'Full Tutorial: Use Openclaw to Build a Business That Runs Itself | Nat Eliason',
     description:
-      'How Nat set up his OpenClaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.',
+      'How Nat set up his Openclaw bot to run its $4,000/week business, including memory, multi-threaded chats, and security practices.',
     url: 'https://creatoreconomy.so/p/use-openclaw-to-build-a-business-that-runs-itself-nat-eliason',
   },
   {
-    title: 'OpenClaw use cases: 25 ways to automate work and life',
+    title: 'Openclaw use cases: 25 ways to automate work and life',
     description:
-      'A practical list covering everyday admin, developer workflows, and long-running jobs that OpenClaw can handle for you.',
+      'A practical list covering everyday admin, developer workflows, and long-running jobs that Openclaw can handle for you.',
     url: 'https://www.hostinger.com/tutorials/openclaw-use-cases',
   },
   {
-    title: 'OpenClaw Use Cases: 35+ Real Ways People Are Running Their Lives (and Businesses) With It',
+    title: 'Openclaw Use Cases: 35+ Real Ways People Are Running Their Lives (and Businesses) With It',
     description: 'A verified playbook covering everything from morning briefings to multi-agent business councils.',
     url: 'https://sidsaladi.substack.com/p/openclaw-use-cases-35-real-ways-people',
   },
   {
-    title: 'How OpenClaw Changed My Workflow',
+    title: 'How Openclaw Changed My Workflow',
     description:
-      'A firsthand account of using OpenClaw in Telegram with real tools to help ship work end-to-end.',
+      'A firsthand account of using Openclaw in Telegram with real tools to help ship work end-to-end.',
     url: 'https://safeti.medium.com/how-openclaw-changed-my-workflow-e27b4a03e432',
   },
   {
-    title: '11 Insane Use Cases of OpenClaw AI',
+    title: '11 Insane Use Cases of Openclaw AI',
     description: 'What happens when you give an AI agent access to your entire digital life.',
     url: 'https://medium.com/the-ai-studio/11-insane-use-cases-of-openclaw-ai-a341e997a57f',
   },
@@ -272,7 +272,7 @@ export default function ChatPage() {
           ? error.message.trim()
           : 'Failed to start OpenAI OAuth.'
       if (/gateway_starting|bootstrapping|gateway_unavailable|not running/i.test(message)) {
-        setOauthStatus('OpenClaw is still starting. Retry in a few seconds.')
+        setOauthStatus('Openclaw is still starting. Retry in a few seconds.')
       } else if (/route\s+post:|not found/i.test(message)) {
         setOauthError('We could not start the OpenAI sign-in flow. Refresh and try again.')
       } else {
@@ -336,7 +336,7 @@ export default function ChatPage() {
       })
       setOauthRequired(false)
       setOauthModalOpen(false)
-      setOauthStatus('OpenAI OAuth is connected. You can launch OpenClaw now.')
+      setOauthStatus('OpenAI OAuth is connected. You can launch Openclaw now.')
       setOauthCallback('')
       setOauthSessionId('')
       setOauthAuthUrl('')
@@ -442,7 +442,7 @@ export default function ChatPage() {
           setOauthModalOpen(oauthPending)
           setOauthError('')
           setOauthStatus(
-            oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '',
+            oauthPending ? 'OpenAI OAuth is required before you can launch Openclaw.' : '',
           )
           setCheckingSession(false)
         }
@@ -486,7 +486,7 @@ export default function ChatPage() {
             setRuntimeStoredModelConfig(storedModelConfig)
             setOauthRequired(oauthPending)
             setOauthModalOpen(oauthPending)
-            setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '')
+            setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch Openclaw.' : '')
           } catch {
             // The runtime is reachable enough for the readiness probe; model sync can be retried from Models.
           }
@@ -562,7 +562,7 @@ export default function ChatPage() {
             <div className="mx-auto grid aspect-square w-full max-w-[168px] place-items-center rounded-full border border-border/70 bg-card shadow-[0_18px_44px_rgba(0,0,0,0.08)]">
               <Image
                 src="/pfp.png"
-                alt="OpenClaw"
+                alt="Openclaw"
                 width={190}
                 height={190}
                 className="h-[58%] w-[58%] object-contain"
@@ -589,7 +589,7 @@ export default function ChatPage() {
                   {runtimeReady ? 'Running' : 'Starting'}
                 </span>
                 <span className="inline-flex h-10 items-center rounded-xl bg-primary/10 px-4 text-sm font-medium text-primary">
-                  OpenClaw
+                  Openclaw
                 </span>
               </div>
 
@@ -629,7 +629,7 @@ export default function ChatPage() {
                     Connect OAuth
                   </Button>
                 ) : (
-                  <OpenClawUiLaunchButton
+                  <OpenclawUiLaunchButton
                     tenantId={tenantId}
                     onUnauthorized={redirectToSignIn}
                     onLaunchStart={() => setLaunchError('')}
@@ -694,7 +694,7 @@ export default function ChatPage() {
 
           <section className="mx-auto mt-8 w-full max-w-6xl">
             <div className="mb-4 flex flex-col gap-1">
-              <h2 className="text-xl font-semibold tracking-tight text-foreground">OpenClaw settings</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-foreground">Openclaw settings</h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 Runtime-specific configuration lives with this agent.
               </p>
@@ -735,9 +735,9 @@ export default function ChatPage() {
                   <div className="min-w-0 flex-1">
                     <h3 className="text-base font-semibold tracking-tight text-foreground">Channels</h3>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Connect WhatsApp, Telegram, Slack, and other channels inside OpenClaw.
+                      Connect WhatsApp, Telegram, Slack, and other channels inside Openclaw.
                     </p>
-                    <OpenClawUiLaunchButton
+                    <OpenclawUiLaunchButton
                       tenantId={tenantId}
                       onUnauthorized={redirectToSignIn}
                       onLaunchStart={() => setLaunchError('')}
@@ -761,14 +761,14 @@ export default function ChatPage() {
               aria-haspopup="dialog"
               aria-expanded={resourcesOpen}
               aria-controls="openclaw-resources-panel"
-              aria-label="See what people are doing with OpenClaw"
+              aria-label="See what people are doing with Openclaw"
               className={cn(
                 'inline-flex h-10 items-center gap-3 rounded-full px-3 text-sm font-medium tracking-tight text-muted-foreground transition-colors hover:text-foreground md:px-4',
                 resourcesOpen ? 'bg-muted text-foreground shadow-sm' : 'hover:bg-muted/70',
               )}
             >
               <Newspaper className="h-4 w-4" />
-              <span>See what people are doing with OpenClaw</span>
+              <span>See what people are doing with Openclaw</span>
               <ExternalLink className="h-4 w-4" />
             </button>
           </footer>
@@ -793,7 +793,7 @@ export default function ChatPage() {
           setOauthRequired(oauthPending)
           setOauthModalOpen(oauthPending)
           setOauthError('')
-          setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch OpenClaw.' : '')
+          setOauthStatus(oauthPending ? 'OpenAI OAuth is required before you can launch Openclaw.' : '')
           setLaunchError('')
         }}
       />
@@ -885,14 +885,14 @@ export default function ChatPage() {
                         variant="outline"
                         size="icon"
                         className="h-9 w-9 rounded-lg border-border/70 shadow-sm"
-                        aria-label="Close OpenClaw resources"
+                        aria-label="Close Openclaw resources"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </Dialog.Close>
 
                     <Dialog.Title className="text-base font-semibold tracking-tight text-foreground">
-                      See what people are doing with OpenClaw
+                      See what people are doing with Openclaw
                     </Dialog.Title>
                   </div>
 

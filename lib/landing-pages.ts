@@ -46,7 +46,7 @@ export type LandingPageConfig = {
 const sharedRelatedLinks: LandingPageLink[] = [
   {
     href: "/blog/what-is-openclaw-hosting-2026",
-    label: "OpenClaw Hosting Guide",
+    label: "Openclaw Hosting Guide",
     description: "Understand deployment models, hidden costs, and team-fit signals.",
   },
   {
@@ -64,12 +64,12 @@ const sharedRelatedLinks: LandingPageLink[] = [
 export const openclawHostingLandingPage: LandingPageConfig = {
   slug: "openclaw-hosting",
   path: "/openclaw-hosting",
-  metaTitle: "OpenClaw Hosting | Private Managed OpenClaw in the Cloud",
+  metaTitle: "Openclaw Hosting | Private Managed Openclaw in the Cloud",
   metaDescription:
-    "Run OpenClaw in the cloud with a private, always-on managed environment. Skip server setup and focus on outcomes.",
-  headline: "OpenClaw hosting built for reliable day-to-day operations",
+    "Run Openclaw in the cloud with a private, always-on managed environment. Skip server setup and focus on outcomes.",
+  headline: "Openclaw hosting built for reliable day-to-day operations",
   subheadline:
-    "ClawPilot gives your team a private OpenClaw environment that stays online, gets updated safely, and removes infrastructure maintenance from your weekly workload.",
+    "ClawPilot gives your team a private Openclaw environment that stays online, gets updated safely, and removes infrastructure maintenance from your weekly workload.",
   searchIntentLabel: "Deployment Intent: openclaw hosting",
   primaryKeyword: "openclaw hosting",
   keywords: [
@@ -80,7 +80,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     "openclaw managed hosting",
   ],
   heroPoints: [
-    "Private OpenClaw instance with isolated runtime ownership.",
+    "Private Openclaw instance with isolated runtime ownership.",
     "Managed uptime, patching, and deployment maintenance.",
     "Launch in minutes without Docker, VPS, or terminal setup.",
   ],
@@ -88,7 +88,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     {
       title: "Operational consistency",
       description:
-        "Avoid local machine interruptions and ad-hoc restarts by running OpenClaw in a stable cloud environment.",
+        "Avoid local machine interruptions and ad-hoc restarts by running Openclaw in a stable cloud environment.",
     },
     {
       title: "Faster team adoption",
@@ -102,13 +102,13 @@ export const openclawHostingLandingPage: LandingPageConfig = {
     },
   ],
   fitChecklist: [
-    "You need OpenClaw available beyond one developer laptop.",
+    "You need Openclaw available beyond one developer laptop.",
     "You want to avoid owning server patching and runtime updates.",
     "You need faster rollout across non-infrastructure teams.",
     "You prefer a workflow-first setup over full-stack DevOps ownership.",
   ],
   channelNotes: [
-    "OpenClaw workflows can be configured for business channels including WhatsApp, Telegram, Discord, Slack, and email flows.",
+    "Openclaw workflows can be configured for business channels including WhatsApp, Telegram, Discord, Slack, and email flows.",
     "Use the same hosted runtime to support multiple workflows instead of maintaining channel-specific scripts.",
     "Keep operational ownership clear while your team focuses on prompt, policy, and workflow quality.",
   ],
@@ -136,7 +136,7 @@ export const openclawHostingLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is OpenClaw hosting different from installing OpenClaw once?",
+      question: "Is Openclaw hosting different from installing Openclaw once?",
       answer:
         "Yes. Hosting includes uptime, updates, monitoring, and ongoing runtime ownership. Installation alone does not solve long-term reliability.",
     },
@@ -159,12 +159,12 @@ export const openclawHostingLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "Compare managed vs self-hosted tradeoffs in detail.",
     },
     {
       href: "/openclaw-vps-hosting",
-      label: "OpenClaw VPS Hosting",
+      label: "Openclaw VPS Hosting",
       description: "See when VPS setup helps and when it becomes overhead.",
     },
     ...sharedRelatedLinks,
@@ -174,12 +174,12 @@ export const openclawHostingLandingPage: LandingPageConfig = {
 export const managedOpenclawLandingPage: LandingPageConfig = {
   slug: "managed-openclaw",
   path: "/managed-openclaw",
-  metaTitle: "Managed OpenClaw | Faster Launch With Lower Ops Burden",
+  metaTitle: "Managed Openclaw | Faster Launch With Lower Ops Burden",
   metaDescription:
-    "Managed OpenClaw for teams that want predictable runtime operations without owning infrastructure maintenance and incident loops.",
-  headline: "Managed OpenClaw for teams that want workflow velocity",
+    "Managed Openclaw for teams that want predictable runtime operations without owning infrastructure maintenance and incident loops.",
+  headline: "Managed Openclaw for teams that want workflow velocity",
   subheadline:
-    "Move from setup experiments to production usage with a managed OpenClaw deployment model that reduces operational drag and keeps your team focused on outcomes.",
+    "Move from setup experiments to production usage with a managed Openclaw deployment model that reduces operational drag and keeps your team focused on outcomes.",
   searchIntentLabel: "Commercial Intent: managed openclaw",
   primaryKeyword: "managed openclaw",
   keywords: [
@@ -213,12 +213,12 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   ],
   fitChecklist: [
     "Your team is product, growth, support, or operations led.",
-    "You need reliable OpenClaw usage without building an on-call rotation.",
+    "You need reliable Openclaw usage without building an on-call rotation.",
     "You want deployment speed without long setup projects.",
     "You need channel continuity but not deep infrastructure customization.",
   ],
   channelNotes: [
-    "Managed OpenClaw is usually strongest when your value depends on channel response quality, not infrastructure craftsmanship.",
+    "Managed Openclaw is usually strongest when your value depends on channel response quality, not infrastructure craftsmanship.",
     "Teams can focus on message quality, routing logic, and approval policies rather than host reliability tasks.",
     "A managed baseline makes it easier to standardize operations across customer support and lead-gen workflows.",
   ],
@@ -246,7 +246,7 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is managed OpenClaw only for non-technical teams?",
+      question: "Is managed Openclaw only for non-technical teams?",
       answer:
         "No. Technical teams also choose managed deployment when they want to avoid routine infrastructure overhead and stay focused on business workflows.",
     },
@@ -269,12 +269,12 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "See core hosting requirements and evaluation criteria.",
     },
     {
       href: "/openclaw-vps-hosting",
-      label: "OpenClaw VPS Hosting",
+      label: "Openclaw VPS Hosting",
       description: "Compare managed deployment against VPS ownership.",
     },
     ...sharedRelatedLinks,
@@ -284,10 +284,10 @@ export const managedOpenclawLandingPage: LandingPageConfig = {
 export const openclawVpsHostingLandingPage: LandingPageConfig = {
   slug: "openclaw-vps-hosting",
   path: "/openclaw-vps-hosting",
-  metaTitle: "OpenClaw VPS Hosting vs Managed Hosting | Decision Framework",
+  metaTitle: "Openclaw VPS Hosting vs Managed Hosting | Decision Framework",
   metaDescription:
-    "Compare OpenClaw VPS hosting with managed hosting across setup effort, maintenance burden, and incident recovery risk.",
-  headline: "OpenClaw VPS hosting vs managed hosting: choose with clear tradeoffs",
+    "Compare Openclaw VPS hosting with managed hosting across setup effort, maintenance burden, and incident recovery risk.",
+  headline: "Openclaw VPS hosting vs managed hosting: choose with clear tradeoffs",
   subheadline:
     "VPS can work for teams with strong operations maturity. For most teams, managed hosting reduces maintenance loops and speeds up business execution.",
   searchIntentLabel: "Comparison Intent: openclaw vps hosting",
@@ -313,7 +313,7 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
     {
       title: "Risk-aware planning",
       description:
-        "Map who owns outages, patch failures, and channel disconnects before your team depends on OpenClaw daily.",
+        "Map who owns outages, patch failures, and channel disconnects before your team depends on Openclaw daily.",
     },
     {
       title: "Faster decision quality",
@@ -356,7 +356,7 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
   ],
   faq: [
     {
-      question: "Is OpenClaw VPS hosting always cheaper?",
+      question: "Is Openclaw VPS hosting always cheaper?",
       answer:
         "Direct server spend may look lower, but total ownership often rises once you include setup, maintenance, and incident response labor.",
     },
@@ -379,12 +379,12 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "Learn the baseline requirements for production hosting.",
     },
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "See why managed deployment often wins for speed-focused teams.",
     },
     ...sharedRelatedLinks,
@@ -394,12 +394,12 @@ export const openclawVpsHostingLandingPage: LandingPageConfig = {
 export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
   slug: "openclaw-whatsapp-automation",
   path: "/openclaw-whatsapp-automation",
-  metaTitle: "OpenClaw WhatsApp Automation | Hosted Multi-Channel Operations",
+  metaTitle: "Openclaw WhatsApp Automation | Hosted Multi-Channel Operations",
   metaDescription:
-    "Run OpenClaw WhatsApp automation in a managed cloud environment and keep channel workflows reliable without self-hosting overhead.",
-  headline: "OpenClaw WhatsApp automation without self-hosting complexity",
+    "Run Openclaw WhatsApp automation in a managed cloud environment and keep channel workflows reliable without self-hosting overhead.",
+  headline: "Openclaw WhatsApp automation without self-hosting complexity",
   subheadline:
-    "Use ClawPilot to run OpenClaw workflows for WhatsApp and related channels with a managed runtime that prioritizes uptime, stability, and faster execution cycles.",
+    "Use ClawPilot to run Openclaw workflows for WhatsApp and related channels with a managed runtime that prioritizes uptime, stability, and faster execution cycles.",
   searchIntentLabel: "Use-Case Intent: openclaw whatsapp automation",
   primaryKeyword: "openclaw whatsapp automation",
   keywords: [
@@ -438,7 +438,7 @@ export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
     "You prefer managed infrastructure with workflow-level control.",
   ],
   channelNotes: [
-    "OpenClaw documentation highlights support for channels such as WhatsApp, Telegram, Discord, and Slack.",
+    "Openclaw documentation highlights support for channels such as WhatsApp, Telegram, Discord, and Slack.",
     "A shared managed runtime makes it easier to standardize policy and operations across channels.",
     "Use approval rules and guardrails to keep outbound and support workflows aligned with team standards.",
   ],
@@ -489,12 +489,12 @@ export const openclawWhatsappAutomationLandingPage: LandingPageConfig = {
   relatedLinks: [
     {
       href: "/openclaw-hosting",
-      label: "OpenClaw Hosting",
+      label: "Openclaw Hosting",
       description: "Review base hosting requirements for production workflows.",
     },
     {
       href: "/managed-openclaw",
-      label: "Managed OpenClaw",
+      label: "Managed Openclaw",
       description: "Explore operations-focused tradeoffs for managed deployment.",
     },
     ...sharedRelatedLinks,

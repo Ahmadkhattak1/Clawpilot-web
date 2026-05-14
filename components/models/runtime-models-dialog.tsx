@@ -21,14 +21,14 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   HOSTED_RUNTIME_MODEL_PROVIDER_OPTIONS,
   HERMES_RUNTIME_MODEL_PROVIDER_OPTIONS,
-  fromOpenClawModelId,
-  fromOpenClawProviderId,
+  fromOpenclawModelId,
+  fromOpenclawProviderId,
   getModelAuthCueMethods,
   getProviderModelOption,
   getProviderModelOptions,
   isModelSupportedByProviderSetupMethod,
   toHermesModelId,
-  toOpenClawProviderId,
+  toOpenclawProviderId,
   type ModelProviderId,
   type ModelProviderOption,
   type ProviderModelOption,
@@ -170,8 +170,8 @@ function getRuntimeProviderModelOptions(
     if (!rawModelId) return rawModelId
 
     const normalizedProviderId = (
-      fromOpenClawProviderId(model.providerId)
-      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      fromOpenclawProviderId(model.providerId)
+      ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
       ?? providerId
     )
 
@@ -186,20 +186,20 @@ function getRuntimeProviderModelOptions(
     const slashIndex = rawModelId.indexOf('/')
     const rawProviderId = rawModelId.slice(0, slashIndex)
     const modelName = rawModelId.slice(slashIndex + 1)
-    const canonicalProviderId = fromOpenClawProviderId(rawProviderId) ?? rawProviderId
+    const canonicalProviderId = fromOpenclawProviderId(rawProviderId) ?? rawProviderId
     return `${canonicalProviderId}/${modelName}`
   }
 
   const discoveredModels = runtimeModels
     .filter((model) => {
-      const normalizedProviderId = fromOpenClawProviderId(model.providerId)
-        ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+      const normalizedProviderId = fromOpenclawProviderId(model.providerId)
+        ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
       return normalizedProviderId === providerId
     })
     .map((model) => ({
       id: toCanonicalModelId(model),
       label: model.label?.trim() || toCanonicalModelId(model),
-      summary: 'Available in the hosted OpenClaw runtime catalog.',
+      summary: 'Available in the hosted Openclaw runtime catalog.',
       supportedMethods: undefined,
     }))
 
@@ -265,8 +265,8 @@ function getRuntimeProviderOptions(
   }
 
   for (const model of runtimeModels) {
-    const normalizedProviderId = fromOpenClawProviderId(model.providerId)
-      ?? fromOpenClawProviderId(inferProviderIdFromModelId(model.id))
+    const normalizedProviderId = fromOpenclawProviderId(model.providerId)
+      ?? fromOpenclawProviderId(inferProviderIdFromModelId(model.id))
     if (!isEnabledModelProviderId(normalizedProviderId)) {
       continue
     }
@@ -310,10 +310,10 @@ function toDialogModelConfig(
   config: RuntimeModelsData['storedModelConfig'],
 ): DialogModelConfig {
   const providerId = (
-    fromOpenClawProviderId(config?.modelProviderId)
-    ?? fromOpenClawProviderId(inferProviderIdFromModelId(config?.modelId))
+    fromOpenclawProviderId(config?.modelProviderId)
+    ?? fromOpenclawProviderId(inferProviderIdFromModelId(config?.modelId))
   )
-  const modelId = canonicalizeDialogModelId(providerId as ModelProviderId | null, fromOpenClawModelId(config?.modelId))
+  const modelId = canonicalizeDialogModelId(providerId as ModelProviderId | null, fromOpenclawModelId(config?.modelId))
   const authMethod = config?.modelAuthMethod ?? null
 
   if (!isEnabledModelProviderId(providerId)) {
@@ -847,7 +847,7 @@ export function RuntimeModelsDialog({
     try {
       const result = await updateRuntimeModelConfig(tenantId, {
         modelId: selectedModelId,
-        modelProviderId: toOpenClawProviderId(selectedProviderId) ?? selectedProviderId,
+        modelProviderId: toOpenclawProviderId(selectedProviderId) ?? selectedProviderId,
         modelAuthMethod: 'api-key',
         modelApiKey: keyToPersist,
         persist: true,
@@ -865,7 +865,7 @@ export function RuntimeModelsDialog({
       setReplaceApiKey(false)
       setStatus('Hosted model settings saved.')
       toast.success('Model updated', {
-        description: 'Your hosted OpenClaw runtime is now using the new model settings.',
+        description: 'Your hosted Openclaw runtime is now using the new model settings.',
       })
       onOpenChange(false)
       onConfigured?.(nextStoredConfig)
@@ -1174,7 +1174,7 @@ export function RuntimeModelsDialog({
 
             {docsOnlyAuthCueMethods.length > 0 ? (
               <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
-                {runtimeKind === 'hermes' ? 'Hermes docs' : 'OpenClaw docs'} also mention {docsOnlyAuthCueMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} for this route, but this ClawPilot flow currently configures {supportedMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} directly.
+                {runtimeKind === 'hermes' ? 'Hermes docs' : 'Openclaw docs'} also mention {docsOnlyAuthCueMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} for this route, but this ClawPilot flow currently configures {supportedMethods.map((method) => method === 'api-key' ? 'API key' : 'OAuth').join(' + ')} directly.
               </div>
             ) : null}
 

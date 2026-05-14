@@ -1,28 +1,28 @@
-# ClawPilot - OpenClaw Easy Setup
+# ClawPilot - Openclaw Easy Setup
 
-> ClawPilot is managed OpenClaw hosting for people searching for "OpenClaw easy setup", "easy OpenClaw setup", and "easy open claw setup".
+> ClawPilot is managed Openclaw hosting for people searching for "Openclaw easy setup", "easy Openclaw setup", and "easy open claw setup".
 
 ## Summary
 
-ClawPilot lets users run OpenClaw without local hardware, server maintenance, or manual setup. Create an account, connect channels, and start delegating tasks in chat.
+ClawPilot lets users run Openclaw without local hardware, server maintenance, or manual setup. Create an account, connect channels, and start delegating tasks in chat.
 
 ## Canonical Pages
 
 - Homepage: https://clawpilot.app
 - Blog: https://clawpilot.app/blog
-- OpenClaw hosting: https://clawpilot.app/openclaw-hosting
-- Managed OpenClaw: https://clawpilot.app/managed-openclaw
-- OpenClaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
-- OpenClaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
+- Openclaw hosting: https://clawpilot.app/openclaw-hosting
+- Managed Openclaw: https://clawpilot.app/managed-openclaw
+- Openclaw VPS hosting: https://clawpilot.app/openclaw-vps-hosting
+- Openclaw WhatsApp automation: https://clawpilot.app/openclaw-whatsapp-automation
 
 ## Core Capabilities
 
-- Managed OpenClaw hosting with updates and uptime handled by ClawPilot.
+- Managed Openclaw hosting with updates and uptime handled by ClawPilot.
 - Easy setup workflow for non-technical users.
 - Multi-channel support (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, WebChat).
 - Permission-aware controls and confirmation gates.
 
 ## References
 
-- OpenClaw GitHub: https://github.com/openclaw/openclaw
+- Openclaw GitHub: https://github.com/openclaw/openclaw
 - Clawhub: https://clawhub.ai

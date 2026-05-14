@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 
 import { faqItems } from "./faq-data"
+import { renderRuntimeText } from "@/components/runtime-name"
 import { siteUrl } from "@/lib/site"
 import {
   ClawContainer,
@@ -34,14 +35,14 @@ export function FAQ() {
       <ClawContainer size="md">
         <ClawSectionIntro
           className="mb-12"
-          description="Clear answers about hosted OpenClaw and easy setup with ClawPilot."
+          description="Clear answers about hosted agents and easy setup with ClawPilot."
           title="FAQ"
         />
 
         <div className="space-y-4">
           {faqItems.map((item) => (
             <ClawSurface key={item.question} padding="md" radius="lg" tone="muted">
-              <h3 className="type-h4 mb-2">{item.question}</h3>
+              <h3 className="type-h4 mb-2">{renderRuntimeText(item.question)}</h3>
               <p className="type-body-sm">{item.answer}</p>
             </ClawSurface>
           ))}

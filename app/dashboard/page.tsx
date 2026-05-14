@@ -107,7 +107,7 @@ function buildManagedInstance(tenantId: string, runtimeKind: RuntimeKind, status
   return {
     id: tenantId,
     name: product.name,
-    description: runtimeKind === 'hermes' ? 'managed Hermes Agent' : 'managed OpenClaw workspace',
+    description: runtimeKind === 'hermes' ? 'managed Hermes Agent' : 'managed Openclaw workspace',
     runtimeKind,
     machineLabel: resolveMachineLabel(status),
     updatedLabel: formatRelativeTimestamp(resolveTimestamp(status)),
@@ -252,7 +252,7 @@ export default function DashboardPage() {
             <div className="max-w-3xl space-y-3">
               <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">Instances</h1>
               <p className="text-base leading-7 text-muted-foreground">
-                Deploy and manage hosted OpenClaw and Hermes Agent instances on ClawPilot-managed machines.
+                Deploy and manage hosted Openclaw and Hermes Agent instances on ClawPilot-managed machines.
               </p>
             </div>
           </section>
@@ -260,7 +260,7 @@ export default function DashboardPage() {
           <div className="mb-8 inline-flex w-full max-w-md rounded-xl border border-border/70 bg-card p-1">
             {[
               ['all', 'All'],
-              ['openclaw', 'OpenClaw'],
+              ['openclaw', 'Openclaw'],
               ['hermes', 'Hermes Agent'],
             ].map(([value, label]) => (
               <button

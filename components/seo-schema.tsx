@@ -19,7 +19,7 @@ export function SeoSchema() {
         name: siteName,
         url: siteUrl,
         description:
-          "ClawPilot provides managed OpenClaw hosting. Get your own private OpenClaw instance in the cloud with no servers, no Docker, and no terminal.",
+          "ClawPilot provides managed AI agent hosting for Openclaw and Hermes Agent.",
         inLanguage: "en",
         keywords: keywordText,
         publisher: {
@@ -30,18 +30,23 @@ export function SeoSchema() {
         "@type": "WebPage",
         "@id": `${siteUrl}/#webpage`,
         url: siteUrl,
-        name: "ClawPilot | Your Own OpenClaw in the Cloud",
+        name: "ClawPilot | Managed Openclaw and Hermes Agent Hosting",
         description:
-          "Get a private OpenClaw instance running in minutes. ClawPilot handles hosting, updates, and uptime so you can focus on what your AI assistant does.",
+          "Private Openclaw and Hermes Agent hosting with no VPS, Docker, or terminal setup.",
         inLanguage: "en",
         isPartOf: {
           "@id": `${siteUrl}#website`,
         },
         keywords: [
-          "OpenClaw hosting",
-          "managed OpenClaw",
-          "OpenClaw cloud",
-          "private OpenClaw instance",
+          "Openclaw hosting",
+          "managed Openclaw",
+          "Hermes Agent hosting",
+          "managed Hermes Agent",
+          "hosted Hermes Agent",
+          "Hermes AI agent hosting",
+          "AI agent hosting",
+          "Openclaw cloud",
+          "private AI agent hosting",
         ],
       },
       {
@@ -53,7 +58,7 @@ export function SeoSchema() {
         isAccessibleForFree: false,
         url: siteUrl,
         description:
-          "Managed OpenClaw hosting. A private, always-on OpenClaw instance in the cloud with no server setup required.",
+          "Managed Openclaw and Hermes Agent hosting with no server setup required.",
         brand: {
           "@id": `${siteUrl}#organization`,
         },

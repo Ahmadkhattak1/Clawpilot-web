@@ -22,14 +22,14 @@ export const RUNTIME_GATEWAY_PORTS: Record<RuntimeKind, number> = {
 export const RUNTIME_PRODUCTS: readonly RuntimeProduct[] = [
   {
     id: 'openclaw',
-    name: 'OpenClaw',
-    shortName: 'OpenClaw',
-    description: 'Hosted agent workspace with the OpenClaw gateway and control UI.',
+    name: 'Openclaw',
+    shortName: 'Openclaw',
+    description: 'Hosted agent workspace with the Openclaw gateway and control UI.',
     logoSrc: '/pfp.png',
-    logoAlt: 'OpenClaw logo',
-    deploymentNoun: 'OpenClaw workspace',
-    readyText: 'OpenClaw is ready.',
-    startingText: 'OpenClaw is starting and we are checking the connection.',
+    logoAlt: 'Openclaw logo',
+    deploymentNoun: 'Openclaw workspace',
+    readyText: 'Openclaw is ready.',
+    startingText: 'Openclaw is starting and we are checking the connection.',
   },
   {
     id: 'hermes',

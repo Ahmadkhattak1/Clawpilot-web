@@ -17,13 +17,13 @@ const landingHubCardCopy: Record<
   }
 > = {
   "openclaw-hosting": {
-    title: "Launch OpenClaw Fast Without Managing Servers",
+    title: "Launch Openclaw Fast Without Managing Servers",
     description:
       "Get a private cloud setup that stays online and stable, so your team can focus on live workflows instead of infrastructure.",
     cta: "See hosting options",
   },
   "managed-openclaw": {
-    title: "Scale Operations With Managed OpenClaw",
+    title: "Scale Operations With Managed Openclaw",
     description:
       "Choose a managed runtime when you want predictable uptime, fewer incidents, and less weekly maintenance overhead.",
     cta: "Compare managed benefits",
@@ -48,7 +48,7 @@ export function LandingPagesHub() {
       <ClawContainer size="xl">
         <ClawSectionIntro
           description="Compare deployment options in minutes and move forward with the model that gives you the best mix of speed, reliability, and control."
-          title="Choose the Right OpenClaw Setup for Your Team"
+          title="Choose the Right Openclaw Setup for Your Team"
         />
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">

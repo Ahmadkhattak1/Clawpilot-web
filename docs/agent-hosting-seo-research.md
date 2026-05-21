@@ -52,6 +52,38 @@ These posts cover the missing Hermes, mixed-runtime, and agentic-runtime cluster
 | `/blog/host-openclaw-and-hermes-agent-together` | host Openclaw and Hermes Agent | Multi-runtime hosting strategy |
 | `/blog/agentic-runtime-hosting-security` | agentic runtime hosting | Security/isolation checklist |
 
+## Openclaw Recovery Cluster Added
+
+Update date: 2026-05-18
+
+The next content gap was the explicitly requested Openclaw recovery cluster: alternatives, setup, one-click setup, provider comparison, and Telegram setup. Current SERP research shows active competition around "Openclaw alternatives," "Openclaw hosting providers," and practical setup queries, while the official Openclaw docs support setup content around install requirements, Gateway service management, and channel configuration.
+
+| Slug | Primary keyword | Search intent |
+| --- | --- | --- |
+| `/blog/what-is-clawpilot-openclaw-hermes-hosting` | ClawPilot | Brand recovery page clarifying ClawPilot as managed Openclaw and Hermes Agent hosting |
+| `/blog/openclaw-alternatives-production-agent-hosting` | openclaw alternatives | Buyers comparing managed Openclaw, VPS, Hermes Agent, and broader automation options |
+| `/blog/how-to-set-up-openclaw-cloud-hosting-guide` | how to set up Openclaw | Setup-intent users comparing local, VPS, and managed hosting paths |
+| `/blog/openclaw-one-click-setup-vs-manual-setup` | Openclaw one-click setup | Easy-to-rank long-tail search for buyers who want less setup work |
+| `/blog/openclaw-hosting-providers-comparison-checklist` | Openclaw hosting providers | High-intent provider evaluation and purchase comparison |
+| `/blog/openclaw-telegram-setup-hosting-guide` | Openclaw Telegram setup | Channel-specific setup query before WhatsApp/Slack/Discord expansion |
+
+Openclaw remains first-class across this cluster. Hermes Agent is included as a runtime choice where relevant, not as a replacement for Openclaw positioning.
+
+## Hermes Discovery Cluster Added
+
+Update date: 2026-05-18
+
+Additional research showed stronger Hermes-specific discovery opportunities around concrete setup and operations problems rather than only generic "Hermes Agent hosting." Current search results include pages and discussions for Telegram/Discord gateway setup, scheduled automations, memory persistence, VPS backups, managed hosting comparisons, and tool-use troubleshooting. These are high-intent because the searcher is trying to make Hermes Agent run reliably, not only learn what it is.
+
+| Slug | Primary keyword | Search intent |
+| --- | --- | --- |
+| `/blog/hermes-agent-telegram-setup-hosting-guide` | Hermes Agent Telegram setup | Connect Hermes Agent to Telegram and decide where the runtime should live |
+| `/blog/hermes-agent-cron-jobs-managed-hosting` | Hermes Agent cron jobs | Schedule recurring autonomous work and compare local, VPS, and managed hosting |
+| `/blog/hermes-agent-memory-backup-hosting-checklist` | Hermes Agent memory backup | Protect memory, skills, config, scheduled jobs, and state before updates or migration |
+| `/blog/hermes-agent-tools-not-working-hosting-fixes` | Hermes Agent tools not working | Troubleshoot tool, model, gateway, permission, and hosting failures |
+
+These topics also support the HostHermesAgent backlink strategy because the legacy domain can rank for Hermes-specific hosting intent while linking qualified visitors to ClawPilot as the current managed hosting destination.
+
 ## Sources Reviewed
 
 - https://www.host-hermes.com/
@@ -76,4 +108,23 @@ These posts cover the missing Hermes, mixed-runtime, and agentic-runtime cluster
 - https://clawnode.io/openclaw-hosting
 - https://www.rosehosting.com/openclaw-hosting/
 - https://www.techradar.com/pro/how-to-self-host-your-openclaw-environment-on-a-vps-server
+- https://www.reddit.com/r/hermesagent/comments/1t4chwg/hermes_agent_vps_or_managed_hosting/
+- https://docs.openclaw.ai/
+- https://docs.openclaw.ai/install/index
+- https://docs.openclaw.ai/cli/gateway
+- https://docs.openclaw.ai/channels
+- https://docs.openclaw.ai/cli/channels
+- https://docs.openclaw.ai/gateway/config-channels
+- https://www.techradar.com/pro/what-is-openclaw
+- https://www.techradar.com/pro/website-hosting/the-biggest-ai-opportunity-is-not-replacing-people-how-openclaw-is-empowering-the-next-wave-of-successful-smbs
+- https://shelldex.com/best-alternatives/
+- https://openclawlaunch.com/alternatives
+- https://www.bestopenclawhosting.com/
+- https://github.com/NousResearch/hermes-agent
+- https://betterstack.com/community/guides/ai/hermes-agent/
+- https://www.host-hermes.com/
+- https://www.deploy-hermes.com/
+- https://hermes-agent.ai/how-to
+- https://hermes-agent.ai/how-to/deploy-hermes-on-vps
+- https://fast.io/resources/hermes-agent-scheduled-automations-cron/
 - https://www.reddit.com/r/hermesagent/comments/1t4chwg/hermes_agent_vps_or_managed_hosting/

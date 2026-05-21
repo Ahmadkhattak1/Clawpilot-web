@@ -8,14 +8,16 @@ import { getAllBlogPosts } from "@/lib/blog-posts"
 import { siteName, siteOgImage } from "@/lib/site"
 
 export const metadata: Metadata = {
-  title: "Blog",
-  description: "Agent hosting guides, comparisons, and setup posts.",
+  title: "Openclaw Setup, Hosting, and Agent Guides",
+  description:
+    "Openclaw setup guides, hosting comparisons, Openclaw alternatives, and Hermes Agent articles for teams choosing managed agent runtimes.",
   alternates: {
     canonical: "/blog",
   },
   openGraph: {
     title: `${siteName} Blog`,
-    description: "Agent hosting guides, comparisons, and setup posts.",
+    description:
+      "Openclaw setup guides, hosting comparisons, Openclaw alternatives, and Hermes Agent articles for teams choosing managed agent runtimes.",
     url: "/blog",
     siteName,
     type: "website",
@@ -24,7 +26,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: `${siteName} Blog`,
-    description: "Agent hosting guides, comparisons, and setup posts.",
+    description:
+      "Openclaw setup guides, hosting comparisons, Openclaw alternatives, and Hermes Agent articles for teams choosing managed agent runtimes.",
     images: [siteOgImage],
   },
 }

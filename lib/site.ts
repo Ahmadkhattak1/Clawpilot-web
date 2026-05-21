@@ -19,7 +19,7 @@ function normalizeSiteUrl(value?: string): string {
 
 export const siteName = "ClawPilot"
 export const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
-export const siteLastUpdatedAt = "2026-05-14"
+export const siteLastUpdatedAt = "2026-05-21"
 const siteOgImageUrl = `${siteUrl}/og-img.png`
 export const siteOgImage = {
   url: siteOgImageUrl,
@@ -32,16 +32,31 @@ export const siteOgImage = {
 
 export const seoKeywords = [
   "Openclaw agents",
+  "Openclaw job search",
+  "Openclaw job applications",
+  "Openclaw apply to jobs automatically",
   "Openclaw outreach agent",
   "Openclaw support agent",
   "Openclaw lead gen agent",
   "Openclaw competitor monitor",
   "Openclaw hosting",
+  "Openclaw alternatives",
+  "how to set up Openclaw",
+  "Openclaw one-click setup",
+  "Openclaw hosting providers",
+  "Openclaw Telegram setup",
   "Openclaw cloud hosting",
   "hosted Openclaw",
   "managed Openclaw",
   "Openclaw managed service",
   "Hermes Agent hosting",
+  "Hermes Agent beginner setup",
+  "Hermes Agent job search",
+  "Hermes Agent business automation",
+  "Hermes Agent Telegram setup",
+  "Hermes Agent cron jobs",
+  "Hermes Agent memory backup",
+  "Hermes Agent tools not working",
   "managed Hermes Agent",
   "hosted Hermes Agent",
   "Hermes AI agent hosting",

@@ -40,8 +40,13 @@ export function SeoSchema() {
         keywords: [
           "Openclaw hosting",
           "managed Openclaw",
+          "Openclaw job search",
+          "Openclaw job applications",
           "Hermes Agent hosting",
           "managed Hermes Agent",
+          "Hermes Agent beginner setup",
+          "Hermes Agent job search",
+          "Hermes Agent business automation",
           "hosted Hermes Agent",
           "Hermes AI agent hosting",
           "AI agent hosting",

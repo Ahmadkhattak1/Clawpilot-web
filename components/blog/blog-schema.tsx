@@ -108,7 +108,8 @@ export function BlogCollectionSchema({ posts }: { posts: BlogPost[] }) {
     "@id": `${siteUrl}/blog#collection`,
     url: `${siteUrl}/blog`,
     name: `${siteName} Blog`,
-    description: "Agent hosting guides, comparisons, and setup posts.",
+    description:
+      "Openclaw setup guides, hosting comparisons, Openclaw alternatives, and Hermes Agent articles for teams choosing managed agent runtimes.",
     inLanguage: "en-US",
     dateModified: latestDate || undefined,
     mainEntity: {

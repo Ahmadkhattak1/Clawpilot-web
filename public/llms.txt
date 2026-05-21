@@ -18,6 +18,20 @@ ClawPilot lets users run Openclaw or Hermes Agent without local hardware, server
 - Hermes Agent hosting: https://clawpilot.app/hermes-agent-hosting
 - Managed Hermes Agent: https://clawpilot.app/managed-hermes-agent
 - Hermes Agent VPS hosting: https://clawpilot.app/hermes-agent-vps-hosting
+- What is ClawPilot: https://clawpilot.app/blog/what-is-clawpilot-openclaw-hermes-hosting
+- Openclaw alternatives guide: https://clawpilot.app/blog/openclaw-alternatives-production-agent-hosting
+- How to set up Openclaw: https://clawpilot.app/blog/how-to-set-up-openclaw-cloud-hosting-guide
+- Openclaw one-click setup: https://clawpilot.app/blog/openclaw-one-click-setup-vs-manual-setup
+- Openclaw hosting providers checklist: https://clawpilot.app/blog/openclaw-hosting-providers-comparison-checklist
+- Openclaw Telegram setup: https://clawpilot.app/blog/openclaw-telegram-setup-hosting-guide
+- Openclaw job search guide: https://clawpilot.app/blog/openclaw-job-search-automatic-applications
+- Hermes Agent beginner setup: https://clawpilot.app/blog/hermes-agent-setup-for-beginners
+- Hermes Agent job search guide: https://clawpilot.app/blog/hermes-agent-job-search-automation
+- Hermes Agent business guide: https://clawpilot.app/blog/what-is-hermes-agent-business-automation
+- Hermes Agent Telegram setup: https://clawpilot.app/blog/hermes-agent-telegram-setup-hosting-guide
+- Hermes Agent cron jobs: https://clawpilot.app/blog/hermes-agent-cron-jobs-managed-hosting
+- Hermes Agent memory backup: https://clawpilot.app/blog/hermes-agent-memory-backup-hosting-checklist
+- Hermes Agent tools not working: https://clawpilot.app/blog/hermes-agent-tools-not-working-hosting-fixes
 
 ## Core Capabilities
 
